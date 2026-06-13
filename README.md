@@ -1,36 +1,220 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TradeIntel — Stock Sentiment Dashboard
 
-## Getting Started
+TradeIntel tracks stock performance and AI-analysed news sentiment, with **StockSage**,
+an AI chat assistant powered by a [Langflow](https://www.langflow.org/) flow (originally
+hosted on DataStax Astra, now IBM).
 
-First, run the development server:
+Built with Next.js 15 (App Router), React 19, Tailwind CSS 4, shadcn/ui, Recharts,
+Framer Motion, and Auth.js (NextAuth v5).
+
+---
+
+## Quick start (demo mode — no keys, no cost)
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev   # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+With no environment variables set, the app runs in **open demo mode**: every external
+data source falls back to deterministic mock data, so charts, search, news sentiment and
+the StockSage chat all work — and **no billable API is ever called**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Security & cost model (read before deploying)
 
-## Learn More
+This app is designed to be cost-safe and abuse-resistant as a public showcase. Defense in
+depth, in order of the owner's priorities (don't lose money → don't go down → access control):
 
-To learn more about Next.js, take a look at the following resources:
+1. **No key, no spend — and in production, no enforced auth, no spend either.** Each
+   integration (Polygon, Astra, Langflow/OpenAI) is only called when its credentials are
+   present *and* live calls are allowed (`src/lib/config.ts`). In production, live calls are
+   allowed **only when authentication is actually enforced**, so a half-finished deploy
+   (data keys added, OAuth not wired yet) silently serves mock data instead of spending —
+   and logs a loud `[TradeIntel] SECURITY` warning. Missing key ⇒ mock data everywhere.
+2. **Every billable server action is guarded** (`src/lib/guard.ts`): it must pass an
+   auth check (in production) and a per-identity rate limit *before* any external call.
+   This holds even if the UI is bypassed and the action is invoked directly.
+3. **Rate limiting** (`src/lib/rate-limit.ts`): Upstash Redis across all serverless
+   instances when configured, with an in-memory fallback otherwise. Chat = 10/min,
+   data = 30/min per user (or per IP in demo mode).
+4. **Input caps:** chat messages are truncated to 1000 chars and tickers sanitised to
+   `[A-Z.]{1,6}` before reaching any API/LLM (limits token spend and injection surface).
+5. **Caching** (`unstable_cache`, 5–10 min): repeated requests for the same ticker hit a
+   cache, not the upstream API — cutting both API spend and Vercel function time.
+6. **Authentication** (Auth.js, Google/Apple, JWT sessions): when configured, the
+   middleware redirects all unauthenticated traffic to `/login`. `/admin` (DB writes) is
+   further restricted to an email allowlist (`ADMIN_EMAILS`).
+7. **Server-only secrets:** no `NEXT_PUBLIC_` secrets; the Polygon key is sent via an
+   `Authorization` header, never in a URL. Security headers + CSP in `next.config.ts`
+   (`connect-src` locked to `'self'` in production); `X-Powered-By` removed; the app is
+   `noindex` to keep crawlers off.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Fail-closed by default:** in production, the app **cannot spend money until OAuth is
+enforced**. So the worst case of a misconfigured/half-finished deploy is "open but
+mock-only" (stays up, costs nothing) — never "open and billing". Auth enforcement turns on
+automatically once `AUTH_SECRET` + a provider (Google/Apple) are set; do that (below)
+before sharing the URL, and live data will light up at the same time.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Project structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `src/app/page.tsx` — dashboard (trending, gainers/losers, news)
+- `src/app/details/[id]/` — per-ticker detail (charts, sentiment, news)
+- `src/app/admin/` — add companies to Astra DB (admin-only)
+- `src/components/FloatingWidget.tsx` — StockSage chat
+- `src/auth.ts` / `src/auth.config.ts` / `src/middleware.ts` — Auth.js + route gating
+- `src/lib/config.ts` / `guard.ts` / `rate-limit.ts` — config, auth+rate-limit guard
+- `src/data/fallbacks.ts` — deterministic demo-mode data generators
+- `langflow.json` — the preserved Langflow flow definition
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Deployment guide
+
+See `.env.example` for the full list of variables. Below is the recommended order.
+
+### 1 · Push to GitHub (`trade-intel`)
+
+This repo currently carries the original shared hackathon git history. For a clean public
+showcase (and to guarantee no old secret is buried in history), start a fresh history.
+
+> **CRITICAL — rotate a leaked credential first.** An earlier commit (`53724c0`,
+> from the original shared hackathon repo) hardcoded a live **Astra DB token**
+> (`AstraCS:…`) in `src/app/actions.ts`. It was removed from the current code, but
+> it still exists in git history and is exploitable until revoked.
+> **Before doing anything else:** go to the Astra dashboard and **delete/rotate that
+> token** (Astra → your DB → *Settings → Tokens*). Then start a fresh git history
+> (below) so the old token never reaches the public repo.
+
+```bash
+# 1) from the repo root — wipe the shared history and start clean
+rm -rf .git
+git init
+git add -A
+git commit -m "Initial public release: TradeIntel"
+
+# 2) (optional) verify no secret remains anywhere before pushing
+docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest detect --source=/repo -v
+# or:  trufflehog filesystem .
+
+# 3) create the GitHub repo and push
+gh repo create trade-intel --public --source=. --remote=origin --push
+# (or create it in the UI, then: git remote add origin <url> && git push -u origin main)
+```
+
+Because the history is brand-new, the leaked token (and the old `.idea/` files) are
+gone from what you publish. Rotating the token in step 0 is still required — anyone who
+already cloned the old repo has it.
+
+### 2 · Deploy to Vercel
+
+- Import the GitHub repo at [vercel.com/new](https://vercel.com/new).
+- Framework preset: **Next.js** (auto-detected). Build: `next build`.
+- Add the environment variables (below) for **Production** and **Preview**.
+- **Set a spend cap:** Vercel → Project → Settings → **Spend Management** → set a monthly
+  limit + auto-pause. This is your hard backstop against runaway usage.
+
+### 3 · Authentication (Auth.js)
+
+```bash
+# Generate a session secret:
+openssl rand -base64 32        # → AUTH_SECRET
+```
+
+- **Google** — [Google Cloud Console](https://console.cloud.google.com/apis/credentials) →
+  OAuth client (Web). Authorized redirect URI:
+  `https://<your-domain>/api/auth/callback/google`. Set `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`.
+- **Apple** — requires the **Apple Developer Program ($99/yr)**. Create a Services ID +
+  a Sign in with Apple key (`.p8`). `AUTH_APPLE_SECRET` is a JWT you generate from the key
+  (expires ≤6 months — must be rotated). See "Apple Sign In" below. Set `AUTH_APPLE_ID` /
+  `AUTH_APPLE_SECRET`.
+- **Admin allowlist** — set `ADMIN_EMAILS` to the comma-separated emails allowed to use
+  `/admin`. Leave empty to keep `/admin` disabled in production.
+
+### 4 · Rate limiting (Upstash Redis) — do this before going public
+
+Create a free serverless Redis at [upstash.com](https://upstash.com) (or via the Vercel
+Marketplace) and set `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`. Without it,
+rate limiting is per-instance only (weaker on serverless).
+
+### 5 · Data + AI providers
+
+- **Polygon.io** (`POLYGON_API_KEY`) — free key at
+  [polygon.io](https://polygon.io/dashboard/signup). Free tier ≈ 5 req/min.
+- **Astra DB** (`ASTRA_DB_APPLICATION_TOKEN`, `ASTRA_DB_API_ENDPOINT`) — free vector DB at
+  [astra.datastax.com](https://astra.datastax.com). Powers news/sentiment + companies.
+- **Langflow** (`LANGFLOW_BASE_URL`, `LANGFLOW_FLOW_ID`, `LANGFLOW_API_KEY`) — see below.
+
+### 6 · Provider-side spend caps (belt and suspenders)
+
+- **OpenAI** (used inside the Langflow flow): set a monthly **usage limit** in the OpenAI
+  billing dashboard. This is the single biggest runaway-cost risk — cap it.
+- **Polygon/Astra**: stay on free tiers, or set alerts if you upgrade.
+
+---
+
+### Apple Sign In — generating `AUTH_APPLE_SECRET`
+
+The Apple client secret is a short-lived JWT signed with your `.p8` key. Generate it (and
+re-generate every ≤6 months) — for example with the `jsonwebtoken` package:
+
+```js
+// node generate-apple-secret.mjs  (do NOT commit your .p8 or the output)
+import jwt from "jsonwebtoken";
+import fs from "node:fs";
+
+const secret = jwt.sign({}, fs.readFileSync("./AuthKey_XXXX.p8"), {
+  algorithm: "ES256",
+  expiresIn: "180d",
+  audience: "https://appleid.apple.com",
+  issuer: "<YOUR_TEAM_ID>",
+  subject: "<YOUR_SERVICES_ID>",      // = AUTH_APPLE_ID
+  keyid: "<YOUR_KEY_ID>",
+});
+console.log(secret);                  // → AUTH_APPLE_SECRET
+```
+
+### Re-hosting the Langflow flow
+
+The original DataStax-hosted Langflow service was retired post-acquisition. `langflow.json`
+preserves the full flow:
+
+1. Run Langflow (`pip install langflow && langflow run`) or use a hosted instance.
+2. Import `langflow.json`; re-enter the OpenAI + Astra credentials inside the flow.
+3. Set `LANGFLOW_BASE_URL` (e.g. `http://localhost:7860`), `LANGFLOW_FLOW_ID` and `LANGFLOW_API_KEY`.
+
+### Astra news document shape
+
+The news pipeline expects a `prototype_db_v2` collection of documents like:
+
+```json
+{
+  "page_content": "...",
+  "metadata": {
+    "ticker": "AAPL", "title": "...", "source": "...",
+    "publication_date": "2025-01-01", "importance": "high",
+    "sentiment": "Positive", "key_observations": "...", "url": "...", "event": "..."
+  }
+}
+```
+
+The ingestion side (news → sentiment tagging → Astra) needs to be rebuilt.
+
+---
+
+## Remaining product work (optional)
+
+1. Rebuild the news ingestion pipeline that populates `prototype_db_v2`.
+2. Finish the stub pages: `/stocks` (watchlist) and `/forecasts`.
+3. The dashboard top cards (gainers/losers/news) are still hardcoded — derive them from
+   Polygon snapshot endpoints once a key is set.
+4. Tighten the CSP to a nonce-based policy (drop `unsafe-inline`/`unsafe-eval`).
+5. Replace `<img>` tags with `next/image` (minor LCP/lint warnings).
+
+## Notes
+
+- `npm audit` reports a few moderate findings against the PostCSS copy bundled *inside*
+  Next.js itself; the only offered "fix" is downgrading Next, so they're upstream noise.

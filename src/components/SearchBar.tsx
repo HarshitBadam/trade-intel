@@ -3,13 +3,12 @@
 import { Search } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { searchStocks } from "@/app/details/[id]/actions"; 
-import { StockData } from "@/app/details/[id]/page"; 
+import { searchStocks, SearchResult } from "@/app/details/[id]/actions";
 
 export function SearchBar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
-  const [searchResults, setSearchResults] = useState<StockData[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -79,19 +78,16 @@ export function SearchBar() {
           ) : searchResults.length > 0 ? (
             searchResults.map((stock) => (
               <div
-                key={stock.id}
+                key={stock.ticker}
                 className="px-4 py-2 hover:bg-accent/70 cursor-pointer transition-colors"
-                onClick={() => handleStockClick(stock.id)}
+                onClick={() => handleStockClick(stock.ticker)}
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">{stock.companyName}</div>
+                    <div className="font-medium">{stock.name}</div>
                     <div className="text-sm text-muted-foreground">
-                      ${stock.stockPrice !== undefined ? stock.stockPrice.toFixed(2) : "N/A"}
+                      {stock.ticker}
                     </div>
-                  </div>
-                  <div className={`text-sm ${stock.priceChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {stock.priceChange >= 0 ? '+' : ''}{stock.priceChange?.toFixed(2)}%
                   </div>
                 </div>
               </div>

@@ -30,17 +30,28 @@ export function RecentInfluential({
   positiveSentimentPercentage, 
   negativeSentimentPercentage 
 }: RecentInfluentialProps) {
+  // The remaining share is neutral sentiment; including it makes the bar
+  // segments sum to 100 (and silences the Bar validation warning).
+  const neutralSentimentPercentage = Math.max(
+    0,
+    100 - positiveSentimentPercentage - negativeSentimentPercentage
+  );
   const sentimentBreakdown = [
     {
       percentage: positiveSentimentPercentage,
       color: "bg-sidebar-accent-foreground",
       sentiment: "Positive",
     },
-    { 
-      percentage: negativeSentimentPercentage, 
-      color: "bg-muted-foreground", 
-      sentiment: "Negative" 
-    }
+    {
+      percentage: neutralSentimentPercentage,
+      color: "bg-muted",
+      sentiment: "Neutral",
+    },
+    {
+      percentage: negativeSentimentPercentage,
+      color: "bg-muted-foreground",
+      sentiment: "Negative",
+    },
   ];
 
   return (

@@ -1,18 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import styles from '@/styles/FloatingWidget.module.css';
+import { getSummary } from '@/app/actions';
 
-export const messages = [
-  { id: 1, sender: "ai", text: "Welcome! I can provide stock trends, sentiment analysis, and market updates. How can I assist you with the stock market today?" },
-  { id: 2, sender: "user", text: "What's the latest on Tesla (TSLA)?" },
-  { id: 3, sender: "ai", text: "Tesla (TSLA) is currently trading at $950.30, up 2.4% today. The sentiment is 65% bullish based on recent news and social media trends." },
-  { id: 4, sender: "user", text: "Why is the sentiment bullish?" },
-  { id: 5, sender: "ai", text: "Tesla recently announced record quarterly deliveries, and analysts are optimistic about its EV expansion. Positive media coverage has driven investor confidence." },
-  { id: 6, sender: "user", text: "Is Apple (AAPL) trending too?" },
-  { id: 7, sender: "ai", text: "Yes! Apple (AAPL) has a 72% positive sentiment today. The stock is up 1.8% after reports of strong iPhone sales and new AI features coming to iOS." },
-  { id: 8, sender: "user", text: "Great! Thanks for the update." },
-  { id: 9, sender: "ai", text: "You're welcome! Let me know if you need any more insights." }
+type Message = {
+  id: number;
+  sender: 'ai' | 'user';
+  text: string;
+};
+
+const initialMessages: Message[] = [
+  {
+    id: 1,
+    sender: 'ai',
+    text: 'Welcome! I can provide stock trends, sentiment analysis, and market updates. How can I assist you with the stock market today?',
+  },
 ];
 
 interface FloatingWidgetProps {
@@ -23,16 +26,14 @@ interface FloatingWidgetProps {
 
 export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: FloatingWidgetProps) {
   const [isExpandedInternal, setIsExpandedInternal] = useState(false);
-  
+
   // Use either prop-controlled or internal state
   const isExpanded = propIsExpanded ?? isExpandedInternal;
 
   const handleOpen = () => {
     if (onOpen) {
-      // If we're in controlled mode, call the parent's handler
       onOpen();
     } else {
-      // If we're in uncontrolled mode, use internal state
       setIsExpandedInternal(true);
     }
   };
@@ -55,22 +56,49 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
     };
   }, [isExpanded]);
 
+  const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Handle the message submission here
-    if (inputValue.trim()) {
-      // Add your message handling logic here
-      setInputValue('');
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isThinking]);
+
+  const sendMessage = async () => {
+    const text = inputValue.trim();
+    if (!text || isThinking) return;
+
+    setInputValue('');
+    setMessages((prev) => [
+      ...prev,
+      { id: prev.length + 1, sender: 'user', text },
+    ]);
+    setIsThinking(true);
+
+    try {
+      const reply = await getSummary(text);
+      setMessages((prev) => [
+        ...prev,
+        { id: prev.length + 1, sender: 'ai', text: reply.text },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: prev.length + 1,
+          sender: 'ai',
+          text: 'Sorry, something went wrong while fetching an answer. Please try again.',
+        },
+      ]);
+    } finally {
+      setIsThinking(false);
     }
   };
 
-  const handleSendClick = () => {
-    if (inputValue.trim()) {
-      // Add your message handling logic here
-      setInputValue('');
-    }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendMessage();
   };
 
   return (
@@ -154,6 +182,14 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                           </div>
                         </div>
                       ))}
+                      {isThinking && (
+                        <div className="flex max-w-full justify-start">
+                          <div className="p-3 rounded-lg max-w-xs text-gray-400 animate-pulse">
+                            Thinking...
+                          </div>
+                        </div>
+                      )}
+                      <div ref={chatEndRef} />
                     </div>
                   </div>
 
@@ -172,7 +208,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                     <img 
                       src="/chatSendButton.svg" 
                       alt="SendChat" 
-                      onClick={handleSendClick}
+                      onClick={sendMessage}
                       className="w-10 h-full cursor-pointer" 
                     />
                   </div>
@@ -184,4 +220,4 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
       </AnimatePresence>
     </>
   );
-} 
+}

@@ -28,7 +28,7 @@ import { useChart } from "@/context/ChartContext";
 import { getStockCandles } from "@/app/alphavantage_actions";
 
 type ChartDataPoint = {
-  date: string;
+  date: number;
   desktop: number;
   mobile: number;
 };
@@ -55,9 +55,23 @@ export default function MainChart({ cd }: { cd: any }) {
   const [isLoading, setIsLoading] = React.useState(true);
   const { hoveredTimestamp } = useChart();
 
+  // News cards publish a `YYYY-MM-DD` day string while the chart's x values are
+  // epoch-ms numbers. Match by calendar day so the cross-highlight lands on the
+  // right candle, and anchor the marker to that candle's actual x value.
+  const hoveredPoint = React.useMemo(() => {
+    if (!hoveredTimestamp) return undefined;
+    const toDayKey = (v: number | string) => {
+      const d = new Date(v);
+      return Number.isNaN(d.getTime())
+        ? String(v)
+        : d.toISOString().slice(0, 10);
+    };
+    const target = toDayKey(hoveredTimestamp);
+    return chartData.find((d) => toDayKey(d.date) === target);
+  }, [hoveredTimestamp, chartData]);
+
   React.useEffect(() => {
     getStockCandles("IBM").then((data) => {
-      console.log("IBM data fetched:", data);
       setChartData(data);
       setIsLoading(false);
     });
@@ -149,20 +163,16 @@ export default function MainChart({ cd }: { cd: any }) {
               dot={false}
             />
 
-            {hoveredTimestamp && (
+            {hoveredPoint && (
               <>
                 <ReferenceLine
-                  x={hoveredTimestamp}
+                  x={hoveredPoint.date}
                   stroke="rgb(205, 205, 205)"
                   strokeWidth={1}
                 />
                 <ReferenceDot
-                  x={hoveredTimestamp}
-                  y={
-                    chartData.find((d) => d.date === hoveredTimestamp)?.[
-                      activeChart
-                    ] || 0
-                  }
+                  x={hoveredPoint.date}
+                  y={hoveredPoint[activeChart]}
                   r={4}
                   fill={`var(--color-${activeChart})`}
                   stroke={`var(--color-${activeChart})`}
