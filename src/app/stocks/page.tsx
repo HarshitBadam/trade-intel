@@ -24,7 +24,7 @@ export default function StocksPage() {
             <div className="text-xl font-bold">Trending Now</div>
             <div 
               className="flex items-center gap-2 cursor-pointer hover:text-foreground transition-colors"
-              onClick={() => router.push('/detail')}
+              onClick={() => router.push('/')}
             >
               <Image 
                 src="/shuffle.svg" 

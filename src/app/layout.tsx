@@ -7,8 +7,13 @@ import { ChartProvider } from "@/context/ChartContext";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Your Website",
-  description: "A modern website built with Next.js, React, and shadcn/ui",
+  title: {
+    default: "TradeIntel — Stock Sentiment Dashboard",
+    template: "%s · TradeIntel",
+  },
+  description:
+    "Track stock performance and AI-powered news sentiment with TradeIntel.",
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({

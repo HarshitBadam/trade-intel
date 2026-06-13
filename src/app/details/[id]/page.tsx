@@ -9,10 +9,8 @@ import { FlipCard } from "@/components/FlipCard";
 import { Divide } from "lucide-react";
 import { PopularityGraph } from "@/components/PopularityGraph";
 import { FloatingWidget } from "@/components/FloatingWidget";
-import { use, useEffect, useState } from "react";
-import { getStockCandles } from "../../alphavantage_actions";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { mockStockData } from "@/data/mockStocks";
 import { News } from "@/components/RecentInfluential";
 import { fetchDetails } from "./actions";
 
@@ -55,12 +53,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchDetails(stockId).then((data) => {
-      if (!data) {
-        return;
-      }else{
-        console.log(data);
-      }
-      console.log("fetched data", data);
+      if (!data) return;
       setStockData(data);
       setNews(data.news);
     });

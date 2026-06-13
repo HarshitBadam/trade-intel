@@ -3,7 +3,6 @@
 import MainChart from "./MainChart";
 
 export function StockGraph({ companyName, stockPrice, priceChange, percentChange, chartData, hasShuffle }: { companyName: string, stockPrice: number, priceChange: number, percentChange: number, chartData: any, hasShuffle: boolean }) {
-  console.log("stock graph", chartData);
   return (
     <div className="w-full shadow-md bg-accent/10 rounded-lg flex flex-col">
       <div className="flex justify-between">
