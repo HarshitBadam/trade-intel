@@ -1,5 +1,5 @@
 import { useRouter } from "next/navigation";
-import { mockStockData } from "@/data/mockStocks";
+import { SentimentLabel } from "./SentimentLabel";
 
 interface OverviewProps {
   title: string;
@@ -7,25 +7,18 @@ interface OverviewProps {
 }
 
 export const topShifts = [
-  { ticker: "AAPL", name: "Apple Inc.", change: "+3.2%", sentiment: "🟢 Bullish (67%)" },
-  { ticker: "TSLA", name: "Tesla Inc.", change: "-1.5%", sentiment: "🔴 Bearish (54%)" },
-  { ticker: "NVDA", name: "NVIDIA Corporation", change: "+5.1%", sentiment: "🟢 Very Bullish (78%)" },
+  { ticker: "AAPL", name: "Apple Inc.", change: "+3.2%", sentiment: "Bullish (67%)" },
+  { ticker: "TSLA", name: "Tesla Inc.", change: "-1.5%", sentiment: "Bearish (54%)" },
+  { ticker: "NVDA", name: "NVIDIA Corporation", change: "+5.1%", sentiment: "Very Bullish (78%)" },
 ];
 
 export function Overview({ title, children }: OverviewProps) {
   const router = useRouter();
 
+  // Tickers route directly to their details page; the page resolves live data
+  // (price + AI news) from the symbol itself.
   const handleStockClick = (ticker: string) => {
-    // Find the corresponding stock ID from mockStockData
-    const stock = mockStockData.find(s => 
-      s.companyName.includes(ticker.replace("AAPL", "Apple")
-        .replace("TSLA", "Tesla")
-        .replace("NVDA", "NVIDIA"))
-    );
-    
-    if (stock) {
-      router.push(`/details/${stock.id}`);
-    }
+    router.push(`/details/${ticker}`);
   };
 
   return (
@@ -48,7 +41,7 @@ export function Overview({ title, children }: OverviewProps) {
               </div>
             </div>
             <p className="text-sm text-muted-foreground pl-6">{shift.name}</p>
-            <p className="text-sm pl-6">{shift.sentiment}</p>
+            <SentimentLabel sentiment={shift.sentiment} className="text-sm pl-6" />
           </div>
         ))}
       </div>

@@ -1,6 +1,7 @@
 export const mockStockData = [
   {
     id: 1,
+    ticker: "AAPL",
     companyName: "Apple Inc.",
     stockPrice: 180.25, // done
     priceChange: 8.50, // done
@@ -22,6 +23,7 @@ export const mockStockData = [
   },
   {
     id: 2,
+    ticker: "TSLA",
     companyName: "Tesla Inc.",
 
     stockPrice: 675.30,
@@ -43,6 +45,7 @@ export const mockStockData = [
   },
   {
     id: 3,
+    ticker: "NVDA",
     companyName: "NVIDIA Corporation",
     stockPrice: 520.75,
     priceChange: 25.50,
@@ -63,6 +66,7 @@ export const mockStockData = [
   },
   {
     id: 4,
+    ticker: "MSFT",
     companyName: "Microsoft Corp.",
     stockPrice: 390.50,
     priceChange: 15.30,
