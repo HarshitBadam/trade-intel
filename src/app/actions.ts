@@ -25,7 +25,10 @@ export type ChatReply = {
   live: boolean;
 };
 
-export async function getSummary(message: string): Promise<ChatReply> {
+export async function getSummary(
+  message: string,
+  sessionId?: string
+): Promise<ChatReply> {
   // 10 messages / minute per user (or per IP in demo mode).
   const access = await guard("chat", { limit: 10, windowSec: 60 });
   if (!access.ok) {
@@ -43,6 +46,10 @@ export async function getSummary(message: string): Promise<ChatReply> {
     return { text: "Ask me about a stock or the market.", live: false };
   }
 
+  // A stable per-conversation id lets the RAG flow's memory thread context
+  // across turns. Cap its length so a hostile client can't send a huge value.
+  const session = (sessionId ?? "").toString().slice(0, 128).trim();
+
   if (hasLangflow) {
     try {
       const apiUrl = `${LANGFLOW_BASE_URL}/api/v1/run/${LANGFLOW_FLOW_ID}`;
@@ -53,6 +60,10 @@ export async function getSummary(message: string): Promise<ChatReply> {
       const response = await fetch(apiUrl, {
         method: "POST",
         headers: {
+          // Langflow's run API authenticates via the `x-api-key` header. We also
+          // send a Bearer token to cover JWT-style deployments; extra headers are
+          // ignored harmlessly by whichever auth mode the server uses.
+          "x-api-key": LANGFLOW_API_KEY as string,
           Authorization: `Bearer ${LANGFLOW_API_KEY}`,
           "Content-Type": "application/json",
         },
@@ -60,6 +71,9 @@ export async function getSummary(message: string): Promise<ChatReply> {
           input_value: trimmed,
           output_type: "chat",
           input_type: "chat",
+          // session_id threads Langflow's chat memory across turns. Omit it when
+          // absent so the flow falls back to its own default session.
+          ...(session ? { session_id: session } : {}),
           tweaks: {},
         }),
         signal: controller.signal,
@@ -92,7 +106,7 @@ function demoReply(message: string): string {
   return (
     `(Demo mode) StockSage's AI backend isn't connected yet, so here's a canned take on ${subject}: ` +
     `sentiment looks mixed with cautious optimism from analysts. ` +
-    `To get real AI answers, re-host the Langflow flow (langflow.json in the repo root) and set ` +
+    `To get real AI answers, re-host the Langflow flows (see the langflow/ directory) and set ` +
     `LANGFLOW_BASE_URL, LANGFLOW_FLOW_ID and LANGFLOW_API_KEY in .env.local.`
   );
 }

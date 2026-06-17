@@ -1,7 +1,8 @@
 "use server";
 
 import { unstable_cache } from "next/cache";
-import { News } from "@/components/RecentInfluential";
+import { after } from "next/server";
+import { News, NewsStatus } from "@/components/RecentInfluential";
 import { DataAPIClient } from "@datastax/astra-db-ts";
 import { StockData } from "./page";
 import {
@@ -14,10 +15,12 @@ import {
   ASTRA_DB_APPLICATION_TOKEN,
   ASTRA_DB_NEWS_COLLECTION,
   hasAstra,
+  hasLangflowIngest,
   hasPolygon,
   POLYGON_API_KEY,
 } from "@/lib/config";
 import { guard } from "@/lib/guard";
+import { ingestTickerNews } from "@/lib/news-ingest";
 
 export type SearchResult = {
   ticker: string;
@@ -113,6 +116,8 @@ function buildStockData(
     negativeSentimentPercentage: news.negativeSentiment,
     chartData: stock_data.chart_data,
     news: news.news,
+    newsStatus: news.status,
+    newsUpdatedAt: news.updatedAt,
   };
 }
 
@@ -121,9 +126,17 @@ type NewsSummary = {
   positiveSentiment: number;
   negativeSentiment: number;
   news: News[];
+  /** Where the shown news came from — drives the UI provenance badge. */
+  status: NewsStatus;
+  /** ISO timestamp of the freshest article (only meaningful for `fresh`). */
+  updatedAt?: string;
 };
 
-function summarizeNews(news: News[]): NewsSummary {
+function summarizeNews(
+  news: News[],
+  status: NewsStatus,
+  updatedAt?: string
+): NewsSummary {
   const mentions = news.length;
   const pct = (sentiment: string) =>
     mentions === 0
@@ -138,11 +151,26 @@ function summarizeNews(news: News[]): NewsSummary {
     positiveSentiment: pct("Positive"),
     negativeSentiment: pct("Negative"),
     news,
+    status,
+    updatedAt,
   };
 }
 
 function mockNewsSummary(ticker: string): NewsSummary {
-  return summarizeNews(generateMockNews(ticker));
+  return summarizeNews(generateMockNews(ticker), "sample");
+}
+
+// Freshness for the "updated Xh ago" label: prefer the Expander's `ingested_at`
+// (when present), else fall back to the article's publication_date. Returns the
+// most recent timestamp across all rows as an ISO string.
+function latestNewsTimestamp(news: News[]): string | undefined {
+  let latest = 0;
+  for (const n of news) {
+    const raw = n.metadata.ingested_at || n.metadata.publication_date;
+    const t = raw ? Date.parse(raw) : NaN;
+    if (!Number.isNaN(t)) latest = Math.max(latest, t);
+  }
+  return latest > 0 ? new Date(latest).toISOString() : undefined;
 }
 
 // ── Cached live fetchers ────────────────────────────────────────────────────
@@ -201,6 +229,80 @@ const getNewsCached = unstable_cache(
   { revalidate: 600, tags: ["news"] }
 );
 
+// ── Live news breadth (Polygon) ─────────────────────────────────────────────
+// Astra only holds AI-enriched news for curated tickers. For every other ticker
+// we fetch real headlines on demand from Polygon's news endpoint so the product
+// is usable for ANY symbol, not just the ones we pre-ingested. Polygon news is
+// already covered by the existing Polygon key (no new dependency).
+
+type PolygonNewsResult = {
+  id: string;
+  publisher?: { name?: string };
+  title?: string;
+  published_utc?: string;
+  article_url?: string;
+  description?: string;
+  insights?: { ticker: string; sentiment?: string; sentiment_reasoning?: string }[];
+};
+
+// Normalise Polygon's lowercase sentiment to the capitalised form the UI's
+// sentiment math expects ("Positive" | "Negative" | "Neutral").
+function normalizeSentiment(raw?: string): string {
+  switch ((raw ?? "").toLowerCase()) {
+    case "positive":
+      return "Positive";
+    case "negative":
+      return "Negative";
+    default:
+      return "Neutral";
+  }
+}
+
+function mapPolygonNews(ticker: string, results: PolygonNewsResult[]): News[] {
+  return results.map((r) => {
+    // Prefer the sentiment insight scoped to this ticker; fall back to the first.
+    const insight =
+      r.insights?.find((i) => i.ticker === ticker) ?? r.insights?.[0];
+    const title = r.title ?? "Untitled";
+    const description = r.description ?? title;
+    return {
+      _id: r.id,
+      page_content: description,
+      metadata: {
+        title,
+        source: r.publisher?.name ?? "Unknown",
+        publication_date: (r.published_utc ?? "").slice(0, 10),
+        // Polygon has no importance signal; default to Medium so the UI's
+        // significance dot/`.toUpperCase()` always has a value.
+        importance: "Medium",
+        sentiment: normalizeSentiment(insight?.sentiment),
+        key_observations: insight?.sentiment_reasoning || description,
+        url: r.article_url ?? "#",
+        ticker: ticker,
+        description,
+        event: title,
+      },
+    };
+  });
+}
+
+const getPolygonNewsCached = unstable_cache(
+  async (ticker: string): Promise<News[]> => {
+    const url =
+      `https://api.polygon.io/v2/reference/news?ticker=${ticker}` +
+      `&order=desc&sort=published_utc&limit=12`;
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
+    });
+    const data = await response.json();
+    const results = (data.results ?? []) as PolygonNewsResult[];
+    return mapPolygonNews(ticker, results);
+  },
+  ["polygon-news"],
+  { revalidate: 600, tags: ["news"] }
+);
+
 async function getStockCandles(ticker: string) {
   if (hasPolygon) {
     try {
@@ -214,13 +316,55 @@ async function getStockCandles(ticker: string) {
 }
 
 async function getNews(ticker: string): Promise<NewsSummary> {
+  // Tracks whether we've kicked off a background enrichment for this ticker. If
+  // so, the result is marked `analyzing` so the client polls back once Astra has
+  // the AI-enriched rows.
+  let analyzing = false;
+
+  // 1. Enriched (AI-analysed) news from Astra — best quality, curated tickers.
   if (hasAstra) {
     try {
       const news = await getNewsCached(ticker);
-      if (news.length > 0) return summarizeNews(news);
+      if (news.length > 0) {
+        return summarizeNews(news, "fresh", latestNewsTimestamp(news));
+      }
+      // No enriched news yet for this ticker: trigger a one-time background
+      // Langflow ingestion so future visits upgrade from Polygon headlines to
+      // AI-enriched analysis served from Astra. Serve Polygon now (below) but
+      // flag the result as `analyzing` so the client re-fetches shortly.
+      analyzing = scheduleNewsIngestion(ticker);
     } catch (error) {
-      console.error("Astra DB news fetch failed, using fallback:", error);
+      console.error("Astra DB news fetch failed, trying Polygon:", error);
     }
   }
-  return mockNewsSummary(ticker);
+  // 2. Live breadth — real headlines for ANY ticker via Polygon.
+  if (hasPolygon) {
+    try {
+      const news = await getPolygonNewsCached(ticker);
+      if (news.length > 0) {
+        return summarizeNews(news, analyzing ? "analyzing" : "live");
+      }
+    } catch (error) {
+      console.error("Polygon news fetch failed, using fallback:", error);
+    }
+  }
+  // 3. Deterministic mock — keeps the UI populated with zero config / spend.
+  // If an ingest is in flight we still surface `analyzing` so the placeholder
+  // mock is replaced by enriched data on the next poll.
+  return summarizeNews(
+    generateMockNews(ticker),
+    analyzing ? "analyzing" : "sample"
+  );
+}
+
+// ── On-demand AI news ingestion (Langflow → Astra) ──────────────────────────
+// Lazily enrich any ticker the user visits. The heavy work (Tavily search +
+// Gemini extraction, ~15-25s) runs AFTER the response is sent via `after()`, so
+// it never blocks the page. The actual ingest implementation is shared with the
+// scheduled cron warm-up in `@/lib/news-ingest` so both paths stay in sync.
+
+function scheduleNewsIngestion(ticker: string): boolean {
+  if (!hasLangflowIngest) return false;
+  after(() => ingestTickerNews(ticker));
+  return true;
 }

@@ -11,7 +11,7 @@ import { PopularityGraph } from "@/components/PopularityGraph";
 import { FloatingWidget } from "@/components/FloatingWidget";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { News } from "@/components/RecentInfluential";
+import { News, NewsStatus } from "@/components/RecentInfluential";
 import { fetchDetails } from "./actions";
 
 const topGainer = {
@@ -40,6 +40,8 @@ export type StockData = {
   negativeSentimentPercentage: number;
   chartData: { date: string; value: number }[];
   news: News[]; // Assuming news is an array of strings (e.g., URLs or headlines)
+  newsStatus: NewsStatus;
+  newsUpdatedAt?: string;
 };
 
 export default function Home() {
@@ -52,11 +54,27 @@ export default function Home() {
   const [news, setNews] = useState<News[]>([]);
 
   useEffect(() => {
-    fetchDetails(stockId).then((data) => {
-      if (!data) return;
-      setStockData(data);
-      setNews(data.news);
-    });
+    let cancelled = false;
+    // When the news is being enriched in the background (`analyzing`), poll once
+    // more after ~30s so the placeholder upgrades to the AI-analysed Astra rows.
+    let retry: ReturnType<typeof setTimeout> | undefined;
+
+    const load = () => {
+      fetchDetails(stockId).then((data) => {
+        if (cancelled || !data) return;
+        setStockData(data);
+        setNews(data.news);
+        if (data.newsStatus === "analyzing") {
+          retry = setTimeout(load, 30_000);
+        }
+      });
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+      if (retry) clearTimeout(retry);
+    };
   }, [stockId]);
 
   return (
@@ -101,6 +119,8 @@ export default function Home() {
           <div className="lg:col-span-4 p-8 lg:pl-0">
             <RecentInfluential
               news={news}
+              status={stockData?.newsStatus}
+              updatedAt={stockData?.newsUpdatedAt}
               positiveSentimentPercentage={
                 stockData?.positiveSentimentPercentage || 0
               }
