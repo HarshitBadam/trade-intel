@@ -62,7 +62,7 @@ function StatusBadge({
     { label: string; dot: string; text: string }
   > = {
     fresh: {
-      label: `AI analysis${updatedAt ? ` · updated ${timeAgo(updatedAt)}` : ""}`,
+      label: `AI analysis${updatedAt ? ` updated ${timeAgo(updatedAt)}` : ""}`,
       dot: "bg-green-500",
       text: "text-green-700",
     },

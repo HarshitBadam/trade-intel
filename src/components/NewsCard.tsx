@@ -63,10 +63,7 @@ export function NewsCard({ id, username, content, date, avatarUrl, significance,
         </div>
       )}
       <div className="flex-1 space-y-1">
-        <div className="flex justify-between items-center gap-2">
-          <p className="text-sm font-medium">{username}</p>
-          <div className={`h-2 w-2 rounded-full ${significance === "LOW" ? "bg-green-500" : significance === "MEDIUM" ? "bg-yellow-500" : "bg-red-500"}`}></div>
-        </div>
+        <p className="text-sm font-medium">{username}</p>
         <p className="text-sm text-muted-foreground">{content}</p>
         <div className="flex items-center gap-2 text-muted-foreground mt-3">
           <CalendarDays className="h-4 w-4" />

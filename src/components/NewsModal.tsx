@@ -81,7 +81,6 @@ export function NewsModal({
             className="inline-flex items-center gap-1 mt-6 text-sm font-medium text-blue-600 hover:underline"
           >
             Read full article
-            <span aria-hidden>↗</span>
           </a>
         )}
       </div>

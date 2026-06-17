@@ -6,10 +6,12 @@ import { News, NewsStatus } from "@/components/RecentInfluential";
 import { DataAPIClient } from "@datastax/astra-db-ts";
 import { StockData } from "./page";
 import {
+  FALLBACK_TICKERS,
   generateMockFine,
   generateMockWeek,
   generateMockIntraday,
   generateMockNews,
+  generateMockPopularity,
   generateMockStockData,
   searchFallbackTickers,
 } from "@/data/fallbacks";
@@ -221,6 +223,111 @@ export async function fetchTopHeadline(ticker: string): Promise<Headline> {
   return mockHeadline(symbol);
 }
 
+// ── Homepage movers (Top Gainers / Losers / Sentiment Shifts) ───────────────
+// Real day-over-day movement for a curated watchlist, derived from Polygon's
+// "grouped daily" endpoint (one request returns every US ticker for a day, so
+// this stays well within the free tier). Heavily cached; falls back to
+// deterministic mock data so the homepage cards are never empty.
+export type Mover = {
+  ticker: string;
+  name: string;
+  price: number;
+  change: number;
+  percentChange: number;
+  volume: number;
+};
+
+export type Movers = {
+  gainers: Mover[];
+  losers: Mover[];
+  shifts: Mover[];
+};
+
+const MOVER_NAMES = new Map(FALLBACK_TICKERS.map((t) => [t.ticker, t.name]));
+const MOVER_SYMBOLS = new Set(FALLBACK_TICKERS.map((t) => t.ticker));
+
+type GroupedRow = { T: string; o: number; c: number; v: number };
+
+const getGroupedDailyCached = unstable_cache(
+  async (): Promise<Mover[] | null> => {
+    // Walk back from yesterday to find the most recent day with data (skips
+    // weekends/holidays). One request per day attempt; capped at 6.
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    for (let back = 1; back <= 6; back++) {
+      const day = new Date(Date.now() - back * 24 * 60 * 60 * 1000);
+      const response = await fetch(
+        `https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/${fmt(
+          day
+        )}?adjusted=true`,
+        {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
+        }
+      );
+      if (!response.ok) continue;
+      const data = await response.json();
+      const rows = (data.results ?? []) as GroupedRow[];
+      if (rows.length === 0) continue;
+
+      const movers = rows
+        .filter((r) => MOVER_SYMBOLS.has(r.T) && r.o > 0)
+        .map((r) => ({
+          ticker: r.T,
+          name: MOVER_NAMES.get(r.T) ?? r.T,
+          price: r.c,
+          change: r.c - r.o,
+          percentChange: ((r.c - r.o) / r.o) * 100,
+          volume: r.v,
+        }));
+      if (movers.length > 0) return movers;
+    }
+    return null;
+  },
+  ["polygon-grouped-daily"],
+  { revalidate: 3600, tags: ["movers"] }
+);
+
+function mockMovers(): Mover[] {
+  return FALLBACK_TICKERS.map(({ ticker, name }) => {
+    const s = generateMockStockData(ticker);
+    return {
+      ticker,
+      name,
+      price: s.stock_price,
+      change: s.price_change,
+      percentChange: s.percent_change,
+      volume: generateMockPopularity(ticker).searchVolume,
+    };
+  });
+}
+
+function summarizeMovers(all: Mover[]): Movers {
+  const byPct = [...all].sort((a, b) => b.percentChange - a.percentChange);
+  const byAbs = [...all].sort(
+    (a, b) => Math.abs(b.percentChange) - Math.abs(a.percentChange)
+  );
+  return {
+    gainers: byPct.slice(0, 3),
+    losers: byPct.slice(-3).reverse(),
+    shifts: byAbs.slice(0, 3),
+  };
+}
+
+export async function fetchMovers(): Promise<Movers> {
+  const access = await guard("details", { limit: 30, windowSec: 60 });
+  if (!access.ok) return summarizeMovers(mockMovers());
+
+  if (hasPolygon) {
+    try {
+      const live = await getGroupedDailyCached();
+      if (live && live.length > 0) return summarizeMovers(live);
+    } catch (error) {
+      console.error("Polygon movers fetch failed, using fallback:", error);
+    }
+  }
+  return summarizeMovers(mockMovers());
+}
+
 function buildStockData(
   symbol: string,
   stock_data: ReturnType<typeof generateMockStockData>,
@@ -229,15 +336,18 @@ function buildStockData(
   fineData: { date: string; value: number }[],
   news: NewsSummary
 ): StockData {
+  // Popularity/search-volume have no live source; derive stable per-ticker
+  // values (the UI labels this view as illustrative).
+  const pop = generateMockPopularity(symbol);
   return {
     id: symbol,
     companyName: symbol,
     stockPrice: stock_data.stock_price,
     priceChange: stock_data.price_change,
     percentChange: stock_data.percent_change,
-    popularityRate: 92,
+    popularityRate: pop.popularityRate,
     mentions: news.mentions,
-    searchVolume: 850000,
+    searchVolume: pop.searchVolume,
     sentimentPercentage: news.positiveSentiment,
     positiveSentimentPercentage: news.positiveSentiment,
     negativeSentimentPercentage: news.negativeSentiment,

@@ -10,10 +10,45 @@ import { useEffect, useMemo, useState } from "react";
 import { SearchBar } from "@/components/SearchBar"
 import { mockStockData } from "@/data/mockStocks";
 import { generateMockCandles, generateMockFine, generateMockWeek, generateMockIntraday } from "@/data/fallbacks";
-import { fetchQuote, fetchTopHeadline, type Quote, type Headline } from "./details/[id]/actions";
+import { fetchMovers, fetchQuote, fetchTopHeadline, type Mover, type Movers, type Quote, type Headline } from "./details/[id]/actions";
 import { StockChips } from "@/components/StockChips";
 import { RecentInfluential } from "@/components/RecentInfluential";
 import { NewsModal, type NewsArticle } from "@/components/NewsModal";
+import { type Shift } from "@/components/Overview";
+
+function formatVolume(v: number): string {
+  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+  return String(v);
+}
+
+function moverToCard(m: Mover) {
+  const up = m.percentChange >= 0;
+  const sign = up ? "+" : "";
+  return {
+    ticker: m.ticker,
+    name: m.name,
+    currentPrice: `$${m.price.toFixed(2)}`,
+    priceChange: `${sign}${m.change.toFixed(2)}`,
+    percentageChange: `${sign}${m.percentChange.toFixed(2)}%`,
+    volume: formatVolume(m.volume),
+    sentiment: up ? "Bullish" : "Bearish",
+    sentimentSource: ["Polygon"],
+    reason: `Moved ${sign}${m.percentChange.toFixed(2)}% in the latest session`,
+  };
+}
+
+function moverToShift(m: Mover): Shift {
+  const up = m.percentChange >= 0;
+  const sign = up ? "+" : "";
+  return {
+    ticker: m.ticker,
+    name: m.name,
+    change: `${sign}${m.percentChange.toFixed(2)}%`,
+    sentiment: `${up ? "Bullish" : "Bearish"} (${Math.abs(m.percentChange).toFixed(1)}%)`,
+  };
+}
 
 
 const topLoser = {
@@ -93,6 +128,23 @@ export default function StocksPage() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [headline, setHeadline] = useState<Headline | null>(null);
 
+  // Live "Top Gainers / Losers / Sentiment Shifts" for a curated watchlist.
+  // Fetched once; falls back to the static cards until it resolves.
+  const [movers, setMovers] = useState<Movers | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchMovers().then((m) => {
+      if (!cancelled) setMovers(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const gainerCard = movers?.gainers[0] ? moverToCard(movers.gainers[0]) : topGainer;
+  const loserCard = movers?.losers[0] ? moverToCard(movers.losers[0]) : topLoser;
+  const shiftRows = movers?.shifts.length ? movers.shifts.map(moverToShift) : undefined;
+
   useEffect(() => {
     let cancelled = false;
     setQuote(null);
@@ -171,7 +223,7 @@ export default function StocksPage() {
         </div>
 
         <div className="flex flex-col gap-3">
-          <Overview title="Top Sentiment Shifts"/>
+          <Overview title="Top Sentiment Shifts" shifts={shiftRows} />
           <div 
             className="rounded-lg h-1/2 shadow-md flex flex-col items-start justify-center p-4 cursor-pointer" 
             onClick={handleWidgetOpen}
@@ -184,12 +236,11 @@ export default function StocksPage() {
         </div>
        
 
-        <div className="cursor-pointer" onClick={handleStockClick}>
-          <TopGainer title="Top Gainers" data={topGainer} />
-          
+        <div className="cursor-pointer" onClick={() => router.push(`/details/${gainerCard.ticker}`)}>
+          <TopGainer title="Top Gainers" data={gainerCard} />
         </div>
-        <div className="cursor-pointer" onClick={handleStockClick}>
-          <TopGainer title="Top Losers" data={topLoser} />
+        <div className="cursor-pointer" onClick={() => router.push(`/details/${loserCard.ticker}`)}>
+          <TopGainer title="Top Losers" data={loserCard} />
         </div>
         <div>
           <TopNews
