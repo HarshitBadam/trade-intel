@@ -42,6 +42,18 @@ const rawLangflow = Boolean(
   LANGFLOW_BASE_URL && LANGFLOW_FLOW_ID && LANGFLOW_API_KEY
 );
 
+// ── Langflow news ingestion (Tavily → Gemini → Astra ETL) ───────────────────
+// Separate flow from the chat one. When a ticker has no stored news, we trigger
+// this flow on demand (parameterised per-ticker via Langflow "tweaks") to
+// populate Astra so subsequent visits read real data. Component IDs match the
+// committed ingestion flow; override via env only if you rebuild it with
+// different node IDs.
+export const LANGFLOW_INGEST_FLOW_ID = process.env.LANGFLOW_INGEST_FLOW_ID;
+export const LANGFLOW_INGEST_TAVILY_ID =
+  process.env.LANGFLOW_INGEST_TAVILY_ID ?? "TavilySearchComponent-wBPu4";
+export const LANGFLOW_INGEST_STRUCTURED_ID =
+  process.env.LANGFLOW_INGEST_STRUCTURED_ID ?? "StructuredOutput-5fgb3";
+
 // ── Auth (NextAuth / Auth.js) ───────────────────────────────────────────────
 export const hasAuthSecret = Boolean(
   process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET
@@ -76,6 +88,9 @@ const liveAllowed = !isProd || enforceAuth;
 export const hasPolygon = rawPolygon && liveAllowed;
 export const hasAstra = rawAstra && liveAllowed;
 export const hasLangflow = rawLangflow && liveAllowed;
+export const hasLangflowIngest =
+  Boolean(LANGFLOW_BASE_URL && LANGFLOW_INGEST_FLOW_ID && LANGFLOW_API_KEY) &&
+  liveAllowed;
 
 // Loud warning for the dangerous misconfiguration: billable keys present in
 // production but auth not enforced (e.g. you added data keys before finishing

@@ -6,6 +6,11 @@ import { ChartProvider } from "@/context/ChartContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
+// Allow the AI chat Server Action enough time to call Langflow → Gemini.
+// Vercel functions default to ~10s; an LLM round-trip can exceed that. This
+// route-segment config is inherited by all nested (client) pages.
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   title: {
     default: "TradeIntel — Stock Sentiment Dashboard",

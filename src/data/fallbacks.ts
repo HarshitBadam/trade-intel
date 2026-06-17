@@ -129,7 +129,7 @@ export function generateMockNews(ticker: string): News[] {
         sentiment: headline.sentiment,
         key_observations: headline.observation,
         url: "#",
-        ticket: ticker,
+        ticker: ticker,
         description: headline.observation,
         event: headline.event,
       },

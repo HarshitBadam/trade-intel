@@ -13,20 +13,98 @@ export type News = {
     sentiment: string;
     key_observations: string;
     url: string;
-    ticket: string;
+    ticker: string;
     description: string;
     event: string;
+    /** ISO timestamp written by the Langflow Expander; optional for older docs. */
+    ingested_at?: string;
   };
 };
 
+/** Provenance of the news currently shown, used to drive the UI badge. */
+export type NewsStatus = "fresh" | "analyzing" | "live" | "sample";
+
 interface RecentInfluentialProps {
   news?: News[];
+  status?: NewsStatus;
+  updatedAt?: string;
   positiveSentimentPercentage: number;
   negativeSentimentPercentage: number;
 }
 
+// Human "x ago" label from an ISO timestamp, used by the `fresh` badge.
+function timeAgo(iso?: string): string {
+  if (!iso) return "";
+  const diffMs = Date.now() - Date.parse(iso);
+  if (Number.isNaN(diffMs) || diffMs < 0) return "just now";
+  const hours = Math.floor(diffMs / 3_600_000);
+  if (hours < 1) return "just now";
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function StatusBadge({
+  status,
+  updatedAt,
+}: {
+  status?: NewsStatus;
+  updatedAt?: string;
+}) {
+  if (!status) return null;
+
+  const config: Record<
+    NewsStatus,
+    { label: string; dot: string; text: string }
+  > = {
+    fresh: {
+      label: `AI analysis${updatedAt ? ` · updated ${timeAgo(updatedAt)}` : ""}`,
+      dot: "bg-green-500",
+      text: "text-green-700",
+    },
+    analyzing: {
+      label: "Analyzing latest news…",
+      dot: "bg-yellow-500 animate-pulse",
+      text: "text-yellow-700",
+    },
+    live: {
+      label: "Live headlines",
+      dot: "bg-blue-500",
+      text: "text-blue-700",
+    },
+    sample: {
+      label: "Sample data",
+      dot: "bg-gray-400",
+      text: "text-gray-500",
+    },
+  };
+
+  const { label, dot, text } = config[status];
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${text}`}>
+      <span className={`h-2 w-2 rounded-full ${dot}`} />
+      {label}
+    </span>
+  );
+}
+
+function NewsCardSkeleton() {
+  return (
+    <div className="flex items-start space-x-4 rounded-lg p-4 animate-pulse">
+      <div className="w-10 h-10 rounded-full bg-gray-200" />
+      <div className="flex-1 space-y-2">
+        <div className="h-3 w-1/2 rounded bg-gray-200" />
+        <div className="h-3 w-full rounded bg-gray-200" />
+        <div className="h-3 w-2/3 rounded bg-gray-200" />
+      </div>
+    </div>
+  );
+}
+
 export function RecentInfluential({ 
   news = [], 
+  status,
+  updatedAt,
   positiveSentimentPercentage, 
   negativeSentimentPercentage 
 }: RecentInfluentialProps) {
@@ -86,12 +164,18 @@ export function RecentInfluential({
         <Bar segments={sentimentBreakdown} height="h-8" />
       </div>
 
-      {news && news.length > 0 && (
+      {(news.length > 0 || status === "analyzing") && (
         <>
-          <h2 className="text-xl font-bold mb-6">Recent Influential</h2>
+          <div className="flex items-center justify-between mb-6 gap-3">
+            <h2 className="text-xl font-bold">Recent Influential</h2>
+            <StatusBadge status={status} updatedAt={updatedAt} />
+          </div>
           <div className="overflow-y-scroll max-h-[340px]">
             <div className="flex relative">
               <div className="flex-1 flex flex-col gap-8 pt-2 overflow-x-hidden">
+                {status === "analyzing" && (
+                  <NewsCardSkeleton />
+                )}
                 {news.map((news) => (
                   <NewsCard
                     key={news._id}

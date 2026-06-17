@@ -61,6 +61,16 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
   const [isThinking, setIsThinking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Stable id for this chat session so the Langflow RAG flow can keep memory
+  // across turns. Generated once per mounted widget.
+  const sessionIdRef = useRef<string | null>(null);
+  if (sessionIdRef.current === null) {
+    sessionIdRef.current =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isThinking]);
@@ -77,7 +87,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
     setIsThinking(true);
 
     try {
-      const reply = await getSummary(text);
+      const reply = await getSummary(text, sessionIdRef.current ?? undefined);
       setMessages((prev) => [
         ...prev,
         { id: prev.length + 1, sender: 'ai', text: reply.text },
