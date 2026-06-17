@@ -39,6 +39,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# internal notes (not committed)
+/docs/internal/
+
 # vercel
 .vercel
 

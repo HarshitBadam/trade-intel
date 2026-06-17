@@ -68,7 +68,7 @@ before sharing the URL, and live data will light up at the same time.
 - `src/auth.ts` / `src/auth.config.ts` / `src/middleware.ts` — Auth.js + route gating
 - `src/lib/config.ts` / `guard.ts` / `rate-limit.ts` — config, auth+rate-limit guard
 - `src/data/fallbacks.ts` — deterministic demo-mode data generators
-- `langflow.json` — the preserved Langflow flow definition
+- `langflow/` — the two Langflow flows (news ingestion + RAG chat) and their README
 
 ---
 
@@ -177,14 +177,17 @@ const secret = jwt.sign({}, fs.readFileSync("./AuthKey_XXXX.p8"), {
 console.log(secret);                  // → AUTH_APPLE_SECRET
 ```
 
-### Re-hosting the Langflow flow
+### Hosting the Langflow flows
 
-The original DataStax-hosted Langflow service was retired post-acquisition. `langflow.json`
-preserves the full flow:
+The AI runs on two Langflow flows in `langflow/` (full details in `langflow/README.md`):
+`stocksage-ingestion.json` (Tavily → Gemini → Astra news ETL) and
+`stocksage-chat.json` (RAG chat grounded in the ingested news).
 
 1. Run Langflow (`pip install langflow && langflow run`) or use a hosted instance.
-2. Import `langflow.json`; re-enter the OpenAI + Astra credentials inside the flow.
-3. Set `LANGFLOW_BASE_URL` (e.g. `http://localhost:7860`), `LANGFLOW_FLOW_ID` and `LANGFLOW_API_KEY`.
+2. Add a `GOOGLE_API_KEY` global variable, then import both flows and set the
+   Astra token (+ Tavily key for ingestion) inside the nodes.
+3. Set `LANGFLOW_BASE_URL` (e.g. `http://localhost:7860`), then `LANGFLOW_FLOW_ID`
+   (chat flow) and `LANGFLOW_INGEST_FLOW_ID` (ingestion flow) plus `LANGFLOW_API_KEY`.
 
 ### Astra news document shape
 
