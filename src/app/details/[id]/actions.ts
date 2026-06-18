@@ -13,6 +13,7 @@ import {
   generateMockNews,
   generateMockPopularity,
   generateMockStockData,
+  getCuratedPeers,
   searchFallbackTickers,
   type RelatedStock,
 } from "@/data/fallbacks";
@@ -1049,12 +1050,23 @@ export async function fetchRelatedStocks(
 
   try {
     const relatedTickers = await getRelatedTickersCached(symbol);
-    const peerTickers = Array.from(new Set(relatedTickers.map(sanitizeTicker)))
+    let peerTickers = Array.from(new Set(relatedTickers.map(sanitizeTicker)))
       .filter((t) => t && t !== symbol)
       .slice(0, 8);
 
-    // No genuine peer data (e.g. ADRs / thinly-covered names like INFY): hide
-    // the rail instead of fabricating irrelevant "peers".
+    // Polygon's peer graph is empty for many foreign ADRs (INFY, TSM, BABA …)
+    // and times out under free-tier throttling. Fall back to an editorial map
+    // of GENUINE industry competitors so the rail stays populated with relevant
+    // names — never padded with random mega-caps. Peers still get live prices
+    // and the same ranking treatment below.
+    if (peerTickers.length === 0) {
+      peerTickers = Array.from(new Set(getCuratedPeers(symbol).map(sanitizeTicker)))
+        .filter((t) => t && t !== symbol)
+        .slice(0, 8);
+    }
+
+    // Still nothing relevant (genuinely obscure ticker): hide the rail rather
+    // than invent peers.
     if (peerTickers.length === 0) return [];
 
     const [marketMap, yearAgoMap, currentDetail, peerDetails] =
