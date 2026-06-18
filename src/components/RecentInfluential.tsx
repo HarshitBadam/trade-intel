@@ -176,7 +176,12 @@ export function RecentInfluential({
             <h2 className="text-xl font-bold">Recent Influential</h2>
             <StatusBadge status={status} updatedAt={updatedAt} />
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* Cap the list height so it scrolls internally. On `lg` the panel is
+              absolutely positioned to the chart's height, so `flex-1` bounds it
+              and we drop the cap; below `lg` the panel is in normal flow with no
+              bounded parent, so an explicit max-height is what makes it scroll
+              instead of unfolding every item. */}
+          <div className="flex-1 min-h-0 overflow-y-auto max-h-[26rem] lg:max-h-none">
             <div className="flex relative">
               <div className="flex-1 flex flex-col divide-y divide-border/70 overflow-x-hidden">
                 {/* Only show the placeholder card while there's nothing else to

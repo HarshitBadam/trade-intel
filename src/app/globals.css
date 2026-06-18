@@ -116,6 +116,13 @@
   * {
     @apply outline-ring/50;
   }
+  /* Kill the rubber-band/elastic overscroll bounce and stop scroll-chaining
+     between nested scroll areas and the page. `none` (not `contain`) also
+     removes the bounce at the document boundary on macOS/iOS WebKit. */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-background text-foreground;
   }

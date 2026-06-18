@@ -94,12 +94,12 @@ export function TopGainerSkeleton({ title }: { title?: string }) {
             <div className="h-3 w-20 rounded bg-muted ml-auto" />
           </div>
         </div>
-        <div className="h-4 w-full rounded bg-muted border-t pt-2" />
+        <div className="h-4 w-full rounded bg-muted pt-2" />
         <div className="space-y-2">
           <div className="h-4 w-full rounded bg-muted" />
           <div className="h-6 w-2/3 rounded bg-muted" />
         </div>
-        <div className="h-10 w-full rounded bg-muted border-t pt-2" />
+        <div className="h-10 w-full rounded bg-muted pt-2" />
       </div>
     </div>
   );

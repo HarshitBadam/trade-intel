@@ -126,7 +126,7 @@ export default function StocksPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold mb-2">Stock Analysis</h1>
         <p className="text-muted-foreground">Track and analyze stock performance with real-time data.</p>
@@ -135,17 +135,13 @@ export default function StocksPage() {
       <SearchBar />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <div className="flex items-center justify-between align-end">
+        <div className="md:col-span-2 lg:col-span-2">
+          <div className="mb-4 space-y-3">
             <div className="text-xl font-bold">Trending Now</div>
-            <div 
-              className="flex items-center gap-1 cursor-pointer content-end hover:opacity-80"
-            >
-              <StockChips 
-                selectedStockId={selectedStockId} 
-                onStockSelect={(id) => setSelectedStockId(id ?? 1)} 
-              />
-            </div>
+            <StockChips
+              selectedStockId={selectedStockId}
+              onStockSelect={(id) => setSelectedStockId(id ?? 1)}
+            />
           </div>
           <div className="cursor-pointer" onClick={handleStockClick}> 
             <StockGraph 
