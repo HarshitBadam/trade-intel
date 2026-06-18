@@ -253,6 +253,53 @@ export const FALLBACK_TICKERS = [
   { ticker: "IBM", name: "International Business Machines" },
 ];
 
+/**
+ * Curated, sector-diverse universe the daily cron rotates through to pre-warm
+ * Astra news. It's intentionally larger than a single run's budget: the cron
+ * ingests a rotating slice of `MAX_INGESTS_PER_RUN` each day (round-robin keyed
+ * by the date), so coverage spreads across the whole list over ~a week instead
+ * of hammering the same handful. Long-tail tickers are still covered on-demand
+ * the moment a user visits them.
+ */
+export const CRON_WARMUP_TICKERS = [
+  // Mega-cap tech
+  { ticker: "AAPL", name: "Apple Inc." },
+  { ticker: "MSFT", name: "Microsoft Corporation" },
+  { ticker: "NVDA", name: "NVIDIA Corporation" },
+  { ticker: "GOOGL", name: "Alphabet Inc." },
+  { ticker: "META", name: "Meta Platforms Inc." },
+  { ticker: "AMZN", name: "Amazon.com Inc." },
+  { ticker: "AMD", name: "Advanced Micro Devices Inc." },
+  { ticker: "ORCL", name: "Oracle Corporation" },
+  { ticker: "CRM", name: "Salesforce Inc." },
+  { ticker: "ADBE", name: "Adobe Inc." },
+  // Consumer / discretionary
+  { ticker: "TSLA", name: "Tesla Inc." },
+  { ticker: "NFLX", name: "Netflix Inc." },
+  { ticker: "DIS", name: "The Walt Disney Company" },
+  { ticker: "NKE", name: "Nike Inc." },
+  { ticker: "SBUX", name: "Starbucks Corporation" },
+  { ticker: "MCD", name: "McDonald's Corporation" },
+  // Consumer staples / retail
+  { ticker: "WMT", name: "Walmart Inc." },
+  { ticker: "COST", name: "Costco Wholesale Corporation" },
+  { ticker: "KO", name: "The Coca-Cola Company" },
+  // Financials
+  { ticker: "JPM", name: "JPMorgan Chase & Co." },
+  { ticker: "BAC", name: "Bank of America Corporation" },
+  { ticker: "V", name: "Visa Inc." },
+  { ticker: "MA", name: "Mastercard Incorporated" },
+  // Healthcare
+  { ticker: "JNJ", name: "Johnson & Johnson" },
+  { ticker: "LLY", name: "Eli Lilly and Company" },
+  { ticker: "UNH", name: "UnitedHealth Group Incorporated" },
+  // Energy / industrial / comms
+  { ticker: "XOM", name: "Exxon Mobil Corporation" },
+  { ticker: "CVX", name: "Chevron Corporation" },
+  { ticker: "BA", name: "The Boeing Company" },
+  { ticker: "CAT", name: "Caterpillar Inc." },
+];
+
 export function searchFallbackTickers(query: string) {
   const q = query.trim().toLowerCase();
   return FALLBACK_TICKERS.filter(

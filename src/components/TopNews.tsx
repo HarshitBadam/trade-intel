@@ -24,3 +24,22 @@ export default function TopNews({ title,newsTitle,newsContent, onClick }: TopNew
     </div>
   );
 }
+
+// Loading placeholder shown until the real headline resolves, so the card never
+// flashes fabricated news.
+export function TopNewsSkeleton({ title = "Top News" }: { title?: string }) {
+  return (
+    <div className="rounded-lg p-6 h-full bg-card shadow-md animate-pulse">
+      <h2 className="text-xl font-semibold mb-4">{title}</h2>
+      <div className="space-y-3 pt-1">
+        <div className="h-7 w-full rounded bg-muted" />
+        <div className="h-7 w-3/4 rounded bg-muted" />
+        <div className="pt-4 space-y-2">
+          <div className="h-3 w-full rounded bg-muted" />
+          <div className="h-3 w-full rounded bg-muted" />
+          <div className="h-3 w-2/3 rounded bg-muted" />
+        </div>
+      </div>
+    </div>
+  );
+}
