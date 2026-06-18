@@ -1,4 +1,4 @@
-import type { Mover } from "@/app/details/[id]/actions";
+import type { Mover } from "@/lib/market-data-types";
 
 export function formatVolume(v: number): string {
   if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
