@@ -34,11 +34,13 @@ const chartConfig = {
   },
   desktop: {
     label: "Price",
-    color: "#0369a1",
+    // Brighter, higher-contrast blue in dark mode so the line reads clearly
+    // against the deep background.
+    theme: { light: "#0369a1", dark: "#409cff" },
   },
   mobile: {
     label: "Price",
-    color: "#475569",
+    theme: { light: "#475569", dark: "#94a3b8" },
   },
 } satisfies ChartConfig;
 
@@ -204,7 +206,8 @@ export default function MainChart({
               <>
                 <ReferenceLine
                   x={hoveredPoint.date}
-                  stroke="rgb(205, 205, 205)"
+                  stroke="var(--muted-foreground)"
+                  strokeOpacity={0.35}
                   strokeWidth={1}
                 />
                 <ReferenceDot

@@ -56,7 +56,7 @@ export function NewsCard({ id, username, content, date, avatarUrl, significance,
           className="rounded-full"
         />
       ) : (
-        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
           <span className="text-sm font-medium text-muted-foreground">
             {username.charAt(1).toUpperCase()}
           </span>

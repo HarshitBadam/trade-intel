@@ -133,10 +133,10 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
         <div className="fixed bottom-6 right-6 pointer-events-auto z-10">
           <div
             onClick={handleOpen}
-            className="bg-white rounded-lg shadow-lg p-4 w-[200px] hover:shadow-xl transition-shadow cursor-pointer"
+            className="bg-card text-card-foreground border border-border rounded-lg shadow-lg p-4 w-[200px] hover:shadow-xl transition-shadow cursor-pointer"
           >
             <h3 className="font-semibold mb-2">StockSage</h3>
-            <div className="text-sm text-gray-600">Get Stock Insights</div>
+            <div className="text-sm text-muted-foreground">Get Stock Insights</div>
           </div>
         </div>
       )}
@@ -147,7 +147,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/20 backdrop-blur-md z-50"
+            className="fixed inset-0 bg-black/30 backdrop-blur-xl z-50"
             onClick={handleClose}
           >
             <motion.div
@@ -176,7 +176,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                 opacity: 1
               }}
               transition={{ type: "spring", damping: 25, stiffness: 120 }}
-              className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-xl overflow-y-auto origin-bottom-right shadow-2xl"
+              className="bg-white/80 dark:bg-card/85 backdrop-blur-xl border border-white/50 dark:border-white/10 rounded-xl overflow-y-auto origin-bottom-right shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="p-6 h-full flex flex-col">
@@ -185,7 +185,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                     <h2 className="text-xl font-bold">StockSage</h2>
                     <button
                       onClick={handleClose}
-                      className="p-2 hover:bg-gray-100 rounded-full"
+                      className="p-2 hover:bg-muted rounded-full transition-colors"
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -200,12 +200,12 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                           className={`flex max-w-full ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
                         >
                           <div
-                            className={`p-3 rounded-lg max-w-xs ${
-                              msg.sender === "user" ? "bg-gray-50 text-black" : "text-black"
+                            className={`p-3 rounded-lg max-w-xs text-foreground ${
+                              msg.sender === "user" ? "bg-muted" : ""
                             }`}
                           >
                             {msg.sender === "ai" ? (
-                              <div className="text-sm leading-relaxed space-y-2 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:underline [&_a]:text-blue-600">
+                              <div className="text-sm leading-relaxed space-y-2 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:underline [&_a]:text-blue-600 dark:[&_a]:text-blue-400">
                                 <ReactMarkdown>{msg.text}</ReactMarkdown>
                               </div>
                             ) : (
@@ -216,7 +216,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                       ))}
                       {isThinking && (
                         <div className="flex max-w-full justify-start">
-                          <div className="p-3 rounded-lg max-w-xs text-gray-400 animate-pulse">
+                          <div className="p-3 rounded-lg max-w-xs text-muted-foreground animate-pulse">
                             Thinking...
                           </div>
                         </div>
@@ -226,7 +226,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                   </div>
 
                   <div className="mt-auto flex gap-4">
-                    <div className="flex text-sm text-gray-500 p-4 bg-gray-50 rounded-lg outline outline-1 outline-gray-200 w-full">
+                    <div className="flex text-sm text-muted-foreground p-4 bg-muted rounded-lg outline outline-1 outline-border w-full">
                       <form className="w-full" onSubmit={handleSubmit}>
                         <input 
                           type="text" 
@@ -241,7 +241,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                       src="/chatSendButton.svg" 
                       alt="SendChat" 
                       onClick={sendMessage}
-                      className="w-10 h-full cursor-pointer" 
+                      className="w-10 h-full cursor-pointer dark:invert" 
                     />
                   </div>
                 </div>

@@ -23,11 +23,11 @@ const chartConfig = {
   },
   negative: {
     label: "  Negative",
-    color: "#94a3b8",
+    theme: { light: "#94a3b8", dark: "#8b8b93" },
   },
   positive: {
     label: "  Positive",
-    color: "#0369a1",
+    theme: { light: "#0369a1", dark: "#409cff" },
   },
 } satisfies ChartConfig
 
@@ -61,12 +61,12 @@ export function PopularityChart({
           <AreaChart data={filteredData}>
             <defs>
               <linearGradient id="fillNegative" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#94a3b8" stopOpacity={0.03} />
+                <stop offset="5%" style={{ stopColor: "var(--color-negative)", stopOpacity: 0.3 }} />
+                <stop offset="95%" style={{ stopColor: "var(--color-negative)", stopOpacity: 0.03 }} />
               </linearGradient>
               <linearGradient id="fillPositive" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#0369a1" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#0369a1" stopOpacity={0.03} />
+                <stop offset="5%" style={{ stopColor: "var(--color-positive)", stopOpacity: 0.3 }} />
+                <stop offset="95%" style={{ stopColor: "var(--color-positive)", stopOpacity: 0.03 }} />
               </linearGradient>
             </defs>
             <CartesianGrid vertical={false} />
@@ -102,7 +102,7 @@ export function PopularityChart({
               dataKey="positive"
               type="linear"
               fill="url(#fillPositive)"
-              stroke="#0369a1"
+              stroke="var(--color-positive)"
               strokeWidth={1}
               stackId="a"
             />
@@ -110,7 +110,7 @@ export function PopularityChart({
               dataKey="negative"
               type="linear"
               fill="url(#fillNegative)"
-              stroke="#94a3b8"
+              stroke="var(--color-negative)"
               strokeWidth={1}
               stackId="a"
             />

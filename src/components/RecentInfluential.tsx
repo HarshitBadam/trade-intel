@@ -64,22 +64,22 @@ function StatusBadge({
     fresh: {
       label: `AI analysis${updatedAt ? ` updated ${timeAgo(updatedAt)}` : ""}`,
       dot: "bg-green-500",
-      text: "text-green-700",
+      text: "text-green-700 dark:text-green-400",
     },
     analyzing: {
       label: "Analyzing latest news",
       dot: "bg-yellow-500 animate-pulse",
-      text: "text-yellow-700",
+      text: "text-yellow-700 dark:text-yellow-400",
     },
     live: {
       label: "Live headlines",
       dot: "bg-blue-500",
-      text: "text-blue-700",
+      text: "text-blue-700 dark:text-blue-400",
     },
     sample: {
       label: "Sample data",
       dot: "bg-gray-400",
-      text: "text-gray-500",
+      text: "text-gray-500 dark:text-gray-400",
     },
   };
 
@@ -95,11 +95,11 @@ function StatusBadge({
 function NewsCardSkeleton() {
   return (
     <div className="flex items-start space-x-4 py-4 animate-pulse">
-      <div className="w-10 h-10 rounded-full bg-gray-200" />
+      <div className="w-10 h-10 rounded-full bg-muted" />
       <div className="flex-1 space-y-2">
-        <div className="h-3 w-1/2 rounded bg-gray-200" />
-        <div className="h-3 w-full rounded bg-gray-200" />
-        <div className="h-3 w-2/3 rounded bg-gray-200" />
+        <div className="h-3 w-1/2 rounded bg-muted" />
+        <div className="h-3 w-full rounded bg-muted" />
+        <div className="h-3 w-2/3 rounded bg-muted" />
       </div>
     </div>
   );
@@ -123,7 +123,9 @@ export function RecentInfluential({
   const sentimentBreakdown = [
     {
       percentage: positiveSentimentPercentage,
-      color: "bg-sidebar-accent-foreground",
+      // Stays the brightest (most prominent) segment, but a soft light-grey in
+      // dark mode so it reads as refined rather than glaring against the deep UI.
+      color: "bg-sidebar-accent-foreground dark:bg-zinc-300",
       sentiment: "Positive",
     },
     {
@@ -145,7 +147,7 @@ export function RecentInfluential({
         <div className="flex justify-center items-center gap-4 pb-3">
           <div className="flex pr-3">
             <div className="text-sm">Positive</div>
-            <img src="/upArrow.svg" alt="Positive" className="w-4 h-4 mt-0.5" />
+            <img src="/upArrow.svg" alt="Positive" className="w-4 h-4 mt-0.5 dark:invert" />
           </div>
 
           <Progress value={positiveSentimentPercentage} className="" />
@@ -157,7 +159,7 @@ export function RecentInfluential({
             <img
               src="/downArrow.svg"
               alt="Negative"
-              className="w-4 h-4 mt-0.5"
+              className="w-4 h-4 mt-0.5 dark:invert"
             />
           </div>
           <Progress value={negativeSentimentPercentage} className="" />

@@ -20,7 +20,7 @@ export default async function LoginPage({
     <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
       <div className="flex w-full max-w-sm flex-col gap-6">
         {error && (
-          <div className="rounded-md border border-red-300 bg-red-50 p-3 text-center text-sm text-red-700">
+          <div className="rounded-md border border-red-300 bg-red-50 p-3 text-center text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
             Sign-in failed. Please try again.
           </div>
         )}
