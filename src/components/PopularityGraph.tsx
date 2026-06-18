@@ -4,6 +4,7 @@ import { PopularityChart } from "./PopularityChart"
 
 interface PopularityGraphProps {
   companyName: string;
+  ticker?: string;
   popularityRate: number;
   mentions: number;
   searchVolume: number;
@@ -25,6 +26,7 @@ const POPULARITY_SPAN_DAYS = 90;
 
 export function PopularityGraph({
   companyName,
+  ticker,
   popularityRate,
   mentions,
   searchVolume,
@@ -37,7 +39,15 @@ export function PopularityGraph({
 
       <div className="flex justify-between">
         <div className="stock-text-description-left p-8">
-          <h2 className="text-2xl font-bold">{companyName}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold">{companyName}</h2>
+            <span
+              className="text-[10px] uppercase tracking-wide font-medium text-muted-foreground border border-border rounded-full px-2 py-0.5"
+              title="Social sentiment is illustrative sample data, not a live feed."
+            >
+              Illustrative
+            </span>
+          </div>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold">{popularityRate}</span>
             <span className="text-sm text-muted-foreground">popularity score</span>
@@ -81,7 +91,7 @@ export function PopularityGraph({
         </div>
       </div>
 
-      <PopularityChart rangeDays={rangeDays} />
+      <PopularityChart ticker={ticker ?? companyName} rangeDays={rangeDays} />
     </div>
   )
 } 

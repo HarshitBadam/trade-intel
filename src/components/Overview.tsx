@@ -1,18 +1,26 @@
 import { useRouter } from "next/navigation";
 import { SentimentLabel } from "./SentimentLabel";
 
+export type Shift = {
+  ticker: string;
+  name: string;
+  change: string;
+  sentiment: string;
+};
+
 interface OverviewProps {
   title: string;
+  shifts?: Shift[];
   children?: React.ReactNode;
 }
 
-export const topShifts = [
+export const topShifts: Shift[] = [
   { ticker: "AAPL", name: "Apple Inc.", change: "+3.2%", sentiment: "Bullish (67%)" },
   { ticker: "TSLA", name: "Tesla Inc.", change: "-1.5%", sentiment: "Bearish (54%)" },
   { ticker: "NVDA", name: "NVIDIA Corporation", change: "+5.1%", sentiment: "Very Bullish (78%)" },
 ];
 
-export function Overview({ title, children }: OverviewProps) {
+export function Overview({ title, shifts = topShifts, children }: OverviewProps) {
   const router = useRouter();
 
   // Tickers route directly to their details page; the page resolves live data
@@ -25,7 +33,7 @@ export function Overview({ title, children }: OverviewProps) {
     <div className="rounded-lg p-6 h-full bg-card shadow-md">
       <h2 className="text-xl font-semibold mb-4">{title}</h2>
       <div className="space-y-4">
-        {topShifts.map((shift, index) => (
+        {shifts.map((shift, index) => (
           <div 
             key={shift.ticker} 
             className="flex cursor-pointer flex-col space-y-1 p-2 hover:bg-muted/50 rounded-lg transition-colors" 

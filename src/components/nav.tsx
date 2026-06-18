@@ -21,7 +21,7 @@ export async function MainNav() {
             href="/"
             className="flex items-center text-sm font-medium text-muted-foreground hover:text-foreground"
           >
-            Stocks
+            Dashboard
           </Link>
 
           {user ? (

@@ -139,6 +139,31 @@ export function generateMockStockData(ticker: string) {
   };
 }
 
+// Deterministic, per-ticker "social popularity" data for the flip-card back.
+// There's no real social-data source wired up, so this is clearly illustrative
+// (the UI labels it as such) — but at least it's distinct per ticker and stable
+// between renders instead of one shared hardcoded series for every stock.
+export function generateMockPopularity(ticker: string, days = 90) {
+  const rand = seededRandom(hashTicker(ticker) ^ 0x50c1a1);
+  const popularityRate = 55 + Math.floor(rand() * 44); // 55–98
+  const searchVolume = Math.floor((250 + rand() * 950) * 1000); // 250k–1.2M
+  const series: { date: string; positive: number; negative: number }[] = [];
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  let pos = 200 + rand() * 200;
+  let neg = 200 + rand() * 200;
+  for (let i = days; i >= 0; i--) {
+    pos = Math.max(40, pos + (rand() - 0.5) * 120);
+    neg = Math.max(40, neg + (rand() - 0.5) * 120);
+    series.push({
+      date: new Date(now - i * dayMs).toISOString().slice(0, 10),
+      positive: Math.round(pos),
+      negative: Math.round(neg),
+    });
+  }
+  return { popularityRate, searchVolume, series };
+}
+
 const MOCK_HEADLINES: Array<{
   event: string;
   sentiment: "Positive" | "Negative" | "Neutral";
