@@ -14,6 +14,7 @@ import {
   generateMockPopularity,
   generateMockStockData,
   searchFallbackTickers,
+  type RelatedStock,
 } from "@/data/fallbacks";
 import {
   ASTRA_DB_API_ENDPOINT,
@@ -25,6 +26,7 @@ import {
   POLYGON_API_KEY,
 } from "@/lib/config";
 import { guard } from "@/lib/guard";
+import { formatVolume } from "@/lib/movers";
 import { ingestTickerNews } from "@/lib/news-ingest";
 
 export type SearchResult = {
@@ -181,17 +183,41 @@ export type Headline = {
   sentiment?: string;
 };
 
-function mockHeadline(symbol: string): Headline {
-  const n = generateMockNews(symbol || "AAPL")[0];
+// Maps a news row (Astra-enriched OR Polygon) into the homepage headline shape.
+function newsToHeadline(symbol: string, n: News): Headline {
   return {
     ticker: symbol,
     newsTitle: n.metadata.title,
-    newsContent: n.metadata.key_observations,
+    newsContent:
+      n.metadata.description || n.metadata.key_observations || n.page_content,
     source: n.metadata.source,
     date: n.metadata.publication_date,
     url: n.metadata.url,
     sentiment: n.metadata.sentiment,
   };
+}
+
+// Pick the single most "headline-worthy" enriched article: highest importance
+// first, then the freshest (by ingestion, else publication date).
+const IMPORTANCE_RANK: Record<string, number> = { High: 3, Medium: 2, Low: 1 };
+function pickTopArticle(news: News[]): News {
+  return [...news].sort((a, b) => {
+    const rank =
+      (IMPORTANCE_RANK[b.metadata.importance] ?? 0) -
+      (IMPORTANCE_RANK[a.metadata.importance] ?? 0);
+    if (rank !== 0) return rank;
+    const ta =
+      Date.parse(a.metadata.ingested_at || a.metadata.publication_date || "") ||
+      0;
+    const tb =
+      Date.parse(b.metadata.ingested_at || b.metadata.publication_date || "") ||
+      0;
+    return tb - ta;
+  })[0];
+}
+
+function mockHeadline(symbol: string): Headline {
+  return newsToHeadline(symbol, generateMockNews(symbol || "AAPL")[0]);
 }
 
 export async function fetchTopHeadline(ticker: string): Promise<Headline> {
@@ -201,21 +227,21 @@ export async function fetchTopHeadline(ticker: string): Promise<Headline> {
   const access = await guard("details", { limit: 30, windowSec: 60 });
   if (!access.ok) return mockHeadline(symbol);
 
+  // 1. AI-enriched Astra article — richest content (analysis + real source URL)
+  // and instant when the ticker has been warmed (on-demand visit or cron).
+  if (hasAstra) {
+    try {
+      const news = await getNewsCached(symbol);
+      if (news.length > 0) return newsToHeadline(symbol, pickTopArticle(news));
+    } catch (error) {
+      console.error("Astra headline fetch failed, trying Polygon:", error);
+    }
+  }
+  // 2. Live Polygon headline for any other ticker.
   if (hasPolygon) {
     try {
       const news = await getPolygonNewsCached(symbol);
-      if (news.length > 0) {
-        const top = news[0];
-        return {
-          ticker: symbol,
-          newsTitle: top.metadata.title,
-          newsContent: top.metadata.description || top.metadata.key_observations,
-          source: top.metadata.source,
-          date: top.metadata.publication_date,
-          url: top.metadata.url,
-          sentiment: top.metadata.sentiment,
-        };
-      }
+      if (news.length > 0) return newsToHeadline(symbol, news[0]);
     } catch (error) {
       console.error("Polygon headline fetch failed, using fallback:", error);
     }
@@ -380,6 +406,41 @@ const getMarketMapCached = unstable_cache(
   },
   ["polygon-market-map"],
   { revalidate: 3600, tags: ["movers"] }
+);
+
+// Close price for every US ticker ~1 trading year ago. Combined with the
+// current snapshot above this yields a 1-year RETURN for any symbol from just
+// one extra (heavily cached) request — far cheaper than pulling per-ticker
+// candle history. Used to match "Similar Return" on real annual performance
+// rather than a single day's noise.
+const getMarketMapYearAgoCached = unstable_cache(
+  async (): Promise<Record<string, number>> => {
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    // Start ~365 days back and walk forward over holidays/weekends.
+    for (let back = 365; back >= 359; back--) {
+      const day = new Date(Date.now() - back * 24 * 60 * 60 * 1000);
+      const response = await fetch(
+        `https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/${fmt(
+          day
+        )}?adjusted=true`,
+        {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
+        }
+      );
+      if (!response.ok) continue;
+      const data = await response.json();
+      const rows = (data.results ?? []) as GroupedRow[];
+      if (rows.length === 0) continue;
+
+      const map: Record<string, number> = {};
+      for (const r of rows) if (r.c > 0) map[r.T] = r.c;
+      return map;
+    }
+    return {};
+  },
+  ["polygon-market-map-year-ago"],
+  { revalidate: 86_400, tags: ["movers"] }
 );
 
 export async function getLiveQuotes(tickers: string[]): Promise<LiveQuote[]> {
@@ -831,4 +892,334 @@ function scheduleNewsIngestion(ticker: string): boolean {
   if (!hasLangflowIngest) return false;
   after(() => ingestTickerNews(ticker));
   return true;
+}
+
+// ── Related stocks (genuine peers) ──────────────────────────────────────────
+// The details-page rail shows companies actually comparable to the one being
+// viewed, sourced from Polygon's "related companies" model (its own peer/
+// competitor graph). Crucially we do NOT pad the list with a generic mega-cap
+// watchlist — that's what produced absurd "peers" (e.g. AAPL shown next to a
+// $47B mid-cap). When Polygon has no peer data for a symbol (common for ADRs
+// like INFY) we simply HIDE the rail rather than invent irrelevant cards.
+//
+// Free-tier reality: Polygon throttles at ~5 req/min, so we keep this lean —
+// one related-companies call + the already-cached market snapshot for live
+// prices, plus a best-effort per-peer fundamentals lookup (sector + market cap)
+// that's cached for a day and degrades gracefully to "just the live quote" when
+// throttled. Everything is cached so steady-state cost is ~zero.
+
+export type RelatedCard = { title: string; data: RelatedStock };
+
+type TickerDetail = {
+  ticker: string;
+  name: string;
+  sicCode: string | null;
+  sector: string | null;
+  marketCap: number | null;
+};
+
+const getTickerDetailCached = unstable_cache(
+  async (ticker: string): Promise<TickerDetail | null> => {
+    const response = await fetch(
+      `https://api.polygon.io/v3/reference/tickers/${ticker}`,
+      {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
+      }
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    const r = data.results;
+    if (!r) return null;
+    return {
+      ticker,
+      name: r.name ?? ticker,
+      // sic_code / sic_description are Polygon's industry classification (e.g.
+      // 3571 "ELECTRONIC COMPUTERS") — the closest free-tier proxy for sector.
+      sicCode: r.sic_code ? String(r.sic_code) : null,
+      sector: r.sic_description ?? null,
+      marketCap: typeof r.market_cap === "number" ? r.market_cap : null,
+    };
+  },
+  ["polygon-ticker-detail"],
+  { revalidate: 86_400, tags: ["fundamentals"] }
+);
+
+const getRelatedTickersCached = unstable_cache(
+  async (ticker: string): Promise<string[]> => {
+    const response = await fetch(
+      `https://api.polygon.io/v1/related-companies/${ticker}`,
+      {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
+      }
+    );
+    if (!response.ok) return [];
+    const data = await response.json();
+    const rows = (data.results ?? []) as { ticker?: string }[];
+    return rows.map((x) => x.ticker ?? "").filter(Boolean);
+  },
+  ["polygon-related-companies"],
+  { revalidate: 86_400, tags: ["fundamentals"] }
+);
+
+function titleCase(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
+function formatMarketCap(v: number | null): string {
+  if (!v || v <= 0) return "";
+  if (v >= 1e12) return `$${(v / 1e12).toFixed(1)}T`;
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+  return `$${v.toFixed(0)}`;
+}
+
+// A peer enriched with everything we need to rank it along each lens. Live
+// figures (return / volume) come from the free market snapshot; fundamentals
+// (sector / market cap) from the cached per-ticker lookup (may be null when the
+// free tier throttles — the card still renders from the live quote).
+type Candidate = {
+  ticker: string;
+  name: string;
+  pct: number | null;
+  ret1y: number | null;
+  volume: number | null;
+  marketCap: number | null;
+  sicCode: string | null;
+  sector: string | null;
+  quote: LiveQuote | undefined;
+};
+
+function fmtPct(p: number): string {
+  return `${p >= 0 ? "+" : ""}${p.toFixed(2)}%`;
+}
+
+// Turn a candidate + a "why it's here" reason into a TopGainer card payload.
+function relatedData(c: Candidate, reason: string): RelatedStock {
+  let currentPrice: string;
+  let priceChange: string;
+  let percentageChange: string;
+  let volume: string;
+  let up: boolean;
+
+  if (c.quote) {
+    up = c.quote.percentChange >= 0;
+    const sign = up ? "+" : "";
+    currentPrice = `$${c.quote.price.toFixed(2)}`;
+    priceChange = `${sign}${c.quote.change.toFixed(2)}`;
+    percentageChange = `${sign}${c.quote.percentChange.toFixed(2)}%`;
+    volume = formatVolume(c.quote.volume);
+  } else {
+    // No live quote (cache cold / outside the snapshot): deterministic mock so
+    // the card shows stable, plausible numbers instead of blanks.
+    const m = generateMockStockData(c.ticker);
+    up = m.price_change >= 0;
+    const sign = up ? "+" : "";
+    currentPrice = `$${m.stock_price.toFixed(2)}`;
+    priceChange = `${sign}${m.price_change.toFixed(2)}`;
+    percentageChange = `${sign}${m.percent_change.toFixed(2)}%`;
+    volume = formatVolume(generateMockPopularity(c.ticker).searchVolume);
+  }
+
+  return {
+    ticker: c.ticker,
+    name: c.name,
+    currentPrice,
+    priceChange,
+    percentageChange,
+    volume,
+    sentiment: up ? "Bullish" : "Bearish",
+    sentimentSource: ["Polygon"],
+    reason,
+  };
+}
+
+export async function fetchRelatedStocks(
+  ticker: string
+): Promise<RelatedCard[]> {
+  const symbol = sanitizeTicker(ticker);
+  if (!symbol) return [];
+
+  const access = await guard("details", { limit: 30, windowSec: 60 });
+  if (!access.ok || !hasPolygon) return [];
+
+  try {
+    const relatedTickers = await getRelatedTickersCached(symbol);
+    const peerTickers = Array.from(new Set(relatedTickers.map(sanitizeTicker)))
+      .filter((t) => t && t !== symbol)
+      .slice(0, 8);
+
+    // No genuine peer data (e.g. ADRs / thinly-covered names like INFY): hide
+    // the rail instead of fabricating irrelevant "peers".
+    if (peerTickers.length === 0) return [];
+
+    const [marketMap, yearAgoMap, currentDetail, peerDetails] =
+      await Promise.all([
+        getMarketMapCached().catch(() => ({}) as Record<string, LiveQuote>),
+        getMarketMapYearAgoCached().catch(() => ({}) as Record<string, number>),
+        getTickerDetailCached(symbol).catch(() => null as TickerDetail | null),
+        Promise.all(
+          peerTickers.map((t) =>
+            getTickerDetailCached(t).catch(() => null as TickerDetail | null)
+          )
+        ),
+      ]);
+
+    // 1-year return = (latest close / close ~1y ago − 1). Same metric the chart
+    // shows by default, so the lens matches what the user actually sees.
+    const returnOf = (t: string): number | null => {
+      const now = marketMap[t]?.price;
+      const ago = yearAgoMap[t];
+      return now && ago ? (now / ago - 1) * 100 : null;
+    };
+
+    const candidates: Candidate[] = peerTickers.map((t, i) => {
+      const d = peerDetails[i];
+      const q = marketMap[t];
+      return {
+        ticker: t,
+        name: d?.name ?? t,
+        pct: q ? q.percentChange : null,
+        ret1y: returnOf(t),
+        volume: q ? q.volume : null,
+        marketCap: d?.marketCap ?? null,
+        sicCode: d?.sicCode ?? null,
+        sector: d?.sector ?? null,
+        quote: q,
+      };
+    });
+
+    const curPct = marketMap[symbol]?.percentChange ?? null;
+    const curRet = returnOf(symbol);
+    const curVol = marketMap[symbol]?.volume ?? null;
+    const curCap = currentDetail?.marketCap ?? null;
+    const curSic = currentDetail?.sicCode ?? null;
+
+    // Greedy, distinct assignment (no ticker repeats across cards). A STRONG
+    // industry match (same SIC / SIC group) is claimed first because it's the
+    // most specific signal; otherwise the precise numeric lenses (return, then
+    // market cap) pick their best match and industry takes a sensible leftover.
+    const used = new Set<string>();
+    const remaining = () => candidates.filter((c) => !used.has(c.ticker));
+    const byCategory: Record<string, RelatedCard> = {};
+    const major = (s: string | null) => (s ? s.slice(0, 2) : "");
+
+    // ── Similar Industry: same SIC, else same 2-digit SIC group; only when
+    // `allowFuzzy` do we settle for "any peer with a known sector".
+    const assignIndustry = (allowFuzzy: boolean) => {
+      if (byCategory.industry) return;
+      const rem = remaining();
+      const pick =
+        (curSic && rem.find((c) => c.sicCode === curSic)) ||
+        (curSic && rem.find((c) => major(c.sicCode) === major(curSic))) ||
+        (allowFuzzy ? rem.find((c) => c.sector) || rem[0] : undefined);
+      if (!pick) return;
+      used.add(pick.ticker);
+      const exact = Boolean(curSic && pick.sicCode === curSic);
+      const reason = pick.sector
+        ? exact
+          ? `Same industry as ${symbol}`
+          : `${titleCase(pick.sector)} sector`
+        : `Peer of ${symbol}`;
+      byCategory.industry = {
+        title: "Similar Industry",
+        data: relatedData(pick, reason),
+      };
+    };
+
+    // 1. Strong industry match gets first pick (rare but most meaningful).
+    assignIndustry(false);
+
+    // 2. Similar Return: closest 1-year return (the chart's default metric).
+    // Falls back to the latest daily move only when annual data is unavailable.
+    {
+      const rem = remaining();
+      let pick: Candidate | undefined;
+      let reason = "";
+      const withRet = rem.filter((c) => c.ret1y != null);
+      if (curRet != null && withRet.length > 0) {
+        pick = withRet.reduce((best, c) =>
+          Math.abs(c.ret1y! - curRet) < Math.abs(best.ret1y! - curRet)
+            ? c
+            : best
+        );
+        reason = `1Y return ${fmtPct(pick.ret1y!)} (${symbol} ${fmtPct(
+          curRet
+        )})`;
+      } else {
+        const withPct = rem.filter((c) => c.pct != null);
+        if (curPct != null && withPct.length > 0) {
+          pick = withPct.reduce((best, c) =>
+            Math.abs(c.pct! - curPct) < Math.abs(best.pct! - curPct) ? c : best
+          );
+          reason = `Daily move ${fmtPct(pick.pct!)} (${symbol} ${fmtPct(
+            curPct
+          )})`;
+        } else {
+          pick = rem[0];
+          reason = pick ? `Moves with ${symbol}` : "";
+        }
+      }
+      if (pick) {
+        used.add(pick.ticker);
+        byCategory.return = {
+          title: "Similar Return",
+          data: relatedData(pick, reason),
+        };
+      }
+    }
+
+    // 3. Similar Market Cap: closest market cap; falls back to closest traded
+    // volume when fundamentals are unavailable (the "/volume" half of the lens).
+    {
+      const rem = remaining();
+      const withCap = rem.filter((c) => c.marketCap != null);
+      let pick: Candidate | undefined;
+      let reason = "";
+      if (curCap != null && withCap.length > 0) {
+        pick = withCap.reduce((best, c) =>
+          Math.abs(Math.log(c.marketCap!) - Math.log(curCap)) <
+          Math.abs(Math.log(best.marketCap!) - Math.log(curCap))
+            ? c
+            : best
+        );
+        reason = `${formatMarketCap(pick.marketCap)} market cap`;
+      } else {
+        const withVol = rem.filter((c) => c.volume != null);
+        if (curVol != null && withVol.length > 0) {
+          pick = withVol.reduce((best, c) =>
+            Math.abs(c.volume! - curVol) < Math.abs(best.volume! - curVol)
+              ? c
+              : best
+          );
+          reason = `${formatVolume(pick.volume!)} daily volume`;
+        } else {
+          pick = rem[0];
+          reason = pick ? `Related to ${symbol}` : "";
+        }
+      }
+      if (pick) {
+        used.add(pick.ticker);
+        byCategory.size = {
+          title: "Similar Market Cap",
+          data: relatedData(pick, reason),
+        };
+      }
+    }
+
+    // 4. No strong industry match earlier → fill it now from the leftovers.
+    assignIndustry(true);
+
+    // Stable display order: Return · Industry · Market Cap.
+    return [byCategory.return, byCategory.industry, byCategory.size].filter(
+      (c): c is RelatedCard => Boolean(c)
+    );
+  } catch (error) {
+    console.error("Related stocks fetch failed:", error);
+    return [];
+  }
 }

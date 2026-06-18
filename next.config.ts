@@ -25,15 +25,25 @@ const csp = [
   "base-uri 'self'",
   "form-action 'self'",
   "object-src 'none'",
-  "upgrade-insecure-requests",
+  // Force HTTPS only in production. In local dev the server speaks plain HTTP,
+  // and Safari honors this directive on localhost (Chrome exempts localhost) —
+  // it would upgrade http://localhost asset requests to https and break every
+  // stylesheet/script, leaving the page completely unstyled.
+  ...(isProd ? ["upgrade-insecure-requests"] : []),
 ].join("; ");
 
 const securityHeaders = [
   { key: "Content-Security-Policy", value: csp },
-  {
-    key: "Strict-Transport-Security",
-    value: "max-age=63072000; includeSubDomains; preload",
-  },
+  // HSTS is meaningful only over real HTTPS (and is ignored over plain HTTP per
+  // spec). Emit it in production only so it never interferes with local dev.
+  ...(isProd
+    ? [
+        {
+          key: "Strict-Transport-Security",
+          value: "max-age=63072000; includeSubDomains; preload",
+        },
+      ]
+    : []),
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

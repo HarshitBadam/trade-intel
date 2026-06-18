@@ -2,8 +2,8 @@
 
 import { StockGraph } from "@/components/StockGraph"
 import { Overview } from "@/components/Overview"
-import TopGainer from "@/components/TopGainer"
-import TopNews from "@/components/TopNews"
+import TopGainer, { TopGainerSkeleton } from "@/components/TopGainer"
+import TopNews, { TopNewsSkeleton } from "@/components/TopNews"
 import { useParams, useRouter } from "next/navigation";
 import { FloatingWidget } from "@/components/FloatingWidget";
 import { useEffect, useMemo, useState } from "react";
@@ -27,42 +27,6 @@ function moverToShift(m: Mover): Shift {
     sentiment: `${up ? "Bullish" : "Bearish"} (${Math.abs(m.percentChange).toFixed(1)}%)`,
   };
 }
-
-
-const topLoser = {
-  ticker: "TSLA",                     // Stock ticker
-  name: "Tesla Inc.",                 // Company name
-  currentPrice: "$675.30",             // Current stock price
-  priceChange: "-$15.20",              // Absolute price change
-  percentageChange: "-2.20%",          // Percentage price change
-  volume: "52.3M",                     // Trading volume
-  sentiment: "60% Bearish",            // Sentiment score
-  sentimentSource: ["Twitter", "News", "Analyst Reports"], // Sources of sentiment
-  reason: "Tesla faces supply chain issues, stock drops",  // Key reason for the price movement
-};
-
-
-const topGainer = {
-  ticker: "AAPL",                     // Stock ticker
-  name: "Apple Inc.",                 // Company name
-  currentPrice: "$180.25",             // Current stock price
-  priceChange: "+$8.50",               // Absolute price change
-  percentageChange: "+4.95%",          // Percentage price change
-  volume: "78.5M",                     // Trading volume
-  sentiment: "75% Bullish",            // Sentiment score
-  sentimentSource: ["Twitter", "News", "Analyst Ratings"], // Sources of sentiment
-  reason: "Apple announced record iPhone sales",  // Key reason for the price movement
-};
-
-const topNews = {
-  title: "Breaking Market News",
-  newsTitle: "Apple Stock Hits New High Amid Strong iPhone Sales",
-  newsContent: 
-    "Apple Inc. (AAPL) surged 5% today, reaching an all-time high of $190.50 per share. \
-    The rally comes after the company reported record-breaking iPhone sales, exceeding market expectations. \
-    Analysts believe Apple's strong earnings and continued demand for its products are driving investor confidence. \
-    The stock is now up 15% year-to-date, with bullish sentiment dominating the market.",
-};
 
 
 export default function StocksPage() {
@@ -119,8 +83,8 @@ export default function StocksPage() {
     };
   }, []);
 
-  const gainerCard = movers?.gainers[0] ? moverToCard(movers.gainers[0]) : topGainer;
-  const loserCard = movers?.losers[0] ? moverToCard(movers.losers[0]) : topLoser;
+  const gainerCard = movers?.gainers[0] ? moverToCard(movers.gainers[0]) : null;
+  const loserCard = movers?.losers[0] ? moverToCard(movers.losers[0]) : null;
   const shiftRows = movers?.shifts.length ? movers.shifts.map(moverToShift) : undefined;
 
   useEffect(() => {
@@ -145,18 +109,17 @@ export default function StocksPage() {
   const intradayData = quote?.intradayData ?? homeIntradayData;
   const weekData = quote?.weekData ?? homeWeekData;
   const fineData = quote?.fineData ?? homeFineData;
-  const newsTitle = headline?.newsTitle ?? topNews.newsTitle;
-  const newsContent = headline?.newsContent ?? topNews.newsContent;
-
   const [openArticle, setOpenArticle] = useState<NewsArticle | null>(null);
-  const topNewsArticle: NewsArticle = {
-    title: newsTitle,
-    body: newsContent,
-    sentiment: headline?.sentiment,
-    source: headline?.source,
-    date: headline?.date,
-    url: headline?.url,
-  };
+  const topNewsArticle: NewsArticle | null = headline
+    ? {
+        title: headline.newsTitle,
+        body: headline.newsContent,
+        sentiment: headline.sentiment,
+        source: headline.source,
+        date: headline.date,
+        url: headline.url,
+      }
+    : null;
 
   const handleStockClick = () => {
     router.push(`/details/${currentStock.ticker}`);
@@ -214,20 +177,32 @@ export default function StocksPage() {
         </div>
        
 
-        <div className="cursor-pointer" onClick={() => router.push(`/details/${gainerCard.ticker}`)}>
-          <TopGainer title="Top Gainers" data={gainerCard} />
-        </div>
-        <div className="cursor-pointer" onClick={() => router.push(`/details/${loserCard.ticker}`)}>
-          <TopGainer title="Top Losers" data={loserCard} />
-        </div>
-        <div>
-          <TopNews
-            title="Top News"
-            newsTitle={newsTitle}
-            newsContent={newsContent}
-            onClick={() => setOpenArticle(topNewsArticle)}
-          />
-        </div>
+        {gainerCard ? (
+          <div className="cursor-pointer" onClick={() => router.push(`/details/${gainerCard.ticker}`)}>
+            <TopGainer title="Top Gainers" data={gainerCard} />
+          </div>
+        ) : (
+          <TopGainerSkeleton title="Top Gainers" />
+        )}
+        {loserCard ? (
+          <div className="cursor-pointer" onClick={() => router.push(`/details/${loserCard.ticker}`)}>
+            <TopGainer title="Top Losers" data={loserCard} />
+          </div>
+        ) : (
+          <TopGainerSkeleton title="Top Losers" />
+        )}
+        {headline ? (
+          <div>
+            <TopNews
+              title="Top News"
+              newsTitle={headline.newsTitle}
+              newsContent={headline.newsContent}
+              onClick={() => topNewsArticle && setOpenArticle(topNewsArticle)}
+            />
+          </div>
+        ) : (
+          <TopNewsSkeleton title="Top News" />
+        )}
       </div>
       <FloatingWidget 
         isExpanded={isWidgetExpanded} 

@@ -18,6 +18,10 @@ interface TopGainerProps {
 }
 
 export default function TopGainer({ title, data }: TopGainerProps) {
+    // Colour by the actual move (sign of the % change), not the card title, so
+    // a "Same Sector" peer that's down shows red and one that's up shows green.
+    const negative = data.percentageChange.trim().startsWith("-");
+    const changeColor = negative ? "text-red-500" : "text-green-500";
     return (
       <div className="rounded-lg p-6 h-full bg-card shadow-md cursor-pointer">
         {/* Title */}
@@ -33,16 +37,8 @@ export default function TopGainer({ title, data }: TopGainerProps) {
             <div className="text-right">
               <p className="text-2xl font-bold">{data.currentPrice}</p>
               <div className="flex items-center gap-2">
-                <span
-                  className={title === "Top Losers" ? "text-red-500" : "text-green-500"}
-                >
-                  {data.priceChange}
-                </span>
-                <span
-                  className={title === "Top Losers" ? "text-red-500" : "text-green-500"}
-                >
-                  {data.percentageChange}
-                </span>
+                <span className={changeColor}>{data.priceChange}</span>
+                <span className={changeColor}>{data.percentageChange}</span>
               </div>
             </div>
           </div>
@@ -77,4 +73,34 @@ export default function TopGainer({ title, data }: TopGainerProps) {
       </div>
     );
   }
-  
+
+// Loading placeholder for a TopGainer card, so rails never flash fake numbers.
+export function TopGainerSkeleton({ title }: { title?: string }) {
+  return (
+    <div className="rounded-lg p-6 h-full bg-card shadow-md animate-pulse">
+      {title ? (
+        <h2 className="text-xl font-semibold mb-4">{title}</h2>
+      ) : (
+        <div className="h-6 w-32 rounded bg-muted mb-4" />
+      )}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="h-7 w-20 rounded bg-muted" />
+            <div className="h-3 w-28 rounded bg-muted" />
+          </div>
+          <div className="space-y-2 text-right">
+            <div className="h-7 w-24 rounded bg-muted ml-auto" />
+            <div className="h-3 w-20 rounded bg-muted ml-auto" />
+          </div>
+        </div>
+        <div className="h-4 w-full rounded bg-muted border-t pt-2" />
+        <div className="space-y-2">
+          <div className="h-4 w-full rounded bg-muted" />
+          <div className="h-6 w-2/3 rounded bg-muted" />
+        </div>
+        <div className="h-10 w-full rounded bg-muted border-t pt-2" />
+      </div>
+    </div>
+  );
+}

@@ -7,7 +7,7 @@
         "data": {
           "sourceHandle": {
             "dataType": "ChatInput",
-            "id": "ChatInput-chat",
+            "id": "ChatInput-k6AeC",
             "name": "message",
             "output_types": [
               "Message"
@@ -15,18 +15,19 @@
           },
           "targetHandle": {
             "fieldName": "search_query",
-            "id": "AstraDB-search",
+            "id": "AstraDB-WBI01",
             "inputTypes": [
               "Message"
             ],
             "type": "query"
           }
         },
-        "id": "xy-edge__ChatInput-chat{œdataTypeœ:œChatInputœ,œidœ:œChatInput-chatœ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}-AstraDB-search{œfieldNameœ:œsearch_queryœ,œidœ:œAstraDB-searchœ,œinputTypesœ:[œMessageœ],œtypeœ:œqueryœ}",
-        "source": "ChatInput-chat",
-        "sourceHandle": "{œdataTypeœ:œChatInputœ,œidœ:œChatInput-chatœ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "AstraDB-search",
-        "targetHandle": "{œfieldNameœ:œsearch_queryœ,œidœ:œAstraDB-searchœ,œinputTypesœ:[œMessageœ],œtypeœ:œqueryœ}"
+        "id": "reactflow__edge-ChatInput-k6AeC{œdataTypeœ:œChatInputœ,œidœ:œChatInput-k6AeCœ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}-AstraDB-WBI01{œfieldNameœ:œsearch_queryœ,œidœ:œAstraDB-WBI01œ,œinputTypesœ:[œMessageœ],œtypeœ:œqueryœ}",
+        "selected": false,
+        "source": "ChatInput-k6AeC",
+        "sourceHandle": "{œdataTypeœ:œChatInputœ,œidœ:œChatInput-k6AeCœ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "AstraDB-WBI01",
+        "targetHandle": "{œfieldNameœ:œsearch_queryœ,œidœ:œAstraDB-WBI01œ,œinputTypesœ:[œMessageœ],œtypeœ:œqueryœ}"
       },
       {
         "animated": false,
@@ -34,7 +35,7 @@
         "data": {
           "sourceHandle": {
             "dataType": "ChatInput",
-            "id": "ChatInput-chat",
+            "id": "ChatInput-k6AeC",
             "name": "message",
             "output_types": [
               "Message"
@@ -42,18 +43,19 @@
           },
           "targetHandle": {
             "fieldName": "question",
-            "id": "StockSageRagPrompt-rag",
+            "id": "StockSageRagPrompt-FwmYE",
             "inputTypes": [
               "Message"
             ],
             "type": "other"
           }
         },
-        "id": "xy-edge__ChatInput-chat{œdataTypeœ:œChatInputœ,œidœ:œChatInput-chatœ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}-StockSageRagPrompt-rag{œfieldNameœ:œquestionœ,œidœ:œStockSageRagPrompt-ragœ,œinputTypesœ:[œMessageœ],œtypeœ:œotherœ}",
-        "source": "ChatInput-chat",
-        "sourceHandle": "{œdataTypeœ:œChatInputœ,œidœ:œChatInput-chatœ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "StockSageRagPrompt-rag",
-        "targetHandle": "{œfieldNameœ:œquestionœ,œidœ:œStockSageRagPrompt-ragœ,œinputTypesœ:[œMessageœ],œtypeœ:œotherœ}"
+        "id": "reactflow__edge-ChatInput-k6AeC{œdataTypeœ:œChatInputœ,œidœ:œChatInput-k6AeCœ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}-StockSageRagPrompt-FwmYE{œfieldNameœ:œquestionœ,œidœ:œStockSageRagPrompt-FwmYEœ,œinputTypesœ:[œMessageœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "ChatInput-k6AeC",
+        "sourceHandle": "{œdataTypeœ:œChatInputœ,œidœ:œChatInput-k6AeCœ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "StockSageRagPrompt-FwmYE",
+        "targetHandle": "{œfieldNameœ:œquestionœ,œidœ:œStockSageRagPrompt-FwmYEœ,œinputTypesœ:[œMessageœ],œtypeœ:œotherœ}"
       },
       {
         "animated": false,
@@ -61,7 +63,7 @@
         "data": {
           "sourceHandle": {
             "dataType": "AstraDB",
-            "id": "AstraDB-search",
+            "id": "AstraDB-WBI01",
             "name": "dataframe",
             "output_types": [
               "Table"
@@ -69,7 +71,7 @@
           },
           "targetHandle": {
             "fieldName": "context",
-            "id": "StockSageRagPrompt-rag",
+            "id": "StockSageRagPrompt-FwmYE",
             "inputTypes": [
               "Data",
               "DataFrame",
@@ -78,11 +80,12 @@
             "type": "other"
           }
         },
-        "id": "xy-edge__AstraDB-search{œdataTypeœ:œAstraDBœ,œidœ:œAstraDB-searchœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-StockSageRagPrompt-rag{œfieldNameœ:œcontextœ,œidœ:œStockSageRagPrompt-ragœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
-        "source": "AstraDB-search",
-        "sourceHandle": "{œdataTypeœ:œAstraDBœ,œidœ:œAstraDB-searchœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
-        "target": "StockSageRagPrompt-rag",
-        "targetHandle": "{œfieldNameœ:œcontextœ,œidœ:œStockSageRagPrompt-ragœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
+        "id": "reactflow__edge-AstraDB-WBI01{œdataTypeœ:œAstraDBœ,œidœ:œAstraDB-WBI01œ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-StockSageRagPrompt-FwmYE{œfieldNameœ:œcontextœ,œidœ:œStockSageRagPrompt-FwmYEœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "AstraDB-WBI01",
+        "sourceHandle": "{œdataTypeœ:œAstraDBœ,œidœ:œAstraDB-WBI01œ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
+        "target": "StockSageRagPrompt-FwmYE",
+        "targetHandle": "{œfieldNameœ:œcontextœ,œidœ:œStockSageRagPrompt-FwmYEœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
       },
       {
         "animated": false,
@@ -90,7 +93,7 @@
         "data": {
           "sourceHandle": {
             "dataType": "StockSageRagPrompt",
-            "id": "StockSageRagPrompt-rag",
+            "id": "StockSageRagPrompt-FwmYE",
             "name": "prompt",
             "output_types": [
               "Message"
@@ -98,18 +101,19 @@
           },
           "targetHandle": {
             "fieldName": "input_value",
-            "id": "LanguageModelComponent-chat",
+            "id": "LanguageModelComponent-0ZJmW",
             "inputTypes": [
               "Message"
             ],
             "type": "str"
           }
         },
-        "id": "xy-edge__StockSageRagPrompt-rag{œdataTypeœ:œStockSageRagPromptœ,œidœ:œStockSageRagPrompt-ragœ,œnameœ:œpromptœ,œoutput_typesœ:[œMessageœ]}-LanguageModelComponent-chat{œfieldNameœ:œinput_valueœ,œidœ:œLanguageModelComponent-chatœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
-        "source": "StockSageRagPrompt-rag",
-        "sourceHandle": "{œdataTypeœ:œStockSageRagPromptœ,œidœ:œStockSageRagPrompt-ragœ,œnameœ:œpromptœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "LanguageModelComponent-chat",
-        "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œLanguageModelComponent-chatœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}"
+        "id": "reactflow__edge-StockSageRagPrompt-FwmYE{œdataTypeœ:œStockSageRagPromptœ,œidœ:œStockSageRagPrompt-FwmYEœ,œnameœ:œpromptœ,œoutput_typesœ:[œMessageœ]}-LanguageModelComponent-0ZJmW{œfieldNameœ:œinput_valueœ,œidœ:œLanguageModelComponent-0ZJmWœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "selected": false,
+        "source": "StockSageRagPrompt-FwmYE",
+        "sourceHandle": "{œdataTypeœ:œStockSageRagPromptœ,œidœ:œStockSageRagPrompt-FwmYEœ,œnameœ:œpromptœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "LanguageModelComponent-0ZJmW",
+        "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œLanguageModelComponent-0ZJmWœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}"
       },
       {
         "animated": false,
@@ -117,7 +121,7 @@
         "data": {
           "sourceHandle": {
             "dataType": "LanguageModelComponent",
-            "id": "LanguageModelComponent-chat",
+            "id": "LanguageModelComponent-0ZJmW",
             "name": "text_output",
             "output_types": [
               "Message"
@@ -125,7 +129,7 @@
           },
           "targetHandle": {
             "fieldName": "input_value",
-            "id": "ChatOutput-chat",
+            "id": "ChatOutput-HXFDh",
             "inputTypes": [
               "Data",
               "JSON",
@@ -136,17 +140,18 @@
             "type": "other"
           }
         },
-        "id": "xy-edge__LanguageModelComponent-chat{œdataTypeœ:œLanguageModelComponentœ,œidœ:œLanguageModelComponent-chatœ,œnameœ:œtext_outputœ,œoutput_typesœ:[œMessageœ]}-ChatOutput-chat{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-chatœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}",
-        "source": "LanguageModelComponent-chat",
-        "sourceHandle": "{œdataTypeœ:œLanguageModelComponentœ,œidœ:œLanguageModelComponent-chatœ,œnameœ:œtext_outputœ,œoutput_typesœ:[œMessageœ]}",
-        "target": "ChatOutput-chat",
-        "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-chatœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}"
+        "id": "reactflow__edge-LanguageModelComponent-0ZJmW{œdataTypeœ:œLanguageModelComponentœ,œidœ:œLanguageModelComponent-0ZJmWœ,œnameœ:œtext_outputœ,œoutput_typesœ:[œMessageœ]}-ChatOutput-HXFDh{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-HXFDhœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "LanguageModelComponent-0ZJmW",
+        "sourceHandle": "{œdataTypeœ:œLanguageModelComponentœ,œidœ:œLanguageModelComponent-0ZJmWœ,œnameœ:œtext_outputœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "ChatOutput-HXFDh",
+        "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-HXFDhœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}"
       }
     ],
     "nodes": [
       {
         "data": {
-          "id": "ChatInput-chat",
+          "id": "ChatInput-k6AeC",
           "node": {
             "base_classes": [
               "Message"
@@ -425,7 +430,7 @@
           "showNode": false,
           "type": "ChatInput"
         },
-        "id": "ChatInput-chat",
+        "id": "ChatInput-k6AeC",
         "measured": {
           "height": 52,
           "width": 192
@@ -434,11 +439,12 @@
           "x": 200,
           "y": 340
         },
+        "selected": false,
         "type": "genericNode"
       },
       {
         "data": {
-          "id": "AstraDB-search",
+          "id": "AstraDB-WBI01",
           "node": {
             "base_classes": [
               "JSON",
@@ -479,7 +485,7 @@
             ],
             "frozen": false,
             "icon": "AstraDB",
-            "last_updated": "2026-06-17T11:06:14.400Z",
+            "last_updated": "2026-06-18T09:58:22.073Z",
             "legacy": false,
             "lf_version": "1.10.0",
             "metadata": {
@@ -567,6 +573,12 @@
             ],
             "pinned": false,
             "template": {
+              "_frontend_node_flow_id": {
+                "value": "2dd63375-72c0-4835-80c8-8ca7a1badf65"
+              },
+              "_frontend_node_folder_id": {
+                "value": "c76fd8bb-7729-497f-91e8-f150691a2a62"
+              },
               "_type": "Component",
               "advanced_search_filter": {
                 "_input_type": "NestedDictInput",
@@ -675,7 +687,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": true,
                 "type": "bool",
-                "value": false
+                "value": true
               },
               "code": {
                 "advanced": true,
@@ -783,10 +795,10 @@
                             "options": [],
                             "options_metadata": [],
                             "override_skip": false,
-                            "placeholder": "Bring your own",
-                            "readonly": true,
+                            "placeholder": null,
+                            "readonly": "",
                             "real_time_refresh": true,
-                            "required": false,
+                            "required": true,
                             "show": true,
                             "title_case": false,
                             "toggle": false,
@@ -794,7 +806,7 @@
                             "trace_as_metadata": true,
                             "track_in_telemetry": true,
                             "type": "str",
-                            "value": ""
+                            "value": null
                           },
                           "04_dimension": {
                             "_input_type": "IntInput",
@@ -806,16 +818,16 @@
                             "list_add_label": "Add More",
                             "name": "dimension",
                             "override_skip": false,
-                            "placeholder": null,
-                            "readonly": false,
-                            "required": true,
+                            "placeholder": 1024,
+                            "readonly": true,
+                            "required": "",
                             "show": true,
                             "title_case": false,
                             "tool_mode": false,
                             "trace_as_metadata": true,
                             "track_in_telemetry": true,
                             "type": "int",
-                            "value": ""
+                            "value": 1024
                           }
                         }
                       }
@@ -837,7 +849,7 @@
                     "icon": "vectorstores",
                     "model": null,
                     "provider": null,
-                    "records": 0
+                    "records": 15
                   }
                 ],
                 "override_skip": false,
@@ -845,6 +857,12 @@
                 "real_time_refresh": true,
                 "refresh_button": true,
                 "required": true,
+                "selected_metadata": {
+                  "icon": "vectorstores",
+                  "model": null,
+                  "provider": null,
+                  "records": 15
+                },
                 "show": true,
                 "title_case": false,
                 "toggle": false,
@@ -1002,7 +1020,7 @@
                   "api_endpoints": [
                     "https://2c441604-0325-4710-aa29-30dfb350cf5a-us-east-2.apps.astra.datastax.com"
                   ],
-                  "collections": 0,
+                  "collections": 1,
                   "keyspaces": [
                     "default_keyspace"
                   ],
@@ -1448,7 +1466,7 @@
           "type": "AstraDB"
         },
         "dragging": false,
-        "id": "AstraDB-search",
+        "id": "AstraDB-WBI01",
         "measured": {
           "height": 579,
           "width": 320
@@ -1457,11 +1475,12 @@
           "x": 600,
           "y": 320
         },
+        "selected": false,
         "type": "genericNode"
       },
       {
         "data": {
-          "id": "StockSageRagPrompt-rag",
+          "id": "StockSageRagPrompt-FwmYE",
           "node": {
             "base_classes": [
               "Message"
@@ -1480,9 +1499,8 @@
             "frozen": false,
             "icon": "filter",
             "legacy": false,
-            "lf_version": "1.10.0",
             "metadata": {
-              "code_hash": "e91103d1bcca",
+              "code_hash": "562d9e9a28e6",
               "dependencies": {
                 "dependencies": [
                   {
@@ -1492,7 +1510,7 @@
                 ],
                 "total_dependencies": 1
               },
-              "module": "custom_components.stocksage_rag_prompt"
+              "module": "custom_components.rag_prompt_builder"
             },
             "minimized": false,
             "output_types": [],
@@ -1535,29 +1553,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from langflow.custom import Component\nfrom langflow.io import HandleInput, Output\nfrom langflow.schema.message import Message\n\n\nclass CustomComponent(Component):\n    display_name = \"RAG Prompt Builder\"\n    description = \"Ground the user's question in retrieved StockSage news before the LLM answers.\"\n    icon = \"filter\"\n    name = \"StockSageRagPrompt\"\n\n    MAX_ARTICLES = 8\n\n    inputs = [\n        HandleInput(\n            name=\"question\",\n            display_name=\"Question\",\n            input_types=[\"Message\"],\n            info=\"The user's chat message.\",\n        ),\n        HandleInput(\n            name=\"context\",\n            display_name=\"Retrieved News\",\n            input_types=[\"Data\", \"DataFrame\", \"Table\"],\n            info=\"Vector-search results from the Astra DB news store.\",\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Prompt\", name=\"prompt\", method=\"build_prompt\"),\n    ]\n\n    def _records(self) -> list:\n        data = self.context\n        if data is None:\n            return []\n        if hasattr(data, \"to_dict\"):\n            try:\n                return data.to_dict(orient=\"records\")\n            except Exception:  # noqa: BLE001\n                pass\n        if isinstance(data, list):\n            return [getattr(x, \"data\", x) for x in data]\n        inner = getattr(data, \"data\", None)\n        if isinstance(inner, list):\n            return [getattr(x, \"data\", x) for x in inner]\n        if isinstance(inner, dict):\n            return [inner]\n        return []\n\n    def _question_text(self) -> str:\n        q = self.question\n        if isinstance(q, str):\n            return q.strip()\n        return (getattr(q, \"text\", \"\") or \"\").strip()\n\n    def build_prompt(self) -> Message:\n        blocks: list[str] = []\n        for record in self._records()[: self.MAX_ARTICLES]:\n            if not isinstance(record, dict):\n                continue\n            meta = record.get(\"metadata\") if isinstance(record.get(\"metadata\"), dict) else record\n            ticker = meta.get(\"ticker\") or meta.get(\"ticket\") or \"?\"\n            title = meta.get(\"title\") or \"(untitled)\"\n            source = meta.get(\"source\") or \"unknown source\"\n            date = meta.get(\"publication_date\") or \"n/a\"\n            sentiment = meta.get(\"sentiment\") or \"Neutral\"\n            body = (\n                meta.get(\"key_observations\")\n                or meta.get(\"description\")\n                or record.get(\"page_content\")\n                or \"\"\n            )\n            body = body.strip() if isinstance(body, str) else \"\"\n            blocks.append(\n                f\"[{ticker}] {title}\\nSource: {source} | Date: {date} | Sentiment: {sentiment}\\n{body}\"\n            )\n\n        context = \"\\n\\n---\\n\\n\".join(b for b in blocks if b)\n        question = self._question_text() or \"Give me a brief overview of the market.\"\n\n        if context:\n            text = (\n                \"Some recent market news is included below. Use any item that is relevant to the \"\n                \"QUESTION and cite its source and sentiment. Silently ignore anything that is not \"\n                \"relevant. Never mention this context, never comment on whether it covers the \"\n                \"question, and never write phrases like 'the provided news context does not cover'. \"\n                \"Answer the QUESTION naturally from the relevant news and your own market knowledge. \"\n                \"Never invent prices, dates or figures.\\n\\n\"\n                f\"NEWS CONTEXT:\\n{context}\\n\\n\"\n                f\"QUESTION: {question}\"\n            )\n        else:\n            text = (\n                \"Answer the QUESTION directly, concisely and helpfully. \"\n                \"Never invent specific prices, dates or figures. \"\n                f\"\\n\\nQUESTION: {question}\"\n            )\n\n        self.status = f\"{len(blocks)} context block(s)\"\n        return Message(text=text)\n"
-              },
-              "question": {
-                "_input_type": "HandleInput",
-                "advanced": false,
-                "display_name": "Question",
-                "dynamic": false,
-                "info": "The user's chat message.",
-                "input_types": [
-                  "Message"
-                ],
-                "list": false,
-                "list_add_label": "Add More",
-                "name": "question",
-                "override_skip": false,
-                "placeholder": "",
-                "required": false,
-                "show": true,
-                "title_case": false,
-                "trace_as_metadata": true,
-                "track_in_telemetry": false,
-                "type": "other",
-                "value": ""
+                "value": "from langflow.custom import Component\nfrom langflow.io import HandleInput, Output\nfrom langflow.schema.message import Message\n\n\nclass CustomComponent(Component):\n    display_name = \"RAG Prompt Builder\"\n    description = \"Ground the user's question in retrieved StockSage news before the LLM answers.\"\n    icon = \"filter\"\n    name = \"StockSageRagPrompt\"\n\n    MAX_ARTICLES = 8\n\n    inputs = [\n        HandleInput(\n            name=\"question\",\n            display_name=\"Question\",\n            input_types=[\"Message\"],\n            info=\"The user's chat message.\",\n        ),\n        HandleInput(\n            name=\"context\",\n            display_name=\"Retrieved News\",\n            input_types=[\"Data\", \"DataFrame\", \"Table\"],\n            info=\"Vector-search results from the Astra DB news store.\",\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Prompt\", name=\"prompt\", method=\"build_prompt\"),\n    ]\n\n    def _records(self) -> list:\n        data = self.context\n        if data is None:\n            return []\n        if hasattr(data, \"to_dict\"):\n            try:\n                return data.to_dict(orient=\"records\")\n            except Exception:  # noqa: BLE001\n                pass\n        if isinstance(data, list):\n            return [getattr(x, \"data\", x) for x in data]\n        inner = getattr(data, \"data\", None)\n        if isinstance(inner, list):\n            return [getattr(x, \"data\", x) for x in inner]\n        if isinstance(inner, dict):\n            return [inner]\n        return []\n\n    def _question_text(self) -> str:\n        q = self.question\n        if isinstance(q, str):\n            return q.strip()\n        return (getattr(q, \"text\", \"\") or \"\").strip()\n\n    def build_prompt(self) -> Message:\n        blocks: list[str] = []\n        for record in self._records()[: self.MAX_ARTICLES]:\n            if not isinstance(record, dict):\n                continue\n            meta = record.get(\"metadata\") if isinstance(record.get(\"metadata\"), dict) else record\n            ticker = meta.get(\"ticker\") or meta.get(\"ticket\") or \"?\"\n            title = meta.get(\"title\") or \"(untitled)\"\n            source = meta.get(\"source\") or \"unknown source\"\n            date = meta.get(\"publication_date\") or \"n/a\"\n            sentiment = meta.get(\"sentiment\") or \"Neutral\"\n            body = (\n                meta.get(\"key_observations\")\n                or meta.get(\"description\")\n                or record.get(\"page_content\")\n                or \"\"\n            )\n            body = body.strip() if isinstance(body, str) else \"\"\n            blocks.append(\n                f\"[{ticker}] {title}\\nSource: {source} | Date: {date} | Sentiment: {sentiment}\\n{body}\"\n            )\n\n        context = \"\\n\\n---\\n\\n\".join(b for b in blocks if b)\n        question = self._question_text() or \"Give me a brief overview of the market.\"\n\n        if context:\n            text = (\n                \"Some recent market news is included below. Use any item that is relevant to the \"\n                \"QUESTION and cite its source and sentiment. Silently ignore anything that is not \"\n                \"relevant. Never mention this context, never comment on whether it covers the \"\n                \"question, and never write phrases like 'the provided news context does not cover'. \"\n                \"Answer the QUESTION naturally from the relevant news and your own market knowledge. \"\n                \"Never invent prices, dates or figures.\\n\\n\"\n                f\"NEWS CONTEXT:\\n{context}\\n\\n\"\n                f\"QUESTION: {question}\"\n            )\n        else:\n            text = (\n                \"Answer the QUESTION directly, concisely and helpfully. \"\n                \"Never invent specific prices, dates or figures. \"\n                f\"\\n\\nQUESTION: {question}\"\n            )\n\n        self.status = f\"{len(blocks)} context block(s)\"\n        return Message(text=text)"
               },
               "context": {
                 "_input_type": "HandleInput",
@@ -1582,29 +1578,51 @@
                 "track_in_telemetry": false,
                 "type": "other",
                 "value": ""
+              },
+              "question": {
+                "_input_type": "HandleInput",
+                "advanced": false,
+                "display_name": "Question",
+                "dynamic": false,
+                "info": "The user's chat message.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "question",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "other",
+                "value": ""
               }
             },
-            "tool_mode": false,
-            "name": "StockSageRagPrompt"
+            "tool_mode": false
           },
           "showNode": true,
           "type": "StockSageRagPrompt"
         },
         "dragging": false,
-        "id": "StockSageRagPrompt-rag",
+        "id": "StockSageRagPrompt-FwmYE",
         "measured": {
-          "height": 185,
+          "height": 229,
           "width": 320
         },
         "position": {
           "x": 1040,
           "y": 340
         },
+        "selected": false,
         "type": "genericNode"
       },
       {
         "data": {
-          "id": "LanguageModelComponent-chat",
+          "id": "LanguageModelComponent-0ZJmW",
           "node": {
             "base_classes": [
               "LanguageModel",
@@ -1695,6 +1713,12 @@
             ],
             "pinned": false,
             "template": {
+              "_frontend_node_flow_id": {
+                "value": "2dd63375-72c0-4835-80c8-8ca7a1badf65"
+              },
+              "_frontend_node_folder_id": {
+                "value": "c76fd8bb-7729-497f-91e8-f150691a2a62"
+              },
               "_type": "Component",
               "api_key": {
                 "_input_type": "SecretStrInput",
@@ -1866,7 +1890,7 @@
                       "model_class": "ChatGoogleGenerativeAIFixed",
                       "model_name_param": "model"
                     },
-                    "name": "gemini-2.5-flash",
+                    "name": "gemini-3.1-flash-lite",
                     "provider": "Google Generative AI"
                   },
                   {
@@ -1879,7 +1903,46 @@
                       "model_class": "ChatGoogleGenerativeAIFixed",
                       "model_name_param": "model"
                     },
-                    "name": "gemini-2.5-flash-lite",
+                    "name": "gemma-4-31b-it",
+                    "provider": "Google Generative AI"
+                  },
+                  {
+                    "category": "Google Generative AI",
+                    "icon": "GoogleGenerativeAI",
+                    "metadata": {
+                      "api_key_param": "google_api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_output_tokens",
+                      "model_class": "ChatGoogleGenerativeAIFixed",
+                      "model_name_param": "model"
+                    },
+                    "name": "gemma-4-E4B-it",
+                    "provider": "Google Generative AI"
+                  },
+                  {
+                    "category": "Google Generative AI",
+                    "icon": "GoogleGenerativeAI",
+                    "metadata": {
+                      "api_key_param": "google_api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_output_tokens",
+                      "model_class": "ChatGoogleGenerativeAIFixed",
+                      "model_name_param": "model"
+                    },
+                    "name": "gemma-4-E2B-it",
+                    "provider": "Google Generative AI"
+                  },
+                  {
+                    "icon": "GoogleGenerativeAI",
+                    "metadata": {
+                      "api_key_param": "google_api_key",
+                      "context_length": 128000,
+                      "max_tokens_field_name": "max_output_tokens",
+                      "model_class": "ChatGoogleGenerativeAIFixed",
+                      "model_name_param": "model",
+                      "not_enabled_locally": true
+                    },
+                    "name": "gemini-2.5-flash",
                     "provider": "Google Generative AI"
                   }
                 ],
@@ -2039,7 +2102,7 @@
           "type": "LanguageModelComponent"
         },
         "dragging": false,
-        "id": "LanguageModelComponent-chat",
+        "id": "LanguageModelComponent-0ZJmW",
         "measured": {
           "height": 371,
           "width": 320
@@ -2048,11 +2111,12 @@
           "x": 1480,
           "y": 280
         },
+        "selected": false,
         "type": "genericNode"
       },
       {
         "data": {
-          "id": "ChatOutput-chat",
+          "id": "ChatOutput-HXFDh",
           "node": {
             "base_classes": [
               "Message"
@@ -2337,7 +2401,7 @@
           "showNode": false,
           "type": "ChatOutput"
         },
-        "id": "ChatOutput-chat",
+        "id": "ChatOutput-HXFDh",
         "measured": {
           "height": 52,
           "width": 192
@@ -2346,18 +2410,19 @@
           "x": 1900,
           "y": 340
         },
+        "selected": false,
         "type": "genericNode"
       }
     ],
     "viewport": {
-      "x": 0,
-      "y": 0,
-      "zoom": 0.6
+      "x": -29.073995771670184,
+      "y": 214.1693974630021,
+      "zoom": 0.27536997885835096
     }
   },
   "description": "RAG chatbot: retrieves AI-analysed news from Astra (vector search) and answers, grounded, with Gemini. Single-turn safe (no tool-calling agent).",
   "endpoint_name": null,
-  "id": "b2e6d4f3-1c58-4e0b-8d32-2f8c7a1b3e22",
+  "id": "2dd63375-72c0-4835-80c8-8ca7a1badf65",
   "is_component": false,
   "last_tested_version": "1.10.0",
   "locked": false,

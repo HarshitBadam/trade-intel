@@ -2,15 +2,14 @@
 import { StockGraph } from "@/components/StockGraph";
 import { RecentInfluential } from "@/components/RecentInfluential";
 import { SearchBar } from "@/components/SearchBar";
-import TopGainer from "@/components/TopGainer";
+import TopGainer, { TopGainerSkeleton } from "@/components/TopGainer";
 import { FlipCard } from "@/components/FlipCard";
 import { PopularityGraph } from "@/components/PopularityGraph";
 import { FloatingWidget } from "@/components/FloatingWidget";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { News, NewsStatus } from "@/components/RecentInfluential";
-import { fetchDetails, fetchMovers, type Movers } from "./actions";
-import { moverToCard } from "@/lib/movers";
+import { fetchDetails, fetchRelatedStocks, type RelatedCard } from "./actions";
 
 // Shown while the client-side fetch for the selected ticker is in flight so the
 // page never flashes an empty chart card / 0% sentiment panel.
@@ -133,38 +132,20 @@ export default function Home() {
     };
   }, [stockId]);
 
-  // Real market movers for the "Trending Stocks" rail (replaces the old fake
-  // "similar performance / sector / market cap" cards).
-  const [movers, setMovers] = useState<Movers | null>(null);
+  // Genuinely comparable companies for the "Related Stocks" rail: ranked by
+  // same sector then closest market cap (Polygon fundamentals), with live
+  // prices. `null` = still loading (show skeletons); `[]` = nothing to show.
+  const [related, setRelated] = useState<RelatedCard[] | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetchMovers().then((m) => {
-      if (!cancelled) setMovers(m);
+    setRelated(null);
+    fetchRelatedStocks(stockId).then((r) => {
+      if (!cancelled) setRelated(r);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // Pick three distinct tickers (Top Gainer / Loser / Most Active), skipping the
-  // one currently being viewed so the rail always shows different stocks.
-  const trending = useMemo(() => {
-    if (!movers) return [] as { title: string; data: ReturnType<typeof moverToCard> }[];
-    const current = stockId.toUpperCase();
-    const used = new Set<string>([current]);
-    const pick = (list: typeof movers.gainers) =>
-      list.find((m) => !used.has(m.ticker));
-    const out: { title: string; data: ReturnType<typeof moverToCard> }[] = [];
-    const add = (title: string, m?: (typeof movers.gainers)[number]) => {
-      if (!m) return;
-      used.add(m.ticker);
-      out.push({ title, data: moverToCard(m) });
-    };
-    add("Top Gainer", pick(movers.gainers));
-    add("Top Loser", pick(movers.losers));
-    add("Most Active", pick(movers.mostActive));
-    return out;
-  }, [movers, stockId]);
+  }, [stockId]);
 
   return (
     <div className="min-h-screen">
@@ -235,15 +216,28 @@ export default function Home() {
 
           <FloatingWidget />
 
-          {/* Trending Stocks Section — real market movers (Polygon), not the
-              current ticker. Replaces the old mock "similar" cards. */}
-          {trending.length > 0 && (
+          {/* Related Stocks Section — companies genuinely comparable to the one
+              being viewed (same sector → closest market cap, via Polygon
+              fundamentals), with live prices. Skeletons while loading; hidden
+              only if nothing relevant could be found. */}
+          {related === null ? (
             <div className="lg:col-span-12 px-8 pb-12">
               <h2 className="text-xl font-semibold mb-4 text-start">
-                Trending Stocks
+                Related Stocks
               </h2>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {trending.map(({ title, data }) => (
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <TopGainerSkeleton key={i} />
+                ))}
+              </div>
+            </div>
+          ) : related.length > 0 ? (
+            <div className="lg:col-span-12 px-8 pb-12">
+              <h2 className="text-xl font-semibold mb-4 text-start">
+                Related Stocks
+              </h2>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {related.map(({ title, data }) => (
                   <div
                     key={data.ticker}
                     className="cursor-pointer"
@@ -254,7 +248,7 @@ export default function Home() {
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
