@@ -54,7 +54,7 @@ export function LoginForm({
               )}
 
               {!authConfigured && (
-                <div className="rounded-md border border-dashed border-amber-300 bg-amber-50 p-3 text-center text-sm text-amber-800">
+                <div className="rounded-md border border-dashed border-amber-300 bg-amber-50 p-3 text-center text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
                   Authentication isn&apos;t configured yet. The app is running in
                   open <span className="font-medium">demo mode</span>. Add
                   Google/Apple OAuth credentials and{" "}

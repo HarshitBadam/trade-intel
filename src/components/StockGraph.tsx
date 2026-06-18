@@ -126,7 +126,7 @@ export function StockGraph({
           <h2 className="text-2xl font-bold">{companyName}</h2>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold">{priceLabel}</span>
-            <span className={isUp ? "text-green-600 text-sm" : "text-red-500 text-sm"}>
+            <span className={isUp ? "text-green-600 dark:text-green-400 text-sm" : "text-red-500 dark:text-red-400 text-sm"}>
               {changeLabel}
             </span>
           </div>
@@ -163,7 +163,7 @@ export function StockGraph({
         </div>
 
         {hasShuffle && (
-          <div className="flex items-center gap-2 p-8 text-gray-500 text-xs">
+          <div className="flex items-center gap-2 p-8 text-muted-foreground text-xs">
             <img src="/shuffle.svg" alt="shuffle" className="w-4 h-4" />
             <span className="stock-text-description-right">
               Switch to Popularity View

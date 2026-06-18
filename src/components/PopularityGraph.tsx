@@ -85,7 +85,7 @@ export function PopularityGraph({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 p-8 text-gray-500 text-xs">
+        <div className="flex items-center gap-2 p-8 text-muted-foreground text-xs">
           <img src="/shuffle.svg" alt="shuffle" className="w-4 h-4" />
           <span className="stock-text-description-right">Switch to Stock Price View</span>
         </div>

@@ -2,6 +2,7 @@ import Link from "next/link"
 import { auth } from "@/auth"
 import { authConfigured } from "@/lib/config"
 import { signOutAction } from "@/lib/auth-actions"
+import { ThemeToggle } from "@/components/ThemeToggle"
 
 export async function MainNav() {
   const session = authConfigured ? await auth() : null
@@ -16,7 +17,9 @@ export async function MainNav() {
           </Link>
         </div>
 
-        <div className="flex items-center gap-6 p-4">
+        <div className="flex items-center gap-5 p-4">
+          <ThemeToggle />
+
           <Link
             href="/"
             className="flex items-center text-sm font-medium text-muted-foreground hover:text-foreground"

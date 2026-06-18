@@ -39,11 +39,11 @@ export function NewsModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/30 backdrop-blur-xl animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg rounded-2xl border border-white/50 bg-white/80 backdrop-blur-xl shadow-2xl p-8 animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-lg rounded-2xl border border-white/50 dark:border-white/10 bg-white/80 dark:bg-card/85 backdrop-blur-xl shadow-2xl p-8 animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -78,7 +78,7 @@ export function NewsModal({
             href={article.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 mt-6 text-sm font-medium text-blue-600 hover:underline"
+            className="inline-flex items-center gap-1 mt-6 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
           >
             Read full article
           </a>
