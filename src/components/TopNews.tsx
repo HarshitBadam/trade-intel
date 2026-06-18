@@ -8,7 +8,7 @@ interface TopNewsProps {
 export default function TopNews({ title,newsTitle,newsContent, onClick }: TopNewsProps) {
   return (
     <div
-      className="rounded-lg p-6 h-full bg-card shadow-md cursor-pointer"
+      className="rounded-lg p-6 h-full bg-card glass-card shadow-md cursor-pointer"
       onClick={onClick}
     >
       {/* Title */}
@@ -29,7 +29,7 @@ export default function TopNews({ title,newsTitle,newsContent, onClick }: TopNew
 // flashes fabricated news.
 export function TopNewsSkeleton({ title = "Top News" }: { title?: string }) {
   return (
-    <div className="rounded-lg p-6 h-full bg-card shadow-md animate-pulse">
+    <div className="rounded-lg p-6 h-full bg-card glass-card shadow-md animate-pulse">
       <h2 className="text-xl font-semibold mb-4">{title}</h2>
       <div className="space-y-3 pt-1">
         <div className="h-7 w-full rounded bg-muted" />

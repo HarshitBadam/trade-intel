@@ -30,7 +30,7 @@ export function Overview({ title, shifts = topShifts, children }: OverviewProps)
   };
 
   return (
-    <div className="rounded-lg p-6 h-full bg-card shadow-md">
+    <div className="rounded-lg p-6 h-full bg-card glass-card shadow-md">
       <h2 className="text-xl font-semibold mb-4">{title}</h2>
       <div className="space-y-4">
         {shifts.map((shift, index) => (

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { SentimentLabel } from "./SentimentLabel";
 
@@ -20,6 +21,12 @@ export function NewsModal({
   article: NewsArticle | null;
   onClose: () => void;
 }) {
+  // Portal target only exists on the client; gate the portal on mount so SSR
+  // and the first hydration pass render nothing (the modal is always opened by
+  // a post-mount user interaction anyway).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   useEffect(() => {
     if (!article) return;
     const onKey = (e: KeyboardEvent) => {
@@ -33,11 +40,15 @@ export function NewsModal({
     };
   }, [article, onClose]);
 
-  if (!article) return null;
+  if (!article || !mounted) return null;
 
   const hasLink = !!article.url && article.url !== "#";
 
-  return (
+  // Render through a portal on <body> so the overlay always covers the viewport.
+  // Otherwise `position: fixed` is captured by the nearest ancestor with a
+  // `backdrop-filter` (our dark-mode `.glass-card` panels), which would trap the
+  // modal inside that panel instead of centering it on screen.
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/30 backdrop-blur-xl animate-in fade-in duration-200"
       onClick={onClose}
@@ -84,6 +95,7 @@ export function NewsModal({
           </a>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -272,3 +272,156 @@
     transition: none;
   }
 }
+
+/* ================================================================== *
+ * Ambient background — DARK MODE ONLY.
+ * Light mode is intentionally pristine: the page's own white --background
+ * shows through with no gradient and no clouds (the clean, original look).
+ * Dark mode gets a refined violet/indigo "Siri" aurora that eases in via an
+ * opacity cross-fade (opacity being the one property that interpolates) and
+ * drifts with a cheap, GPU-composited transform.
+ * ================================================================== */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+  will-change: transform, opacity;
+  background-color: #0b0b10;
+  background-image:
+    radial-gradient(40% 36% at 14% 12%, rgba(139, 92, 246, 0.22), transparent 70%),
+    radial-gradient(42% 40% at 88% 8%, rgba(79, 70, 229, 0.18), transparent 72%),
+    radial-gradient(52% 50% at 80% 94%, rgba(168, 85, 247, 0.16), transparent 72%),
+    radial-gradient(46% 46% at 28% 90%, rgba(67, 56, 160, 0.2), transparent 72%);
+}
+.dark body::after {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body::after {
+    animation: aurora-b 32s ease-in-out infinite alternate;
+  }
+}
+
+/* Scale stays >1 so translation never reveals an edge; transforms don't create
+   scrollbars, so a fixed, viewport-sized layer is safe to drift. */
+@keyframes aurora-b {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1.1) rotate(0deg);
+  }
+  100% {
+    transform: translate3d(-3%, 2.5%, 0) scale(1.18) rotate(3deg);
+  }
+}
+
+/* ================================================================== *
+ * Frosted glass surfaces — DARK MODE ONLY.
+ * In light mode these classes are deliberate no-ops, so every surface keeps
+ * its own original solid Tailwind background + shadow (the clean white look the
+ * app shipped with). In dark mode they turn translucent + blurred + saturated
+ * so the aurora glows through — which is what makes dark feel premium.
+ * ================================================================== */
+.dark .glass-card {
+  background-color: color-mix(in srgb, var(--card) 70%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
+  backdrop-filter: blur(20px) saturate(155%);
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+}
+
+/* Slightly more opaque + blurrier, for floating menus / popovers laid over
+   live content where legibility matters most. */
+.dark .glass-panel {
+  background-color: color-mix(in srgb, var(--popover) 82%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  backdrop-filter: blur(24px) saturate(170%);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+/* ================================================================== *
+ * Siri-iridescent accents (used sparingly to keep the monochrome feel)
+ * ================================================================== */
+
+/* A gradient ring that fades + slowly rotates in only on focus. The angle is
+   animated through a registered <angle> custom prop so the box itself never
+   rotates — just the conic sweep. */
+@property --siri-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.siri-focus {
+  position: relative;
+}
+.siri-focus::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--siri-angle),
+    rgba(110, 130, 255, 0) 0%,
+    rgba(139, 122, 255, 0.9) 18%,
+    rgba(110, 200, 255, 0.8) 42%,
+    rgba(205, 130, 255, 0.85) 66%,
+    rgba(150, 140, 255, 0.7) 84%,
+    rgba(110, 130, 255, 0) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  pointer-events: none;
+}
+/* A soft outer bloom so the ring reads as a gentle glow, not a hard outline. */
+.siri-focus::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  box-shadow: 0 0 18px 1px rgba(139, 122, 255, 0.35);
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  pointer-events: none;
+  z-index: -1;
+}
+/* Dark-mode only — light mode keeps the plain, original search bar. */
+.dark .siri-focus:focus-within::after,
+.dark .siri-focus:focus-within::before {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dark .siri-focus:focus-within::after {
+    animation: siri-spin 6s linear infinite;
+  }
+}
+@keyframes siri-spin {
+  to {
+    --siri-angle: 360deg;
+  }
+}
+
+/* Light: a plain solid heading (original). Dark: a whisper of iridescence —
+   mostly the foreground colour with a faint violet tail, refined not colourful. */
+.siri-text {
+  color: var(--foreground);
+}
+.dark .siri-text {
+  background-image: linear-gradient(
+    100deg,
+    var(--foreground) 35%,
+    color-mix(in srgb, var(--foreground) 45%, #8b7bff) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

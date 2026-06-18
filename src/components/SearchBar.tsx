@@ -55,7 +55,7 @@ export function SearchBar() {
   };
 
   return (
-    <div className="relative w-full shadow-md rounded-md" ref={searchRef}>
+    <div className="relative w-full shadow-md rounded-lg glass-card siri-focus" ref={searchRef}>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
@@ -66,13 +66,13 @@ export function SearchBar() {
             setShowResults(true);
           }}
           placeholder="Search for stocks..."
-          className="w-full rounded-lg bg-background px-10 py-2 text-sm outline-none focus:outline-none"
+          className="w-full rounded-lg bg-background dark:bg-transparent px-10 py-2 text-sm outline-none focus:outline-none"
         />
       </div>
 
       {/* Search Results Dropdown */}
       {showResults && searchQuery && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-background rounded-lg shadow-lg border border-accent/20 max-h-[300px] overflow-y-auto z-50">
+        <div className="absolute top-full left-0 right-0 mt-2 bg-background border border-accent/20 glass-panel rounded-lg shadow-lg max-h-[300px] overflow-y-auto z-50">
           {isLoading ? (
             <div className="px-4 py-2 text-muted-foreground">Loading...</div>
           ) : searchResults.length > 0 ? (

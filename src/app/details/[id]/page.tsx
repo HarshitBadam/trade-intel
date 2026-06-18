@@ -15,7 +15,7 @@ import { fetchDetails, fetchRelatedStocks, type RelatedCard } from "./actions";
 // page never flashes an empty chart card / 0% sentiment panel.
 function ChartCardSkeleton() {
   return (
-    <div className="w-full h-full shadow-md bg-accent/10 rounded-lg flex flex-col animate-pulse">
+    <div className="w-full h-full shadow-md bg-accent/10 glass-card rounded-lg flex flex-col animate-pulse">
       <div className="p-8 space-y-4">
         <div className="h-7 w-40 rounded bg-muted" />
         <div className="flex items-baseline gap-3">
@@ -37,7 +37,7 @@ function ChartCardSkeleton() {
 
 function SentimentPanelSkeleton() {
   return (
-    <div className="w-full rounded-lg p-6 shadow-md flex flex-col h-full animate-pulse">
+    <div className="w-full rounded-lg p-6 glass-card shadow-md flex flex-col h-full animate-pulse">
       <div className="pb-8 space-y-4">
         <div className="h-6 w-48 rounded bg-muted" />
         <div className="h-3 w-full rounded bg-muted" />

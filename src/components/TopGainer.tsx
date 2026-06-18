@@ -23,7 +23,7 @@ export default function TopGainer({ title, data }: TopGainerProps) {
     const negative = data.percentageChange.trim().startsWith("-");
     const changeColor = negative ? "text-red-500" : "text-green-500";
     return (
-      <div className="rounded-lg p-6 h-full bg-card shadow-md cursor-pointer">
+      <div className="rounded-lg p-6 h-full bg-card glass-card shadow-md cursor-pointer">
         {/* Title */}
         <h2 className="text-xl font-semibold mb-4">{title}</h2>
         
@@ -77,7 +77,7 @@ export default function TopGainer({ title, data }: TopGainerProps) {
 // Loading placeholder for a TopGainer card, so rails never flash fake numbers.
 export function TopGainerSkeleton({ title }: { title?: string }) {
   return (
-    <div className="rounded-lg p-6 h-full bg-card shadow-md animate-pulse">
+    <div className="rounded-lg p-6 h-full bg-card glass-card shadow-md animate-pulse">
       {title ? (
         <h2 className="text-xl font-semibold mb-4">{title}</h2>
       ) : (
