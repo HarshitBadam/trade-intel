@@ -1,3 +1,5 @@
+import { SentimentLabel } from "./SentimentLabel";
+
 interface TopGainerInfo {
   ticker: string;
   name: string;
@@ -55,7 +57,7 @@ export default function TopGainer({ title, data }: TopGainerProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Sentiment</span>
-              <span className="font-medium">{data.sentiment}</span>
+              <SentimentLabel sentiment={data.sentiment} className="font-medium text-sm" />
             </div>
             <div className="flex flex-wrap gap-2">
               {data.sentimentSource.map((source) => (

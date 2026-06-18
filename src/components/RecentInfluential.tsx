@@ -1,6 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import { Progress } from "@/components/ui/progress";
 import { NewsCard } from "./NewsCard";
 import { Bar } from "./Bar";
+import { NewsModal, type NewsArticle } from "./NewsModal";
 
 export type News = {
   _id: string;
@@ -90,7 +94,7 @@ function StatusBadge({
 
 function NewsCardSkeleton() {
   return (
-    <div className="flex items-start space-x-4 rounded-lg p-4 animate-pulse">
+    <div className="flex items-start space-x-4 py-4 animate-pulse">
       <div className="w-10 h-10 rounded-full bg-gray-200" />
       <div className="flex-1 space-y-2">
         <div className="h-3 w-1/2 rounded bg-gray-200" />
@@ -108,6 +112,8 @@ export function RecentInfluential({
   positiveSentimentPercentage, 
   negativeSentimentPercentage 
 }: RecentInfluentialProps) {
+  const [selected, setSelected] = useState<NewsArticle | null>(null);
+
   // The remaining share is neutral sentiment; including it makes the bar
   // segments sum to 100 (and silences the Bar validation warning).
   const neutralSentimentPercentage = Math.max(
@@ -133,7 +139,7 @@ export function RecentInfluential({
   ];
 
   return (
-    <div className="w-full rounded-lg p-6 shadow-md">
+    <div className="w-full rounded-lg p-6 shadow-md flex flex-col h-full">
       <div className="pb-8">
         <h2 className="text-xl font-bold mb-6">Sentiment Score Gauge</h2>
         <div className="flex justify-center items-center gap-4 pb-3">
@@ -165,14 +171,14 @@ export function RecentInfluential({
       </div>
 
       {(news.length > 0 || status === "analyzing") && (
-        <>
+        <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex items-center justify-between mb-6 gap-3">
             <h2 className="text-xl font-bold">Recent Influential</h2>
             <StatusBadge status={status} updatedAt={updatedAt} />
           </div>
-          <div className="overflow-y-scroll max-h-[340px]">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="flex relative">
-              <div className="flex-1 flex flex-col gap-8 pt-2 overflow-x-hidden">
+              <div className="flex-1 flex flex-col divide-y divide-border/70 overflow-x-hidden">
                 {status === "analyzing" && (
                   <NewsCardSkeleton />
                 )}
@@ -186,13 +192,28 @@ export function RecentInfluential({
                     significance={news.metadata.importance.toUpperCase()}
                     avatarUrl=""
                     source={news.metadata.source}
+                    onClick={() =>
+                      setSelected({
+                        title: news.metadata.event || news.metadata.title,
+                        body:
+                          news.metadata.key_observations ||
+                          news.metadata.description ||
+                          news.page_content,
+                        sentiment: news.metadata.sentiment,
+                        source: news.metadata.source,
+                        date: news.metadata.publication_date,
+                        url: news.metadata.url,
+                      })
+                    }
                   />
                 ))}
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
+
+      <NewsModal article={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }

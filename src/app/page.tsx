@@ -6,20 +6,15 @@ import TopGainer from "@/components/TopGainer"
 import TopNews from "@/components/TopNews"
 import { useParams, useRouter } from "next/navigation";
 import { FloatingWidget } from "@/components/FloatingWidget";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SearchBar } from "@/components/SearchBar"
 import { mockStockData } from "@/data/mockStocks";
+import { generateMockCandles, generateMockFine, generateMockWeek, generateMockIntraday } from "@/data/fallbacks";
+import { fetchQuote, fetchTopHeadline, type Quote, type Headline } from "./details/[id]/actions";
 import { StockChips } from "@/components/StockChips";
 import { RecentInfluential } from "@/components/RecentInfluential";
+import { NewsModal, type NewsArticle } from "@/components/NewsModal";
 
-
-const topShifts = [
-  { ticker: "AAPL", name: "Apple Inc.", change: "+3.2%", sentiment: "🟢 Bullish (67%)" },
-  { ticker: "TSLA", name: "Tesla Inc.", change: "-1.5%", sentiment: "🔴 Bearish (54%)" },
-  { ticker: "NVDA", name: "NVIDIA Corporation", change: "+5.1%", sentiment: "🟢 Very Bullish (78%)" },
-  { ticker: "AMZN", name: "Amazon.com Inc.", change: "-2.3%", sentiment: "🔴 Bearish (45%)" },
-  { ticker: "MSFT", name: "Microsoft Corp.", change: "+4.6%", sentiment: "🟢 Bullish (72%)" },
-];
 
 const topLoser = {
   ticker: "TSLA",                     // Stock ticker
@@ -28,7 +23,7 @@ const topLoser = {
   priceChange: "-$15.20",              // Absolute price change
   percentageChange: "-2.20%",          // Percentage price change
   volume: "52.3M",                     // Trading volume
-  sentiment: "🔴 60% Bearish",         // Sentiment score
+  sentiment: "60% Bearish",            // Sentiment score
   sentimentSource: ["Twitter", "News", "Analyst Reports"], // Sources of sentiment
   reason: "Tesla faces supply chain issues, stock drops",  // Key reason for the price movement
 };
@@ -41,7 +36,7 @@ const topGainer = {
   priceChange: "+$8.50",               // Absolute price change
   percentageChange: "+4.95%",          // Percentage price change
   volume: "78.5M",                     // Trading volume
-  sentiment: "🟢 75% Bullish",          // Sentiment score
+  sentiment: "75% Bullish",            // Sentiment score
   sentimentSource: ["Twitter", "News", "Analyst Ratings"], // Sources of sentiment
   reason: "Apple announced record iPhone sales",  // Key reason for the price movement
 };
@@ -73,8 +68,68 @@ export default function StocksPage() {
   // Get the current stock data
   const currentStock = mockStockData.find(stock => stock.id === selectedStockId) ?? mockStockData[0];
 
+  // The static mock rows only carry a few candles; generate a full ~1y series
+  // (deterministic per ticker) so the chart and its range selector have data.
+  const homeChartData = useMemo(
+    () => generateMockCandles(currentStock.ticker),
+    [currentStock.ticker]
+  );
+  const homeIntradayData = useMemo(
+    () => generateMockIntraday(currentStock.ticker),
+    [currentStock.ticker]
+  );
+  const homeWeekData = useMemo(
+    () => generateMockWeek(currentStock.ticker),
+    [currentStock.ticker]
+  );
+  const homeFineData = useMemo(
+    () => generateMockFine(currentStock.ticker),
+    [currentStock.ticker]
+  );
+
+  // Live "Trending Now" quote + "Top News" headline for the selected ticker.
+  // Falls back to the deterministic mock above until the live data resolves (and
+  // permanently if Polygon is unconfigured / throttled), so the cards never empty.
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [headline, setHeadline] = useState<Headline | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setQuote(null);
+    setHeadline(null);
+    fetchQuote(currentStock.ticker).then((q) => {
+      if (!cancelled) setQuote(q);
+    });
+    fetchTopHeadline(currentStock.ticker).then((h) => {
+      if (!cancelled) setHeadline(h);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStock.ticker]);
+
+  const stockPrice = quote?.stockPrice ?? currentStock.stockPrice;
+  const priceChange = quote?.priceChange ?? currentStock.priceChange;
+  const percentChange = quote?.percentChange ?? currentStock.percentChange;
+  const chartData = quote?.chartData ?? homeChartData;
+  const intradayData = quote?.intradayData ?? homeIntradayData;
+  const weekData = quote?.weekData ?? homeWeekData;
+  const fineData = quote?.fineData ?? homeFineData;
+  const newsTitle = headline?.newsTitle ?? topNews.newsTitle;
+  const newsContent = headline?.newsContent ?? topNews.newsContent;
+
+  const [openArticle, setOpenArticle] = useState<NewsArticle | null>(null);
+  const topNewsArticle: NewsArticle = {
+    title: newsTitle,
+    body: newsContent,
+    sentiment: headline?.sentiment,
+    source: headline?.source,
+    date: headline?.date,
+    url: headline?.url,
+  };
+
   const handleStockClick = () => {
-    router.push(`/details/${currentStock.id}`);
+    router.push(`/details/${currentStock.ticker}`);
   };
 
   return (
@@ -103,10 +158,13 @@ export default function StocksPage() {
             <StockGraph 
               key={currentStock.id}
               companyName={currentStock.companyName}
-              stockPrice={currentStock.stockPrice}
-              priceChange={currentStock.priceChange}
-              percentChange={currentStock.percentChange}
-              chartData={currentStock.chartData}
+              stockPrice={stockPrice}
+              priceChange={priceChange}
+              percentChange={percentChange}
+              chartData={chartData}
+              intradayData={intradayData}
+              weekData={weekData}
+              fineData={fineData}
               hasShuffle={false}
             />
           </div>
@@ -134,7 +192,12 @@ export default function StocksPage() {
           <TopGainer title="Top Losers" data={topLoser} />
         </div>
         <div>
-          <TopNews title="Top News" newsTitle={topNews.newsTitle} newsContent={topNews.newsContent} />
+          <TopNews
+            title="Top News"
+            newsTitle={newsTitle}
+            newsContent={newsContent}
+            onClick={() => setOpenArticle(topNewsArticle)}
+          />
         </div>
       </div>
       <FloatingWidget 
@@ -142,7 +205,8 @@ export default function StocksPage() {
         onClose={handleWidgetClose}
         onOpen={handleWidgetOpen}
       />
-   
+
+      <NewsModal article={openArticle} onClose={() => setOpenArticle(null)} />
     </div>
   )
 } 

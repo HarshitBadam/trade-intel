@@ -12,9 +12,10 @@ interface NewsCardProps {
   significance: string; //use LOW, MEDIUM, HIGH
   avatarUrl: string;
   source: string;
+  onClick?: () => void;
 }
 
-export function NewsCard({ id, username, content, date, avatarUrl, significance, source }: NewsCardProps) {
+export function NewsCard({ id, username, content, date, avatarUrl, significance, source, onClick }: NewsCardProps) {
   const { hoveredTimestamp, setHoveredTimestamp } = useChart();
   const [currentlyHovered, setCurrentlyHovered] = useState<string | null>(null);
   // Format the display date for UI
@@ -30,9 +31,12 @@ export function NewsCard({ id, username, content, date, avatarUrl, significance,
 
   return (
     <div 
-      className={`flex items-start space-x-4 rounded-lg shadow-sm p-4 ${
-        currentlyHovered === id ? 'bg-accent/40' : ''
+      className={`flex items-start space-x-4 py-4 transition-colors ${
+        onClick ? 'cursor-pointer' : ''
+      } ${
+        currentlyHovered === id ? 'bg-accent/30' : ''
       }`} 
+      onClick={onClick}
       onMouseEnter={() => {
         setHoveredTimestamp(date);  // This will be in YYYY-MM-DD format
         setCurrentlyHovered(id);

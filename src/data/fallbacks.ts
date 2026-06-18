@@ -28,7 +28,9 @@ function seededRandom(seed: number) {
   };
 }
 
-export function generateMockCandles(ticker: string, days = 250) {
+// ~5 years of daily candles so every range (1W → All) is fully populated and
+// matches the live Polygon window.
+export function generateMockCandles(ticker: string, days = 5 * 365) {
   const rand = seededRandom(hashTicker(ticker));
   const basePrice = 40 + rand() * 460; // somewhere between $40 and $500
   const drift = (rand() - 0.45) * 0.002; // slight bias up or down
@@ -47,6 +49,82 @@ export function generateMockCandles(ticker: string, days = 250) {
     });
   }
   return candles;
+}
+
+// Deterministic 15-minute candles for the last ~7 days, anchored to the last
+// daily close. Powers the 1W view at a much finer resolution than the shared
+// hourly tier (~130 trading-hour points for a real ticker).
+export function generateMockWeek(ticker: string, days = 7) {
+  const daily = generateMockCandles(ticker);
+  const anchor = daily[daily.length - 1].value;
+  const rand = seededRandom(hashTicker(ticker) ^ 0x55aa);
+
+  const points: { date: string; value: number }[] = [];
+  const stepMs = 15 * 60 * 1000;
+  const steps = Math.round((days * 24 * 60) / 15);
+  const now = Date.now();
+  let price = anchor * (0.97 + rand() * 0.02);
+
+  for (let i = steps; i >= 0; i--) {
+    price = Math.max(1, price + price * (rand() - 0.49) * 0.004);
+    points.push({
+      date: new Date(now - i * stepMs).toISOString(),
+      value: Number(price.toFixed(2)),
+    });
+  }
+  return points;
+}
+
+// Deterministic 1-hour candles for the last ~95 days, anchored to the last
+// daily close. Powers the 1W / 1M / 3M views with a genuinely dense series
+// (hundreds of points) instead of the coarse daily zigzag. 6M+ stays on daily
+// candles. Real tickers only have trading-hour bars, so live data is sparser
+// than this 24/7 mock — both still read as a smooth line.
+export function generateMockFine(ticker: string, days = 95) {
+  const daily = generateMockCandles(ticker);
+  const anchor = daily[daily.length - 1].value;
+  const rand = seededRandom(hashTicker(ticker) ^ 0x77ee);
+
+  const points: { date: string; value: number }[] = [];
+  const stepHours = 1;
+  const steps = Math.round((days * 24) / stepHours);
+  const stepMs = stepHours * 60 * 60 * 1000;
+  const now = Date.now();
+  // Start below the anchor and drift up to it so the series ends near the
+  // current price.
+  let price = anchor * (0.9 + rand() * 0.06);
+
+  for (let i = steps; i >= 0; i--) {
+    price = Math.max(1, price + price * (rand() - 0.49) * 0.006);
+    points.push({
+      date: new Date(now - i * stepMs).toISOString(),
+      value: Number(price.toFixed(2)),
+    });
+  }
+  return points;
+}
+
+// Deterministic intraday (5-minute) candles for the most recent ~6.5h session,
+// anchored to the last daily close so the 1D view is continuous with the rest.
+export function generateMockIntraday(ticker: string) {
+  const daily = generateMockCandles(ticker);
+  const anchor = daily[daily.length - 1].value;
+  const rand = seededRandom(hashTicker(ticker) ^ 0x1d1d);
+
+  const points: { date: string; value: number }[] = [];
+  const steps = 78; // 6.5 trading hours @ 5-min bars
+  const stepMs = 5 * 60 * 1000;
+  const now = Date.now();
+  let price = anchor * (0.99 + rand() * 0.02);
+
+  for (let i = steps; i >= 0; i--) {
+    price = Math.max(1, price + price * (rand() - 0.5) * 0.004);
+    points.push({
+      date: new Date(now - i * stepMs).toISOString(),
+      value: Number(price.toFixed(2)),
+    });
+  }
+  return points;
 }
 
 export function generateMockStockData(ticker: string) {
@@ -156,4 +234,59 @@ export function searchFallbackTickers(query: string) {
     (t) =>
       t.ticker.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)
   ).slice(0, 5);
+}
+
+export type RelatedStock = {
+  ticker: string;
+  name: string;
+  currentPrice: string;
+  priceChange: string;
+  percentageChange: string;
+  volume: string;
+  sentiment: string;
+  sentimentSource: string[];
+  reason: string;
+};
+
+const RELATED_REASONS = [
+  "Momentum building on strong sector demand",
+  "Analysts revising estimates ahead of earnings",
+  "Cooling off after a recent rally",
+  "Mixed signals as the market weighs guidance",
+  "Riding broader tech-sector optimism",
+];
+
+/**
+ * Deterministic peer stocks for the "related" rails on a details page. Picks
+ * real tickers (never the one being viewed) and derives stable price/sentiment
+ * numbers from the same seeded generator the charts use, so the cards are
+ * distinct and consistent between renders instead of three identical AAPL cards.
+ */
+export function getRelatedStocks(
+  currentTicker: string,
+  count = 3
+): RelatedStock[] {
+  const symbol = currentTicker.toUpperCase();
+  const peers = FALLBACK_TICKERS.filter((t) => t.ticker !== symbol);
+  const start = hashTicker(symbol) % peers.length;
+
+  return Array.from({ length: Math.min(count, peers.length) }, (_, i) => {
+    const peer = peers[(start + i) % peers.length];
+    const data = generateMockStockData(peer.ticker);
+    const rand = seededRandom(hashTicker(peer.ticker) ^ 0xa17e);
+    const up = data.price_change >= 0;
+    const sentimentPct = 50 + Math.floor(rand() * 35);
+    const volume = (10 + rand() * 90).toFixed(1);
+    return {
+      ticker: peer.ticker,
+      name: peer.name,
+      currentPrice: `$${data.stock_price.toFixed(2)}`,
+      priceChange: `${up ? "+" : ""}${data.price_change.toFixed(2)}`,
+      percentageChange: `${up ? "+" : ""}${data.percent_change.toFixed(2)}%`,
+      volume: `${volume}M`,
+      sentiment: `${sentimentPct}% ${up ? "Bullish" : "Bearish"}`,
+      sentimentSource: ["News", "Analyst Ratings"],
+      reason: RELATED_REASONS[Math.floor(rand() * RELATED_REASONS.length)],
+    };
+  });
 }

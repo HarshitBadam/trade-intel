@@ -18,13 +18,6 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 const chartData = [
   { date: "2024-04-01", negative: 222, positive: 150 },
@@ -126,33 +119,25 @@ const chartConfig = {
   },
   negative: {
     label: "  Negative",
-    color: "hsl(var(--chart-1))",
+    color: "#94a3b8",
   },
   positive: {
     label: "  Positive",
-    color: "hsl(var(--chart-2))",
+    color: "#0369a1",
   },
 } satisfies ChartConfig
 
-export function PopularityChart() {
-  const [timeRange, setTimeRange] = React.useState("90d")
-
-  const filteredData = chartData.filter((item) => {
-    const date = new Date(item.date)
+export function PopularityChart({ rangeDays = 90 }: { rangeDays?: number }) {
+  const filteredData = React.useMemo(() => {
+    if (rangeDays === Infinity) return chartData
     const referenceDate = new Date("2024-06-30")
-    let daysToSubtract = 90
-    if (timeRange === "30d") {
-      daysToSubtract = 30
-    } else if (timeRange === "7d") {
-      daysToSubtract = 7
-    }
     const startDate = new Date(referenceDate)
-    startDate.setDate(startDate.getDate() - daysToSubtract)
-    return date >= startDate
-  })
+    startDate.setDate(startDate.getDate() - rangeDays)
+    return chartData.filter((item) => new Date(item.date) >= startDate)
+  }, [rangeDays])
 
   return (
-    <Card className="outline-1 outline-gray-200 rounded-lg">
+    <Card className="border-0 shadow-none bg-transparent rounded-lg">
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
         <ChartContainer
           config={chartConfig}
@@ -161,28 +146,12 @@ export function PopularityChart() {
           <AreaChart data={filteredData}>
             <defs>
               <linearGradient id="fillNegative" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="rgba(255, 0, 0, 0.8)"
-                  stopOpacity={0.8}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="rgba(255, 0, 0, 0.1)"
-                  stopOpacity={0.1}
-                />
+                <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#94a3b8" stopOpacity={0.03} />
               </linearGradient>
               <linearGradient id="fillPositive" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="rgba(0, 255, 0, 0.8)"
-                  stopOpacity={0.8}
-                />
-                <stop
-                  offset="95%"
-                  stopColor="rgba(0, 255, 0, 0.1)"
-                  stopOpacity={0.1}
-                />
+                <stop offset="5%" stopColor="#0369a1" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#0369a1" stopOpacity={0.03} />
               </linearGradient>
             </defs>
             <CartesianGrid vertical={false} />
@@ -216,17 +185,17 @@ export function PopularityChart() {
             />
             <Area
               dataKey="positive"
-              type="natural"
+              type="linear"
               fill="url(#fillPositive)"
-              stroke="rgb(86, 149, 86)"
+              stroke="#0369a1"
               strokeWidth={1}
               stackId="a"
             />
             <Area
               dataKey="negative"
-              type="natural"
+              type="linear"
               fill="url(#fillNegative)"
-              stroke="rgb(206, 19, 19)"
+              stroke="#94a3b8"
               strokeWidth={1}
               stackId="a"
             />

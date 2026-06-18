@@ -119,6 +119,15 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Hide scrollbars everywhere while keeping scroll behaviour intact. */
+  * {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE / legacy Edge */
+  }
+  *::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, other WebKit */
+  }
   :root {
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;

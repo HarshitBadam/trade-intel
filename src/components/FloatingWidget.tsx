@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import styles from '@/styles/FloatingWidget.module.css';
 import { getSummary } from '@/app/actions';
 
@@ -131,7 +132,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50"
+            className="fixed inset-0 bg-black/20 backdrop-blur-md z-50"
             onClick={handleClose}
           >
             <motion.div
@@ -160,7 +161,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                 opacity: 1
               }}
               transition={{ type: "spring", damping: 25, stiffness: 120 }}
-              className="bg-white rounded-xl overflow-y-auto origin-bottom-right shadow-2xl"
+              className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-xl overflow-y-auto origin-bottom-right shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="p-6 h-full flex flex-col">
@@ -188,7 +189,13 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                               msg.sender === "user" ? "bg-gray-50 text-black" : "text-black"
                             }`}
                           >
-                            {msg.text}
+                            {msg.sender === "ai" ? (
+                              <div className="text-sm leading-relaxed space-y-2 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:underline [&_a]:text-blue-600">
+                                <ReactMarkdown>{msg.text}</ReactMarkdown>
+                              </div>
+                            ) : (
+                              msg.text
+                            )}
                           </div>
                         </div>
                       ))}

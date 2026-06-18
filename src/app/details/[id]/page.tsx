@@ -9,22 +9,11 @@ import { FlipCard } from "@/components/FlipCard";
 import { Divide } from "lucide-react";
 import { PopularityGraph } from "@/components/PopularityGraph";
 import { FloatingWidget } from "@/components/FloatingWidget";
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { News, NewsStatus } from "@/components/RecentInfluential";
 import { fetchDetails } from "./actions";
-
-const topGainer = {
-  ticker: "AAPL", // Stock ticker
-  name: "Apple Inc.", // Company name
-  currentPrice: "$180.25", // Current stock price
-  priceChange: "+$8.50", // Absolute price change
-  percentageChange: "+4.95%", // Percentage price change
-  volume: "78.5M", // Trading volume
-  sentiment: "🟢 75% Bullish", // Sentiment score
-  sentimentSource: ["Twitter", "News", "Analyst Ratings"], // Sources of sentiment
-  reason: "Apple announced record iPhone sales", // Key reason for the price movement
-};
+import { getRelatedStocks } from "@/data/fallbacks";
 
 export type StockData = {
   id: string;
@@ -39,6 +28,9 @@ export type StockData = {
   positiveSentimentPercentage: number;
   negativeSentimentPercentage: number;
   chartData: { date: string; value: number }[];
+  intradayData?: { date: string; value: number }[];
+  weekData?: { date: string; value: number }[];
+  fineData?: { date: string; value: number }[];
   news: News[]; // Assuming news is an array of strings (e.g., URLs or headlines)
   newsStatus: NewsStatus;
   newsUpdatedAt?: string;
@@ -46,7 +38,12 @@ export type StockData = {
 
 export default function Home() {
   const params = useParams();
+  const router = useRouter();
   const stockId = String(params.id);
+
+  // Distinct, deterministic peer stocks for the related rails (was previously
+  // three identical hardcoded AAPL cards).
+  const relatedStocks = useMemo(() => getRelatedStocks(stockId, 3), [stockId]);
 
   // Fetch data from the API
   const [stockData, setStockData] = useState<StockData>();
@@ -97,6 +94,9 @@ export default function Home() {
                         priceChange={stockData?.priceChange}
                         percentChange={stockData?.percentChange}
                         chartData={stockData?.chartData}
+                        intradayData={stockData?.intradayData}
+                        weekData={stockData?.weekData}
+                        fineData={stockData?.fineData}
                         hasShuffle={true}
                       />
                     )
@@ -115,38 +115,48 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Recent Influential Section - Takes up 4 columns on large screens */}
-          <div className="lg:col-span-4 p-8 lg:pl-0">
-            <RecentInfluential
-              news={news}
-              status={stockData?.newsStatus}
-              updatedAt={stockData?.newsUpdatedAt}
-              positiveSentimentPercentage={
-                stockData?.positiveSentimentPercentage || 0
-              }
-              negativeSentimentPercentage={
-                stockData?.negativeSentimentPercentage || 0
-              }
-            />
+          {/* Recent Influential Section - Takes up 4 columns on large screens.
+              On large screens the inner panel is absolutely positioned so it
+              fills (and never exceeds) the chart column's height — its bottom
+              lines up with the chart, and the news list scrolls internally. */}
+          <div className="lg:col-span-4 relative">
+            <div className="p-8 lg:pl-0 lg:absolute lg:inset-0">
+              <RecentInfluential
+                news={news}
+                status={stockData?.newsStatus}
+                updatedAt={stockData?.newsUpdatedAt}
+                positiveSentimentPercentage={
+                  stockData?.positiveSentimentPercentage || 0
+                }
+                negativeSentimentPercentage={
+                  stockData?.negativeSentimentPercentage || 0
+                }
+              />
+            </div>
           </div>
 
           <FloatingWidget />
 
           {/* Related Stocks Section */}
-          <div className="lg:col-span-12 px-8">
+          <div className="lg:col-span-12 px-8 pb-12">
             <h2 className="text-xl font-semibold mb-4 text-start">
               Scroll down to see related stocks ↓
             </h2>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div>
-                <TopGainer title="Similar Performance" data={topGainer} />
-              </div>
-              <div>
-                <TopGainer title="Same Sector" data={topGainer} />
-              </div>
-              <div>
-                <TopGainer title="Similar Market Cap" data={topGainer} />
-              </div>
+              {["Similar Performance", "Same Sector", "Similar Market Cap"].map(
+                (label, i) =>
+                  relatedStocks[i] ? (
+                    <div
+                      key={relatedStocks[i].ticker}
+                      className="cursor-pointer"
+                      onClick={() =>
+                        router.push(`/details/${relatedStocks[i].ticker}`)
+                      }
+                    >
+                      <TopGainer title={label} data={relatedStocks[i]} />
+                    </div>
+                  ) : null
+              )}
             </div>
           </div>
         </div>

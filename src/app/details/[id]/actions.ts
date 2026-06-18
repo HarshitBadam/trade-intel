@@ -6,6 +6,9 @@ import { News, NewsStatus } from "@/components/RecentInfluential";
 import { DataAPIClient } from "@datastax/astra-db-ts";
 import { StockData } from "./page";
 import {
+  generateMockFine,
+  generateMockWeek,
+  generateMockIntraday,
   generateMockNews,
   generateMockStockData,
   searchFallbackTickers,
@@ -76,7 +79,14 @@ export async function searchStocks(query: string): Promise<SearchResult[]> {
 export async function fetchDetails(ticker: string): Promise<StockData> {
   const symbol = sanitizeTicker(ticker);
   if (!symbol) {
-    return buildStockData("N/A", generateMockStockData("N/A"), mockNewsSummary("N/A"));
+    return buildStockData(
+      "N/A",
+      generateMockStockData("N/A"),
+      generateMockIntraday("N/A"),
+      generateMockWeek("N/A"),
+      generateMockFine("N/A"),
+      mockNewsSummary("N/A")
+    );
   }
 
   // On auth failure / throttle, serve deterministic mock data (zero API spend).
@@ -85,21 +95,138 @@ export async function fetchDetails(ticker: string): Promise<StockData> {
     return buildStockData(
       symbol,
       generateMockStockData(symbol),
+      generateMockIntraday(symbol),
+      generateMockWeek(symbol),
+      generateMockFine(symbol),
       mockNewsSummary(symbol)
     );
   }
 
-  const [stock_data, news] = await Promise.all([
+  const [stock_data, intraday, week, fine, news] = await Promise.all([
     getStockCandles(symbol),
+    getIntraday(symbol),
+    getWeek(symbol),
+    getFine(symbol),
     getNews(symbol),
   ]);
 
-  return buildStockData(symbol, stock_data, news);
+  return buildStockData(symbol, stock_data, intraday, week, fine, news);
+}
+
+// ── Homepage "Trending Now" quote ───────────────────────────────────────────
+// Lightweight version of fetchDetails for the homepage: just the price + chart
+// series (daily + intraday), no news/ingestion. Cached fetchers keep repeated
+// chip switches cheap and rate-limit safe.
+export type Quote = {
+  ticker: string;
+  stockPrice: number;
+  priceChange: number;
+  percentChange: number;
+  chartData: { date: string; value: number }[];
+  intradayData: { date: string; value: number }[];
+  weekData: { date: string; value: number }[];
+  fineData: { date: string; value: number }[];
+};
+
+function mockQuote(symbol: string): Quote {
+  const s = generateMockStockData(symbol);
+  return {
+    ticker: symbol,
+    stockPrice: s.stock_price,
+    priceChange: s.price_change,
+    percentChange: s.percent_change,
+    chartData: s.chart_data,
+    intradayData: generateMockIntraday(symbol),
+    weekData: generateMockWeek(symbol),
+    fineData: generateMockFine(symbol),
+  };
+}
+
+export async function fetchQuote(ticker: string): Promise<Quote> {
+  const symbol = sanitizeTicker(ticker);
+  if (!symbol) return mockQuote("N/A");
+
+  const access = await guard("details", { limit: 30, windowSec: 60 });
+  if (!access.ok) return mockQuote(symbol);
+
+  const [stock_data, intraday, week, fine] = await Promise.all([
+    getStockCandles(symbol),
+    getIntraday(symbol),
+    getWeek(symbol),
+    getFine(symbol),
+  ]);
+
+  return {
+    ticker: symbol,
+    stockPrice: stock_data.stock_price,
+    priceChange: stock_data.price_change,
+    percentChange: stock_data.percent_change,
+    chartData: stock_data.chart_data,
+    intradayData: intraday,
+    weekData: week,
+    fineData: fine,
+  };
+}
+
+// ── Homepage "Top News" headline ────────────────────────────────────────────
+export type Headline = {
+  ticker: string;
+  newsTitle: string;
+  newsContent: string;
+  source?: string;
+  date?: string;
+  url?: string;
+  sentiment?: string;
+};
+
+function mockHeadline(symbol: string): Headline {
+  const n = generateMockNews(symbol || "AAPL")[0];
+  return {
+    ticker: symbol,
+    newsTitle: n.metadata.title,
+    newsContent: n.metadata.key_observations,
+    source: n.metadata.source,
+    date: n.metadata.publication_date,
+    url: n.metadata.url,
+    sentiment: n.metadata.sentiment,
+  };
+}
+
+export async function fetchTopHeadline(ticker: string): Promise<Headline> {
+  const symbol = sanitizeTicker(ticker);
+  if (!symbol) return mockHeadline("AAPL");
+
+  const access = await guard("details", { limit: 30, windowSec: 60 });
+  if (!access.ok) return mockHeadline(symbol);
+
+  if (hasPolygon) {
+    try {
+      const news = await getPolygonNewsCached(symbol);
+      if (news.length > 0) {
+        const top = news[0];
+        return {
+          ticker: symbol,
+          newsTitle: top.metadata.title,
+          newsContent: top.metadata.description || top.metadata.key_observations,
+          source: top.metadata.source,
+          date: top.metadata.publication_date,
+          url: top.metadata.url,
+          sentiment: top.metadata.sentiment,
+        };
+      }
+    } catch (error) {
+      console.error("Polygon headline fetch failed, using fallback:", error);
+    }
+  }
+  return mockHeadline(symbol);
 }
 
 function buildStockData(
   symbol: string,
   stock_data: ReturnType<typeof generateMockStockData>,
+  intradayData: { date: string; value: number }[],
+  weekData: { date: string; value: number }[],
+  fineData: { date: string; value: number }[],
   news: NewsSummary
 ): StockData {
   return {
@@ -115,6 +242,9 @@ function buildStockData(
     positiveSentimentPercentage: news.positiveSentiment,
     negativeSentimentPercentage: news.negativeSentiment,
     chartData: stock_data.chart_data,
+    intradayData,
+    weekData,
+    fineData,
     news: news.news,
     newsStatus: news.status,
     newsUpdatedAt: news.updatedAt,
@@ -181,7 +311,8 @@ function latestNewsTimestamp(news: News[]): string | undefined {
 const getCandlesCached = unstable_cache(
   async (ticker: string) => {
     const to = new Date();
-    const from = new Date(to.getTime() - 365 * 24 * 60 * 60 * 1000);
+    // ~5 years of daily history so the "All"/"1Y" ranges are fully populated.
+    const from = new Date(to.getTime() - 5 * 365 * 24 * 60 * 60 * 1000);
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
     // Authorization header (not URL query) to keep the key out of logs.
@@ -313,6 +444,156 @@ async function getStockCandles(ticker: string) {
     }
   }
   return generateMockStockData(ticker);
+}
+
+// ── Intraday candles (powers the 1D range) ──────────────────────────────────
+// Fetches 5-minute bars over the last few days (to clear weekends/holidays),
+// then keeps only the most recent session so 1D shows a single trading day.
+const getIntradayCached = unstable_cache(
+  async (ticker: string): Promise<{ date: string; value: number }[] | null> => {
+    const to = new Date();
+    const from = new Date(to.getTime() - 5 * 24 * 60 * 60 * 1000);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+    const response = await fetch(
+      `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/5/minute/${fmt(
+        from
+      )}/${fmt(to)}?adjusted=true&sort=asc&limit=50000`,
+      {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
+      }
+    );
+    const data = await response.json();
+    const results = data.results as { t: number; c: number }[] | undefined;
+    if (!results || results.length < 2) return null;
+
+    // Keep only the latest session's bars (same UTC calendar day as the last bar).
+    const lastDay = new Date(results[results.length - 1].t)
+      .toISOString()
+      .slice(0, 10);
+    const session = results.filter(
+      (c) => new Date(c.t).toISOString().slice(0, 10) === lastDay
+    );
+    const bars = session.length >= 2 ? session : results;
+    return bars.map((c) => ({
+      date: new Date(c.t).toISOString(),
+      value: c.c,
+    }));
+  },
+  ["polygon-intraday"],
+  { revalidate: 300, tags: ["candles"] }
+);
+
+async function getIntraday(ticker: string): Promise<{ date: string; value: number }[]> {
+  if (hasPolygon) {
+    try {
+      const cached = await getIntradayCached(ticker);
+      if (cached && cached.length >= 2) return cached;
+    } catch (error) {
+      console.error("Polygon intraday fetch failed, using fallback:", error);
+    }
+  }
+  return generateMockIntraday(ticker);
+}
+
+// ── 15-minute candles (power the 1W range) ──────────────────────────────────
+// 15-min bars over the last ~8 days give the 1W view a high-resolution series
+// (~130 trading-hour points for a real ticker) rather than the coarser hourly
+// tier used for 1M / 3M.
+const getWeekCached = unstable_cache(
+  async (ticker: string): Promise<{ date: string; value: number }[] | null> => {
+    const to = new Date();
+    const from = new Date(to.getTime() - 8 * 24 * 60 * 60 * 1000);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+    const response = await fetch(
+      `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/15/minute/${fmt(
+        from
+      )}/${fmt(to)}?adjusted=true&sort=asc&limit=50000`,
+      {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
+      }
+    );
+    const data = await response.json();
+    const results = data.results as { t: number; c: number }[] | undefined;
+    if (!results || results.length < 2) return null;
+
+    // Keep the last 7 days of bars relative to the latest one.
+    const latest = results[results.length - 1].t;
+    const cutoff = latest - 7 * 24 * 60 * 60 * 1000;
+    const recent = results.filter((c) => c.t >= cutoff);
+    const bars = recent.length >= 2 ? recent : results;
+    return bars.map((c) => ({
+      date: new Date(c.t).toISOString(),
+      value: c.c,
+    }));
+  },
+  ["polygon-week-15m"],
+  { revalidate: 300, tags: ["candles"] }
+);
+
+async function getWeek(ticker: string): Promise<{ date: string; value: number }[]> {
+  if (hasPolygon) {
+    try {
+      const cached = await getWeekCached(ticker);
+      if (cached && cached.length >= 2) return cached;
+    } catch (error) {
+      console.error("Polygon 15m fetch failed, using fallback:", error);
+    }
+  }
+  return generateMockWeek(ticker);
+}
+
+// ── 1-hour candles (power the 1M / 3M ranges) ───────────────────────────────
+// Hourly bars over the last ~95 days keep the medium ranges densely bucketed
+// (hundreds of points) instead of a blocky daily zigzag. 6M+ stays on daily
+// candles. Live tickers only return trading-hour bars (~7/day), so a month is
+// ~150 points and three months ~450 — all smooth.
+const getFineCached = unstable_cache(
+  async (ticker: string): Promise<{ date: string; value: number }[] | null> => {
+    const to = new Date();
+    const from = new Date(to.getTime() - 96 * 24 * 60 * 60 * 1000);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+    const response = await fetch(
+      `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/hour/${fmt(
+        from
+      )}/${fmt(to)}?adjusted=true&sort=asc&limit=50000`,
+      {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
+      }
+    );
+    const data = await response.json();
+    const results = data.results as { t: number; c: number }[] | undefined;
+    if (!results || results.length < 2) return null;
+
+    // Keep the last ~92 days of bars relative to the latest one.
+    const latest = results[results.length - 1].t;
+    const cutoff = latest - 92 * 24 * 60 * 60 * 1000;
+    const recent = results.filter((c) => c.t >= cutoff);
+    const bars = recent.length >= 2 ? recent : results;
+    return bars.map((c) => ({
+      date: new Date(c.t).toISOString(),
+      value: c.c,
+    }));
+  },
+  ["polygon-fine-1h"],
+  { revalidate: 300, tags: ["candles"] }
+);
+
+async function getFine(ticker: string): Promise<{ date: string; value: number }[]> {
+  if (hasPolygon) {
+    try {
+      const cached = await getFineCached(ticker);
+      if (cached && cached.length >= 2) return cached;
+    } catch (error) {
+      console.error("Polygon 1h fetch failed, using fallback:", error);
+    }
+  }
+  return generateMockFine(ticker);
 }
 
 async function getNews(ticker: string): Promise<NewsSummary> {

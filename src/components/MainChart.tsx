@@ -8,16 +8,10 @@ import {
   ReferenceDot,
   ReferenceLine,
   XAxis,
-  Label,
+  YAxis,
 } from "recharts";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   ChartConfig,
   ChartContainer,
@@ -25,7 +19,6 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { useChart } from "@/context/ChartContext";
-import { getStockCandles } from "@/app/alphavantage_actions";
 
 type ChartDataPoint = {
   date: number;
@@ -33,27 +26,75 @@ type ChartDataPoint = {
   mobile: number;
 };
 
+type IncomingPoint = { date: string | number; value: number };
+
 const chartConfig = {
   views: {
     label: "Stock Price",
   },
   desktop: {
-    label: "Desktop",
+    label: "Price",
     color: "#0369a1",
   },
   mobile: {
-    label: "Mobile",
+    label: "Price",
     color: "#475569",
   },
 } satisfies ChartConfig;
 
-export default function MainChart({ cd }: { cd: any }) {
-  const [activeChart, setActiveChart] = React.useState<"desktop" | "mobile">(
-    "desktop"
-  );
-  const [chartData, setChartData] = React.useState<ChartDataPoint[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
+export default function MainChart({
+  cd,
+  rangeDays = 365,
+  intraday = false,
+}: {
+  cd: IncomingPoint[];
+  rangeDays?: number;
+  intraday?: boolean;
+}) {
+  const [activeChart] = React.useState<"desktop" | "mobile">("desktop");
   const { hoveredTimestamp } = useChart();
+
+  // Render exactly the candles handed down from the page (live Polygon data for
+  // a real ticker, or deterministic mock data in demo mode). Both arrive as
+  // `{ date, value }`; normalise to the numeric-timestamp shape the chart uses.
+  const chartData = React.useMemo<ChartDataPoint[]>(() => {
+    if (!Array.isArray(cd)) return [];
+    return cd
+      .map((p) => {
+        const t = typeof p.date === "number" ? p.date : new Date(p.date).getTime();
+        return { date: t, desktop: p.value, mobile: p.value };
+      })
+      .filter((p) => !Number.isNaN(p.date))
+      .sort((a, b) => a.date - b.date);
+  }, [cd]);
+
+  // Window the series to the selected range, anchored to the latest candle. If
+  // the filter would leave too few points (e.g. sparse demo data), fall back to
+  // the full series so the chart never collapses to a flat segment.
+  const visibleData = React.useMemo<ChartDataPoint[]>(() => {
+    if (chartData.length === 0 || rangeDays === Infinity) return chartData;
+    const latest = chartData[chartData.length - 1].date;
+    const cutoff = latest - rangeDays * 24 * 60 * 60 * 1000;
+    const filtered = chartData.filter((d) => d.date >= cutoff);
+    return filtered.length >= 2 ? filtered : chartData;
+  }, [chartData, rangeDays]);
+
+  // Tighten the y-scale to the visible window with a 5% cushion top & bottom, so
+  // low-volatility windows (notably 1D) fill the height instead of flat-lining,
+  // and the line never sits flush against the edges. The axis itself is hidden.
+  const yDomain = React.useMemo<[number, number]>(() => {
+    if (visibleData.length === 0) return [0, 1];
+    let min = Infinity;
+    let max = -Infinity;
+    for (const d of visibleData) {
+      if (d[activeChart] < min) min = d[activeChart];
+      if (d[activeChart] > max) max = d[activeChart];
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+    const range = max - min;
+    const pad = range > 0 ? range * 0.1 : Math.max(Math.abs(max) * 0.1, 1);
+    return [min - pad, max + pad];
+  }, [visibleData, activeChart]);
 
   // News cards publish a `YYYY-MM-DD` day string while the chart's x values are
   // epoch-ms numbers. Match by calendar day so the cross-highlight lands on the
@@ -67,35 +108,8 @@ export default function MainChart({ cd }: { cd: any }) {
         : d.toISOString().slice(0, 10);
     };
     const target = toDayKey(hoveredTimestamp);
-    return chartData.find((d) => toDayKey(d.date) === target);
-  }, [hoveredTimestamp, chartData]);
-
-  React.useEffect(() => {
-    getStockCandles("IBM").then((data) => {
-      setChartData(data);
-      setIsLoading(false);
-    });
-  }, []);
-
-  const total = React.useMemo(() => {
-    if (!chartData || chartData.length === 0) {
-      return { desktop: 0, mobile: 0 };
-    }
-    return {
-      desktop: chartData.reduce((acc, curr) => acc + (curr.desktop || 0), 0),
-      mobile: chartData.reduce((acc, curr) => acc + (curr.mobile || 0), 0),
-    };
-  }, [chartData]);
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="px-2 sm:p-6 flex items-center justify-center min-h-[300px]">
-          <p className="text-muted-foreground">Loading chart data...</p>
-        </CardContent>
-      </Card>
-    );
-  }
+    return visibleData.find((d) => toDayKey(d.date) === target);
+  }, [hoveredTimestamp, visibleData]);
 
   if (!chartData || chartData.length === 0) {
     return (
@@ -108,7 +122,7 @@ export default function MainChart({ cd }: { cd: any }) {
   }
 
   return (
-    <Card className="">
+    <Card className="border-0 shadow-none bg-transparent">
       <CardContent className="px-2 sm:p-6">
         <ChartContainer
           config={chartConfig}
@@ -116,7 +130,7 @@ export default function MainChart({ cd }: { cd: any }) {
         >
           <LineChart
             accessibilityLayer
-            data={chartData}
+            data={visibleData}
             margin={{
               left: 12,
               right: 12,
@@ -131,21 +145,44 @@ export default function MainChart({ cd }: { cd: any }) {
               minTickGap={32}
               tickFormatter={(value) => {
                 const date = new Date(value);
-                
-                return date.toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                });
+                if (intraday) {
+                  return date.toLocaleTimeString("en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  });
+                }
+                return rangeDays <= 180
+                  ? date.toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })
+                  : date.toLocaleDateString("en-US", {
+                      month: "short",
+                      year: "2-digit",
+                    });
               }}
             />
+            <YAxis hide domain={yDomain} />
             <ChartTooltip
               content={
                 <ChartTooltipContent
                   className="w-[150px]"
                   nameKey="views"
-                  labelFormatter={(value) => {
-                   
-                    const date = new Date(value);
+                  labelFormatter={(_value, payload) => {
+                    // The x value is a numeric timestamp, so the chart helper
+                    // passes the series label here instead of the date. Read the
+                    // real timestamp off the hovered point's payload.
+                    const ts = payload?.[0]?.payload?.date ?? _value;
+                    const date = new Date(ts);
+                    if (Number.isNaN(date.getTime())) return "";
+                    if (intraday) {
+                      return date.toLocaleString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      });
+                    }
                     return date.toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
@@ -157,9 +194,9 @@ export default function MainChart({ cd }: { cd: any }) {
             />
             <Line
               dataKey={activeChart}
-              type="monotone"
+              type="linear"
               stroke={`var(--color-${activeChart})`}
-              strokeWidth={1}
+              strokeWidth={1.5}
               dot={false}
             />
 
@@ -186,17 +223,3 @@ export default function MainChart({ cd }: { cd: any }) {
     </Card>
   );
 }
-
-const CustomTooltip = ({ value, date }: { value: number; date: string }) => {
-  return (
-    <div className="bg-white p-2 rounded-lg shadow-lg border border-gray-200">
-      <div className="text-sm font-medium">
-        {new Date(date).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        })}
-      </div>
-      <div className="text-lg font-bold">{value} views</div>
-    </div>
-  );
-};

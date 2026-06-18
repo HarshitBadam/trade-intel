@@ -38,13 +38,6 @@ export default function RootLayout({
           <ChartProvider>
             <main className="flex-1">{children}</main>
           </ChartProvider>
-          <footer>
-            <div className="px-4 sm:px-6 lg:px-8 mx-auto max-w-9xl flex h-14 items-center">
-              <p className="text-sm text-muted-foreground">
-                Built with Next.js and shadcn/ui
-              </p>
-            </div>
-          </footer>
         </div>
       </body>
     </html>
