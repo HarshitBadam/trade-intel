@@ -9,8 +9,8 @@ import { FloatingWidget } from "@/components/FloatingWidget";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { News, NewsStatus } from "@/components/RecentInfluential";
-import { fetchDetails } from "./actions";
-import { getRelatedStocks } from "@/data/fallbacks";
+import { fetchDetails, fetchMovers, type Movers } from "./actions";
+import { moverToCard } from "@/lib/movers";
 
 // Shown while the client-side fetch for the selected ticker is in flight so the
 // page never flashes an empty chart card / 0% sentiment panel.
@@ -90,10 +90,6 @@ export default function Home() {
   const router = useRouter();
   const stockId = String(params.id);
 
-  // Distinct, deterministic peer stocks for the related rails (was previously
-  // three identical hardcoded AAPL cards).
-  const relatedStocks = useMemo(() => getRelatedStocks(stockId, 3), [stockId]);
-
   // Fetch data from the API
   const [stockData, setStockData] = useState<StockData>();
 
@@ -101,16 +97,30 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    // When the news is being enriched in the background (`analyzing`), poll once
-    // more after ~30s so the placeholder upgrades to the AI-analysed Astra rows.
+    // While news is being enriched in the background (`analyzing`), poll a few
+    // more times so the placeholder upgrades to the AI-analysed Astra rows. Cap
+    // the retries so we don't poll forever if enrichment can't complete (e.g.
+    // Gemini quota) — after that we just keep showing the live headlines.
     let retry: ReturnType<typeof setTimeout> | undefined;
+    const MAX_RETRIES = 3;
+    let attempts = 0;
 
     const load = () => {
       fetchDetails(stockId).then((data) => {
         if (cancelled || !data) return;
+        const stillAnalyzing = data.newsStatus === "analyzing";
+        const giveUp = stillAnalyzing && attempts >= MAX_RETRIES;
+        // Stop the perpetual "analyzing" badge once we've given up retrying.
+        if (giveUp) {
+          data = {
+            ...data,
+            newsStatus: data.news.length > 0 ? "live" : "sample",
+          };
+        }
         setStockData(data);
         setNews(data.news);
-        if (data.newsStatus === "analyzing") {
+        if (stillAnalyzing && !giveUp) {
+          attempts += 1;
           retry = setTimeout(load, 30_000);
         }
       });
@@ -122,6 +132,39 @@ export default function Home() {
       if (retry) clearTimeout(retry);
     };
   }, [stockId]);
+
+  // Real market movers for the "Trending Stocks" rail (replaces the old fake
+  // "similar performance / sector / market cap" cards).
+  const [movers, setMovers] = useState<Movers | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchMovers().then((m) => {
+      if (!cancelled) setMovers(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Pick three distinct tickers (Top Gainer / Loser / Most Active), skipping the
+  // one currently being viewed so the rail always shows different stocks.
+  const trending = useMemo(() => {
+    if (!movers) return [] as { title: string; data: ReturnType<typeof moverToCard> }[];
+    const current = stockId.toUpperCase();
+    const used = new Set<string>([current]);
+    const pick = (list: typeof movers.gainers) =>
+      list.find((m) => !used.has(m.ticker));
+    const out: { title: string; data: ReturnType<typeof moverToCard> }[] = [];
+    const add = (title: string, m?: (typeof movers.gainers)[number]) => {
+      if (!m) return;
+      used.add(m.ticker);
+      out.push({ title, data: moverToCard(m) });
+    };
+    add("Top Gainer", pick(movers.gainers));
+    add("Top Loser", pick(movers.losers));
+    add("Most Active", pick(movers.mostActive));
+    return out;
+  }, [movers, stockId]);
 
   return (
     <div className="min-h-screen">
@@ -192,28 +235,26 @@ export default function Home() {
 
           <FloatingWidget />
 
-          {/* Related Stocks Section */}
-          <div className="lg:col-span-12 px-8 pb-12">
-            <h2 className="text-xl font-semibold mb-4 text-start">
-              Related Stocks
-            </h2>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {["Similar Performance", "Same Sector", "Similar Market Cap"].map(
-                (label, i) =>
-                  relatedStocks[i] ? (
-                    <div
-                      key={relatedStocks[i].ticker}
-                      className="cursor-pointer"
-                      onClick={() =>
-                        router.push(`/details/${relatedStocks[i].ticker}`)
-                      }
-                    >
-                      <TopGainer title={label} data={relatedStocks[i]} />
-                    </div>
-                  ) : null
-              )}
+          {/* Trending Stocks Section — real market movers (Polygon), not the
+              current ticker. Replaces the old mock "similar" cards. */}
+          {trending.length > 0 && (
+            <div className="lg:col-span-12 px-8 pb-12">
+              <h2 className="text-xl font-semibold mb-4 text-start">
+                Trending Stocks
+              </h2>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {trending.map(({ title, data }) => (
+                  <div
+                    key={data.ticker}
+                    className="cursor-pointer"
+                    onClick={() => router.push(`/details/${data.ticker}`)}
+                  >
+                    <TopGainer title={title} data={data} />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import styles from '@/styles/FloatingWidget.module.css';
-import { getSummary } from '@/app/actions';
+import { getSummary, warmStockSage } from '@/app/actions';
 
 type Message = {
   id: number;
@@ -15,7 +15,7 @@ const initialMessages: Message[] = [
   {
     id: 1,
     sender: 'ai',
-    text: 'Welcome! I can provide stock trends, sentiment analysis, and market updates. How can I assist you with the stock market today?',
+    text: 'Welcome to StockSage. Ask me about any stock trend or its news sentiment. How can I help you today?',
   },
 ];
 
@@ -76,6 +76,12 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isThinking]);
 
+  // Nudge the hosted AI Space awake on mount so it's warm by the time the user
+  // sends their first message (avoids the cold-start delay).
+  useEffect(() => {
+    warmStockSage();
+  }, []);
+
   const sendMessage = async () => {
     const text = inputValue.trim();
     if (!text || isThinking) return;
@@ -88,7 +94,16 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
     setIsThinking(true);
 
     try {
-      const reply = await getSummary(text, sessionIdRef.current ?? undefined);
+      // Pass the turns so far (excludes the canned welcome) so the flow has
+      // conversational memory for follow-up questions.
+      const history = messages
+        .filter((m) => m.id !== 1)
+        .map((m) => ({ role: m.sender, text: m.text }));
+      const reply = await getSummary(
+        text,
+        sessionIdRef.current ?? undefined,
+        history
+      );
       setMessages((prev) => [
         ...prev,
         { id: prev.length + 1, sender: 'ai', text: reply.text },
@@ -99,7 +114,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
         {
           id: prev.length + 1,
           sender: 'ai',
-          text: 'Sorry, something went wrong while fetching an answer. Please try again.',
+          text: 'Something went wrong while fetching an answer. Please try again.',
         },
       ]);
     } finally {
@@ -217,7 +232,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                           type="text" 
                           value={inputValue}
                           onChange={(e) => setInputValue(e.target.value)}
-                          placeholder="Ask me about any stock or market trend..." 
+                          placeholder="Ask me about any stock or market trend" 
                           className="w-full outline-none bg-transparent" 
                         />
                       </form>

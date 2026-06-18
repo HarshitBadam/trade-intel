@@ -67,7 +67,7 @@ function StatusBadge({
       text: "text-green-700",
     },
     analyzing: {
-      label: "Analyzing latest news…",
+      label: "Analyzing latest news",
       dot: "bg-yellow-500 animate-pulse",
       text: "text-yellow-700",
     },
@@ -179,7 +179,10 @@ export function RecentInfluential({
           <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="flex relative">
               <div className="flex-1 flex flex-col divide-y divide-border/70 overflow-x-hidden">
-                {status === "analyzing" && (
+                {/* Only show the placeholder card while there's nothing else to
+                    read. Once live headlines are present, the "Analyzing…" badge
+                    alone signals background enrichment — no stuck skeleton. */}
+                {status === "analyzing" && news.length === 0 && (
                   <NewsCardSkeleton />
                 )}
                 {news.map((news) => (

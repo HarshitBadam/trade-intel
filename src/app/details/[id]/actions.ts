@@ -241,6 +241,7 @@ export type Movers = {
   gainers: Mover[];
   losers: Mover[];
   shifts: Mover[];
+  mostActive: Mover[];
 };
 
 const MOVER_NAMES = new Map(FALLBACK_TICKERS.map((t) => [t.ticker, t.name]));
@@ -306,10 +307,12 @@ function summarizeMovers(all: Mover[]): Movers {
   const byAbs = [...all].sort(
     (a, b) => Math.abs(b.percentChange) - Math.abs(a.percentChange)
   );
+  const byVolume = [...all].sort((a, b) => b.volume - a.volume);
   return {
     gainers: byPct.slice(0, 3),
     losers: byPct.slice(-3).reverse(),
     shifts: byAbs.slice(0, 3),
+    mostActive: byVolume.slice(0, 3),
   };
 }
 
@@ -326,6 +329,76 @@ export async function fetchMovers(): Promise<Movers> {
     }
   }
   return summarizeMovers(mockMovers());
+}
+
+// ── Live quotes for the chat layer ──────────────────────────────────────────
+// A whole-market snapshot from the (free-tier) grouped-daily endpoint, keyed by
+// ticker so the chat can attach real price/%-change/volume to any symbol a user
+// mentions. One cached upstream call serves every lookup.
+export type LiveQuote = {
+  ticker: string;
+  price: number;
+  change: number;
+  percentChange: number;
+  volume: number;
+};
+
+const getMarketMapCached = unstable_cache(
+  async (): Promise<Record<string, LiveQuote>> => {
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    for (let back = 1; back <= 6; back++) {
+      const day = new Date(Date.now() - back * 24 * 60 * 60 * 1000);
+      const response = await fetch(
+        `https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/${fmt(
+          day
+        )}?adjusted=true`,
+        {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
+        }
+      );
+      if (!response.ok) continue;
+      const data = await response.json();
+      const rows = (data.results ?? []) as GroupedRow[];
+      if (rows.length === 0) continue;
+
+      const map: Record<string, LiveQuote> = {};
+      for (const r of rows) {
+        if (r.o > 0) {
+          map[r.T] = {
+            ticker: r.T,
+            price: r.c,
+            change: r.c - r.o,
+            percentChange: ((r.c - r.o) / r.o) * 100,
+            volume: r.v,
+          };
+        }
+      }
+      return map;
+    }
+    return {};
+  },
+  ["polygon-market-map"],
+  { revalidate: 3600, tags: ["movers"] }
+);
+
+export async function getLiveQuotes(tickers: string[]): Promise<LiveQuote[]> {
+  if (!hasPolygon || tickers.length === 0) return [];
+  try {
+    const map = await getMarketMapCached();
+    const seen = new Set<string>();
+    const out: LiveQuote[] = [];
+    for (const raw of tickers) {
+      const t = raw.toUpperCase();
+      if (seen.has(t)) continue;
+      seen.add(t);
+      if (map[t]) out.push(map[t]);
+    }
+    return out.slice(0, 4);
+  } catch (error) {
+    console.error("Live quote lookup failed:", error);
+    return [];
+  }
 }
 
 function buildStockData(

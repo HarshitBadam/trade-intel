@@ -13,8 +13,8 @@ export const maxDuration = 60;
 
 export const metadata: Metadata = {
   title: {
-    default: "TradeIntel — Stock Sentiment Dashboard",
-    template: "%s · TradeIntel",
+    default: "TradeIntel Stock Sentiment Dashboard",
+    template: "%s | TradeIntel",
   },
   description:
     "Track stock performance and AI-powered news sentiment with TradeIntel.",
