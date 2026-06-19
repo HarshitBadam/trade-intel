@@ -308,6 +308,58 @@ export function searchFallbackTickers(query: string) {
   ).slice(0, 5);
 }
 
+/**
+ * Editorial peer map for the "Related Stocks" rail.
+ *
+ * Polygon's related-companies graph is excellent for US large/mid-caps but is
+ * EMPTY for many foreign ADRs (INFY, TSM, BABA, SAP, …) and thinly-covered
+ * names — those records often don't even carry a SIC industry code. Rather than
+ * let the rail silently vanish (or pad it with irrelevant mega-caps), we fall
+ * back to this hand-curated list of GENUINE industry competitors.
+ *
+ * Every peer is US-listed so it resolves to a real live quote from the market
+ * snapshot. Keys and values are upper-case tickers. Only consulted when
+ * Polygon's own peer graph returns nothing for the symbol.
+ */
+export const CURATED_PEERS: Record<string, string[]> = {
+  // IT services / consulting
+  INFY: ["ACN", "CTSH", "WIT", "IBM", "EPAM", "GLOB"],
+  WIT: ["INFY", "ACN", "CTSH", "IBM", "EPAM"],
+  ACN: ["IBM", "CTSH", "INFY", "WIT", "EPAM"],
+  CTSH: ["ACN", "INFY", "WIT", "IBM", "EPAM"],
+  // Semiconductors / foundries / equipment
+  TSM: ["NVDA", "AMD", "AVGO", "INTC", "QCOM", "MU", "ASML"],
+  ASML: ["AMAT", "LRCX", "KLAC", "TSM", "NVDA"],
+  // China internet / e-commerce
+  BABA: ["JD", "PDD", "AMZN", "MELI", "SE"],
+  JD: ["BABA", "PDD", "AMZN", "MELI"],
+  PDD: ["BABA", "JD", "AMZN", "MELI"],
+  // Enterprise software
+  SAP: ["ORCL", "CRM", "MSFT", "ADBE", "NOW"],
+  // Pharma / healthcare ADRs
+  NVO: ["LLY", "PFE", "MRK", "AMGN", "ABBV"],
+  AZN: ["PFE", "MRK", "JNJ", "LLY", "BMY"],
+  NVS: ["PFE", "MRK", "JNJ", "LLY", "ABBV"],
+  GSK: ["PFE", "MRK", "JNJ", "AZN", "BMY"],
+  // Autos
+  TM: ["GM", "F", "HMC", "STLA", "TSLA"],
+  HMC: ["TM", "GM", "F", "STLA"],
+  // Consumer / staples
+  UL: ["PG", "KO", "CL", "KMB", "PEP"],
+  // Banks
+  HSBC: ["JPM", "BAC", "C", "WFC"],
+  // Energy majors
+  BP: ["XOM", "CVX", "SHEL", "COP"],
+  SHEL: ["XOM", "CVX", "BP", "COP"],
+  // Consumer electronics / gaming
+  SONY: ["MSFT", "AAPL", "EA", "TTWO"],
+};
+
+/** Genuine industry peers for `symbol`, used only when Polygon has no graph. */
+export function getCuratedPeers(symbol: string): string[] {
+  return CURATED_PEERS[symbol.toUpperCase()] ?? [];
+}
+
 export type RelatedStock = {
   ticker: string;
   name: string;
