@@ -141,7 +141,7 @@ export function RecentInfluential({
   ];
 
   return (
-    <div className="w-full rounded-lg p-6 shadow-md flex flex-col h-full">
+    <div className="w-full rounded-lg p-6 glass-card shadow-md flex flex-col h-full">
       <div className="pb-8">
         <h2 className="text-xl font-bold mb-6">Sentiment Score Gauge</h2>
         <div className="flex justify-center items-center gap-4 pb-3">

@@ -133,7 +133,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
         <div className="fixed bottom-6 right-6 pointer-events-auto z-10">
           <div
             onClick={handleOpen}
-            className="bg-card text-card-foreground border border-border rounded-lg shadow-lg p-4 w-[200px] hover:shadow-xl transition-shadow cursor-pointer"
+            className="bg-card text-card-foreground border border-border glass-card rounded-lg shadow-lg p-4 w-[200px] hover:shadow-xl transition-shadow cursor-pointer"
           >
             <h3 className="font-semibold mb-2">StockSage</h3>
             <div className="text-sm text-muted-foreground">Get Stock Insights</div>

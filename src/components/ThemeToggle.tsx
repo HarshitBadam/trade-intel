@@ -43,15 +43,25 @@ export function ThemeToggle() {
     };
   }, []);
 
-  // Just flip `.dark` + persist. The colour cross-fade is handled entirely in
-  // CSS by transitioning the @property-typed theme variables on :root, so it's
-  // smooth and consistent across engines (incl. Safari) with no JS timing.
+  // Flip `.dark` + persist. The colour cross-fade is handled entirely in CSS by
+  // transitioning the @property-typed theme variables on :root, so it's smooth
+  // and consistent across engines (incl. Safari) with no JS timing.
+  //
+  // System-preference UX: if the user's pick matches the OS, we *clear* the
+  // saved override so the app keeps auto-following the system (and the
+  // matchMedia listener above will track future OS changes). Only a choice that
+  // diverges from the OS is persisted as an explicit override.
   const toggle = () => {
     const root = document.documentElement;
     const next = !root.classList.contains("dark");
     root.classList.toggle("dark", next);
     try {
-      localStorage.setItem("theme", next ? "dark" : "light");
+      const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (next === systemDark) {
+        localStorage.removeItem("theme");
+      } else {
+        localStorage.setItem("theme", next ? "dark" : "light");
+      }
     } catch {}
     setIsDark(next);
   };

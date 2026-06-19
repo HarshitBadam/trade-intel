@@ -120,7 +120,7 @@ export function StockGraph({
     : chartData;
 
   return (
-    <div className="w-full h-full shadow-md bg-accent/10 rounded-lg flex flex-col">
+    <div className="w-full h-full shadow-md bg-accent/10 glass-card rounded-lg flex flex-col">
       <div className="flex justify-between">
         <div className="stock-text-description-left p-8">
           <h2 className="text-2xl font-bold">{companyName}</h2>

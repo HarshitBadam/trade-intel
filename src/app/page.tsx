@@ -162,10 +162,10 @@ export default function StocksPage() {
         <div className="flex flex-col gap-3">
           <Overview title="Top Sentiment Shifts" shifts={shiftRows} />
           <div 
-            className="rounded-lg h-1/2 bg-card shadow-md flex flex-col items-start justify-center p-4 cursor-pointer" 
+            className="rounded-lg h-1/2 bg-card glass-card shadow-md flex flex-col items-start justify-center p-4 cursor-pointer" 
             onClick={handleWidgetOpen}
           >
-            <div className="text-4xl font-bold text-foreground w-full">Ask StockSage.</div>
+            <div className="text-4xl font-bold siri-text w-full">Ask StockSage.</div>
             <div className="text-sm text-muted-foreground mt-3">
               Your AI-powered market assistant for real-time stock insights and sentiment analysis.
             </div>
