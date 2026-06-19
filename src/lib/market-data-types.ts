@@ -61,6 +61,20 @@ export type LiveQuote = {
   volume: number;
 };
 
+// Richer, multi-horizon quote used to ground the StockSage chat. Built from
+// per-ticker daily aggregates (the same source the detail page uses), so it is
+// reliable for any ticker without depending on the market-wide grouped snapshot.
+export type ChatQuote = {
+  ticker: string;
+  price: number;
+  /** latest session change vs the prior close, in percent */
+  dayPct: number;
+  /** trailing performance, in percent; null when not enough history */
+  weekPct: number | null;
+  monthPct: number | null;
+  yearPct: number | null;
+};
+
 export type RelatedCard = { title: string; data: RelatedStock };
 
 export type NewsSummary = {

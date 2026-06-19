@@ -34,6 +34,7 @@ import type {
   Mover,
   Movers,
   LiveQuote,
+  ChatQuote,
   RelatedCard,
   NewsSummary,
   TickerDetail,
@@ -51,6 +52,7 @@ export type {
   Mover,
   Movers,
   LiveQuote,
+  ChatQuote,
   RelatedCard,
   NewsSummary,
   TickerDetail,
@@ -880,6 +882,49 @@ export async function getLiveQuotes(tickers: string[]): Promise<LiveQuote[]> {
     console.error("Live quote lookup failed:", error);
     return [];
   }
+}
+
+// Multi-horizon quotes for the chat. Unlike getLiveQuotes (which reads the
+// market-wide grouped snapshot and can be empty before a session closes), this
+// pulls per-ticker daily aggregates — the same reliable, free-tier source the
+// detail page uses — so any mentioned ticker resolves to real numbers without
+// needing the dashboard to have been visited first. Results are cached per
+// ticker (shared with the detail page), so it adds no meaningful API cost.
+export async function getChatQuotes(tickers: string[]): Promise<ChatQuote[]> {
+  if (!hasPolygon || tickers.length === 0) return [];
+  const uniq = [...new Set(tickers.map((t) => t.toUpperCase()))].slice(0, 3);
+
+  const quotes = await Promise.all(
+    uniq.map(async (ticker): Promise<ChatQuote | null> => {
+      try {
+        const c = await getCandlesCached(ticker);
+        if (!c || c.chart_data.length < 2) return null;
+        const closes = c.chart_data.map((d) => d.value);
+        const i = closes.length - 1;
+        const pctBack = (sessions: number): number | null => {
+          const j = i - sessions;
+          return j >= 0 && closes[j] > 0
+            ? ((closes[i] - closes[j]) / closes[j]) * 100
+            : null;
+        };
+        return {
+          ticker,
+          price: c.stock_price,
+          dayPct: c.percent_change,
+          weekPct: pctBack(5),
+          monthPct: pctBack(21),
+          yearPct: pctBack(252),
+        };
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  // Preserve the caller's ordering and drop any that failed to resolve.
+  return uniq
+    .map((t) => quotes.find((q) => q && q.ticker === t))
+    .filter((q): q is ChatQuote => Boolean(q));
 }
 
 export async function getRelatedStocksData(
