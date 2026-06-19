@@ -41,10 +41,18 @@ const NAME_TO_TICKER: Record<string, string> = {
   visa: "V",
   mastercard: "MA",
   infosys: "INFY",
+  wipro: "WIT",
   spotify: "SPOT",
   shopify: "SHOP",
   snowflake: "SNOW",
   zoom: "ZM",
+  // Major indices — no live quote on the free tier, but resolving them keeps
+  // the comparison subject explicit so the model addresses it instead of
+  // silently dropping it (e.g. "Tesla vs the Nasdaq").
+  nasdaq: "IXIC",
+  "dow jones": "DJI",
+  "s&p 500": "GSPC",
+  "s&p500": "GSPC",
 };
 
 // Common all-caps tokens that are NOT tickers, so we don't fetch quotes for them.

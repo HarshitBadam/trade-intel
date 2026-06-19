@@ -1,66 +1,103 @@
 "use server";
 
+import { unstable_cache } from "next/cache";
 import {
   hasLangflow,
   LANGFLOW_API_KEY,
   LANGFLOW_BASE_URL,
+  LANGFLOW_CHAT_LLM_ID,
+  LANGFLOW_CHAT_PROMPT_ID,
   LANGFLOW_FLOW_ID,
 } from "@/lib/config";
 import { guard } from "@/lib/guard";
 import { resolveTickers } from "@/lib/tickers";
-import { formatVolume } from "@/lib/movers";
-import { getLiveQuotes } from "@/app/details/[id]/actions";
+import { getChatQuotes } from "@/lib/market-data";
+import { STOCKSAGE_SYSTEM } from "@/lib/stocksage-prompt";
 
 export type ChatTurn = { role: "user" | "ai"; text: string };
 
 /**
- * Builds the payload actually sent to Langflow. The raw user message alone has
- * no memory and no live figures, which makes answers drift between topics and
- * stay vague. We prepend two grounding blocks:
- *   1. Recent conversation, so follow-ups ("how about some numbers?") stay on
- *      the same subject instead of re-querying from scratch.
- *   2. Live quotes (price / % change / volume) for any ticker mentioned in the
- *      latest turn or recently, so the model can answer with real numbers.
+ * Per-request grounding handed to the chat flow's RAG Prompt Builder via
+ * Langflow "tweaks". Keeping these OUT of the search query is deliberate: the
+ * raw user message is what gets embedded for vector search (clean, relevant
+ * retrieval), while live figures / history / focus tickers are injected
+ * straight into the prompt the LLM sees. This is what lets answers lead with
+ * real numbers and stay on-topic across follow-ups without polluting retrieval.
  */
-async function buildEnrichedMessage(
+type ChatGrounding = {
+  /** Real price / % change / volume lines for mentioned tickers (or ""). */
+  liveData: string;
+  /** Recent conversation turns so follow-ups resolve their subject (or ""). */
+  history: string;
+  /** Comma-separated tickers in scope, so retrieved news stays on-subject. */
+  focusTickers: string;
+};
+
+function fmtPct(p: number | null): string | null {
+  if (p === null || Number.isNaN(p)) return null;
+  return `${p >= 0 ? "+" : ""}${p.toFixed(1)}%`;
+}
+
+// Index symbols don't resolve to a tradable per-share quote, so we name them
+// explicitly in the grounding. This guarantees the model identifies and
+// addresses an index (e.g. "vs IXIC") instead of silently dropping it.
+const INDEX_NAMES: Record<string, string> = {
+  IXIC: "Nasdaq Composite",
+  COMP: "Nasdaq Composite",
+  NDX: "Nasdaq 100",
+  GSPC: "S&P 500",
+  SPX: "S&P 500",
+  DJI: "Dow Jones Industrial Average",
+  RUT: "Russell 2000",
+  VIX: "CBOE Volatility Index",
+};
+
+async function buildGrounding(
   message: string,
   history: ChatTurn[]
-): Promise<string> {
+): Promise<ChatGrounding> {
   // Resolve tickers from the current turn first, then recent turns, so a bare
   // follow-up still carries the subject (e.g. "Tesla" from two messages ago).
   const recentText = [message, ...history.slice(-4).map((t) => t.text)].join(
     " "
   );
   const tickers = resolveTickers(recentText);
-  const quotes = await getLiveQuotes(tickers);
 
-  const sections: string[] = [];
+  // Indices have no per-share quote; everything else gets a real multi-horizon
+  // quote from per-ticker aggregates.
+  const indices = tickers.filter((t) => INDEX_NAMES[t]);
+  const equities = tickers.filter((t) => !INDEX_NAMES[t]);
+  const quotes = await getChatQuotes(equities);
 
-  if (quotes.length > 0) {
-    const lines = quotes.map((q) => {
-      const sign = q.percentChange >= 0 ? "+" : "";
-      return `- ${q.ticker}: $${q.price.toFixed(2)}, ${sign}${q.change.toFixed(
-        2
-      )} (${sign}${q.percentChange.toFixed(2)}%) latest session, volume ${formatVolume(
-        q.volume
-      )}`;
-    });
-    sections.push(
-      "[LIVE MARKET DATA] Cite these exact figures. Do not invent any others.\n" +
-        lines.join("\n")
-    );
-  }
+  // One dense, quantitative line per ticker: price + multi-horizon performance.
+  // This is what lets answers lead with real numbers for ANY ticker, with no
+  // dependency on the dashboard having been visited first.
+  const quoteLines = quotes.map((q) => {
+    const horizons = [
+      `day ${fmtPct(q.dayPct)}`,
+      q.weekPct !== null ? `1W ${fmtPct(q.weekPct)}` : null,
+      q.monthPct !== null ? `1M ${fmtPct(q.monthPct)}` : null,
+      q.yearPct !== null ? `1Y ${fmtPct(q.yearPct)}` : null,
+    ].filter(Boolean);
+    return `- ${q.ticker}: $${q.price.toFixed(2)} (${horizons.join(", ")})`;
+  });
 
-  if (history.length > 0) {
-    const turns = history
-      .slice(-6)
-      .map((t) => `${t.role === "ai" ? "StockSage" : "User"}: ${t.text}`)
-      .join("\n");
-    sections.push("[CONVERSATION SO FAR]\n" + turns);
-  }
+  // Name any index the user referenced so the model never drops it.
+  const indexLines = indices.map(
+    (t) => `- ${t}: ${INDEX_NAMES[t]} (market index; refer to it by name)`
+  );
 
-  sections.push("[USER MESSAGE]\n" + message);
-  return sections.join("\n\n");
+  const liveData = [...quoteLines, ...indexLines].join("\n");
+
+  const historyText =
+    history.length > 0
+      ? history
+          .slice(-6)
+          .map((t) => `${t.role === "ai" ? "StockSage" : "User"}: ${t.text}`)
+          .join("\n")
+      : "";
+
+  return { liveData, history: historyText, focusTickers: tickers.join(", ") };
 }
 
 /**
@@ -96,6 +133,58 @@ export async function warmStockSage(): Promise<void> {
   }
 }
 
+/**
+ * Resolve the chat flow's node IDs from the *live* hosted flow.
+ *
+ * Langflow regenerates every node's random suffix on import (e.g.
+ * `StockSageRagPrompt-FwmYE` → `StockSageRagPrompt-p58fa`), and any tweak aimed
+ * at an ID that no longer exists is silently dropped — which previously killed
+ * all of our grounding and the system-message override after a re-import.
+ *
+ * So rather than hard-code IDs that drift, we read the flow once and match nodes
+ * by their stable prefix. The result is cached, so this is one extra request per
+ * cache window (not per chat), and it self-heals across future re-imports.
+ * Falls back to the configured IDs if the lookup can't run.
+ */
+const resolveChatNodeIds = unstable_cache(
+  async (): Promise<{ promptId: string; llmId: string }> => {
+    const fallback = {
+      promptId: LANGFLOW_CHAT_PROMPT_ID,
+      llmId: LANGFLOW_CHAT_LLM_ID,
+    };
+    if (!hasLangflow || !LANGFLOW_BASE_URL) return fallback;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15_000);
+      const res = await fetch(
+        `${LANGFLOW_BASE_URL}/api/v1/flows/${LANGFLOW_FLOW_ID}`,
+        {
+          headers: { "x-api-key": LANGFLOW_API_KEY as string },
+          cache: "no-store",
+          signal: controller.signal,
+        }
+      ).finally(() => clearTimeout(timeout));
+      if (!res.ok) return fallback;
+      const flow = await res.json();
+      const nodes: Array<{ id?: unknown }> = flow?.data?.nodes ?? [];
+      const idByPrefix = (prefix: string, fb: string): string => {
+        const hit = nodes.find(
+          (n) => typeof n.id === "string" && (n.id as string).startsWith(prefix)
+        );
+        return typeof hit?.id === "string" ? (hit.id as string) : fb;
+      };
+      return {
+        promptId: idByPrefix("StockSageRagPrompt", fallback.promptId),
+        llmId: idByPrefix("LanguageModel", fallback.llmId),
+      };
+    } catch {
+      return fallback;
+    }
+  },
+  ["langflow-chat-node-ids"],
+  { revalidate: 1800 }
+);
+
 export type ChatReply = {
   text: string;
   /** true when the answer came from the live Langflow flow */
@@ -128,8 +217,13 @@ export async function getSummary(
   // across turns. Cap its length so a hostile client can't send a huge value.
   const session = (sessionId ?? "").toString().slice(0, 128).trim();
 
-  // Ground the message with recent conversation + live quotes before sending.
-  const enriched = await buildEnrichedMessage(trimmed, history);
+  // Live quotes + conversation + focus tickers, kept separate from the search
+  // query so retrieval stays clean (see buildGrounding). Resolve the live node
+  // IDs in parallel so tweaks land on the right nodes regardless of re-imports.
+  const [grounding, nodeIds] = await Promise.all([
+    buildGrounding(trimmed, history),
+    resolveChatNodeIds(),
+  ]);
 
   if (hasLangflow) {
     try {
@@ -151,13 +245,29 @@ export async function getSummary(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          input_value: enriched,
+          // The CLEAN user message is what gets embedded for Astra vector
+          // search and shown as the question. Grounding goes via tweaks below.
+          input_value: trimmed,
           output_type: "chat",
           input_type: "chat",
           // session_id threads Langflow's chat memory across turns. Omit it when
           // absent so the flow falls back to its own default session.
           ...(session ? { session_id: session } : {}),
-          tweaks: {},
+          // Inject grounding straight into the RAG Prompt Builder so the LLM
+          // leads with live figures and resolves follow-ups, without polluting
+          // the retrieval query. Also push the behavioural contract onto the
+          // Language Model node so StockSage's voice is owned by the app (no
+          // flow re-import needed to refine it).
+          tweaks: {
+            [nodeIds.promptId]: {
+              live_data: grounding.liveData,
+              history: grounding.history,
+              focus_tickers: grounding.focusTickers,
+            },
+            [nodeIds.llmId]: {
+              system_message: STOCKSAGE_SYSTEM,
+            },
+          },
         }),
         signal: controller.signal,
       }).finally(() => clearTimeout(timeout));

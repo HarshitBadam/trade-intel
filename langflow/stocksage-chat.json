@@ -146,6 +146,64 @@
         "sourceHandle": "{œdataTypeœ:œLanguageModelComponentœ,œidœ:œLanguageModelComponent-0ZJmWœ,œnameœ:œtext_outputœ,œoutput_typesœ:[œMessageœ]}",
         "target": "ChatOutput-HXFDh",
         "targetHandle": "{œfieldNameœ:œinput_valueœ,œidœ:œChatOutput-HXFDhœ,œinputTypesœ:[œDataœ,œJSONœ,œDataFrameœ,œTableœ,œMessageœ],œtypeœ:œotherœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
+            "dataType": "ChatInput",
+            "id": "ChatInput-k6AeC",
+            "name": "message",
+            "output_types": [
+              "Message"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "query",
+            "id": "TavilySearchComponent-LyDPQ",
+            "inputTypes": [
+              "Message"
+            ],
+            "type": "str"
+          }
+        },
+        "id": "reactflow__edge-ChatInput-k6AeC{œdataTypeœ:œChatInputœ,œidœ:œChatInput-k6AeCœ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}-TavilySearchComponent-LyDPQ{œfieldNameœ:œqueryœ,œidœ:œTavilySearchComponent-LyDPQœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}",
+        "selected": false,
+        "source": "ChatInput-k6AeC",
+        "sourceHandle": "{œdataTypeœ:œChatInputœ,œidœ:œChatInput-k6AeCœ,œnameœ:œmessageœ,œoutput_typesœ:[œMessageœ]}",
+        "target": "TavilySearchComponent-LyDPQ",
+        "targetHandle": "{œfieldNameœ:œqueryœ,œidœ:œTavilySearchComponent-LyDPQœ,œinputTypesœ:[œMessageœ],œtypeœ:œstrœ}"
+      },
+      {
+        "animated": false,
+        "className": "",
+        "data": {
+          "sourceHandle": {
+            "dataType": "TavilySearchComponent",
+            "id": "TavilySearchComponent-LyDPQ",
+            "name": "dataframe",
+            "output_types": [
+              "Table"
+            ]
+          },
+          "targetHandle": {
+            "fieldName": "web_results",
+            "id": "StockSageRagPrompt-FwmYE",
+            "inputTypes": [
+              "Data",
+              "DataFrame",
+              "Table"
+            ],
+            "type": "other"
+          }
+        },
+        "id": "reactflow__edge-TavilySearchComponent-LyDPQ{œdataTypeœ:œTavilySearchComponentœ,œidœ:œTavilySearchComponent-LyDPQœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}-StockSageRagPrompt-FwmYE{œfieldNameœ:œweb_resultsœ,œidœ:œStockSageRagPrompt-FwmYEœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}",
+        "selected": false,
+        "source": "TavilySearchComponent-LyDPQ",
+        "sourceHandle": "{œdataTypeœ:œTavilySearchComponentœ,œidœ:œTavilySearchComponent-LyDPQœ,œnameœ:œdataframeœ,œoutput_typesœ:[œTableœ]}",
+        "target": "StockSageRagPrompt-FwmYE",
+        "targetHandle": "{œfieldNameœ:œweb_resultsœ,œidœ:œStockSageRagPrompt-FwmYEœ,œinputTypesœ:[œDataœ,œDataFrameœ,œTableœ],œtypeœ:œotherœ}"
       }
     ],
     "nodes": [
@@ -1276,7 +1334,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": true,
                 "type": "int",
-                "value": 6
+                "value": 8
               },
               "reranker": {
                 "_input_type": "DropdownInput",
@@ -1488,13 +1546,16 @@
             "beta": false,
             "conditional_paths": [],
             "custom_fields": {},
-            "description": "Ground the user's question in retrieved StockSage news before the LLM answers.",
+            "description": "Ground the question in live quotes, fresh web results and retrieved news before the LLM answers.",
             "display_name": "RAG Prompt Builder",
             "documentation": "",
             "edited": true,
             "field_order": [
               "question",
-              "context"
+              "context",
+              "live_data",
+              "history",
+              "focus_tickers"
             ],
             "frozen": false,
             "icon": "filter",
@@ -1553,7 +1614,7 @@
                 "show": true,
                 "title_case": false,
                 "type": "code",
-                "value": "from langflow.custom import Component\nfrom langflow.io import HandleInput, Output\nfrom langflow.schema.message import Message\n\n\nclass CustomComponent(Component):\n    display_name = \"RAG Prompt Builder\"\n    description = \"Ground the user's question in retrieved StockSage news before the LLM answers.\"\n    icon = \"filter\"\n    name = \"StockSageRagPrompt\"\n\n    MAX_ARTICLES = 8\n\n    inputs = [\n        HandleInput(\n            name=\"question\",\n            display_name=\"Question\",\n            input_types=[\"Message\"],\n            info=\"The user's chat message.\",\n        ),\n        HandleInput(\n            name=\"context\",\n            display_name=\"Retrieved News\",\n            input_types=[\"Data\", \"DataFrame\", \"Table\"],\n            info=\"Vector-search results from the Astra DB news store.\",\n        ),\n    ]\n    outputs = [\n        Output(display_name=\"Prompt\", name=\"prompt\", method=\"build_prompt\"),\n    ]\n\n    def _records(self) -> list:\n        data = self.context\n        if data is None:\n            return []\n        if hasattr(data, \"to_dict\"):\n            try:\n                return data.to_dict(orient=\"records\")\n            except Exception:  # noqa: BLE001\n                pass\n        if isinstance(data, list):\n            return [getattr(x, \"data\", x) for x in data]\n        inner = getattr(data, \"data\", None)\n        if isinstance(inner, list):\n            return [getattr(x, \"data\", x) for x in inner]\n        if isinstance(inner, dict):\n            return [inner]\n        return []\n\n    def _question_text(self) -> str:\n        q = self.question\n        if isinstance(q, str):\n            return q.strip()\n        return (getattr(q, \"text\", \"\") or \"\").strip()\n\n    def build_prompt(self) -> Message:\n        blocks: list[str] = []\n        for record in self._records()[: self.MAX_ARTICLES]:\n            if not isinstance(record, dict):\n                continue\n            meta = record.get(\"metadata\") if isinstance(record.get(\"metadata\"), dict) else record\n            ticker = meta.get(\"ticker\") or meta.get(\"ticket\") or \"?\"\n            title = meta.get(\"title\") or \"(untitled)\"\n            source = meta.get(\"source\") or \"unknown source\"\n            date = meta.get(\"publication_date\") or \"n/a\"\n            sentiment = meta.get(\"sentiment\") or \"Neutral\"\n            body = (\n                meta.get(\"key_observations\")\n                or meta.get(\"description\")\n                or record.get(\"page_content\")\n                or \"\"\n            )\n            body = body.strip() if isinstance(body, str) else \"\"\n            blocks.append(\n                f\"[{ticker}] {title}\\nSource: {source} | Date: {date} | Sentiment: {sentiment}\\n{body}\"\n            )\n\n        context = \"\\n\\n---\\n\\n\".join(b for b in blocks if b)\n        question = self._question_text() or \"Give me a brief overview of the market.\"\n\n        if context:\n            text = (\n                \"Some recent market news is included below. Use any item that is relevant to the \"\n                \"QUESTION and cite its source and sentiment. Silently ignore anything that is not \"\n                \"relevant. Never mention this context, never comment on whether it covers the \"\n                \"question, and never write phrases like 'the provided news context does not cover'. \"\n                \"Answer the QUESTION naturally from the relevant news and your own market knowledge. \"\n                \"Never invent prices, dates or figures.\\n\\n\"\n                f\"NEWS CONTEXT:\\n{context}\\n\\n\"\n                f\"QUESTION: {question}\"\n            )\n        else:\n            text = (\n                \"Answer the QUESTION directly, concisely and helpfully. \"\n                \"Never invent specific prices, dates or figures. \"\n                f\"\\n\\nQUESTION: {question}\"\n            )\n\n        self.status = f\"{len(blocks)} context block(s)\"\n        return Message(text=text)"
+                "value": "import re\n\nfrom langflow.custom import Component\nfrom langflow.io import HandleInput, MultilineInput, Output\nfrom langflow.schema.message import Message\n\n\nclass CustomComponent(Component):\n    display_name = \"RAG Prompt Builder\"\n    description = \"Ground the question in live quotes, fresh web results and retrieved news before the LLM answers.\"\n    icon = \"filter\"\n    name = \"StockSageRagPrompt\"\n\n    MAX_ARTICLES = 6\n    MAX_WEB = 5\n    _IMPORTANCE = {\"high\": 0, \"medium\": 1, \"low\": 2}\n    # Uppercase tokens that look like tickers but are not, so parsing a question\n    # in the Playground (where the app's focus tweak is absent) stays sane.\n    _NOT_TICKERS = {\n        \"AND\", \"OR\", \"THE\", \"VS\", \"AN\", \"TO\", \"IS\", \"IT\", \"OF\", \"ON\", \"IN\",\n        \"BE\", \"DO\", \"US\", \"AI\", \"EV\", \"IPO\", \"CEO\", \"CFO\", \"ETF\", \"GDP\",\n        \"WWDC\", \"USD\", \"EPS\", \"YOY\", \"SEC\", \"FED\", \"API\", \"ATH\", \"USA\",\n    }\n    _STOP_WORDS = {\n        \"how\", \"hows\", \"whats\", \"what\", \"the\", \"versus\", \"and\", \"are\", \"doing\",\n        \"about\", \"compared\", \"compare\", \"former\", \"latter\", \"now\", \"days\",\n        \"stock\", \"stocks\", \"share\", \"shares\", \"price\", \"than\", \"with\", \"for\",\n        \"this\", \"that\", \"these\", \"those\", \"you\", \"your\", \"give\", \"tell\", \"vs\",\n        \"look\", \"looking\", \"today\", \"currently\", \"vs.\", \"between\",\n    }\n\n    inputs = [\n        HandleInput(\n            name=\"question\",\n            display_name=\"Question\",\n            input_types=[\"Message\"],\n            info=\"The user's latest chat message (also the vector-search query).\",\n        ),\n        HandleInput(\n            name=\"context\",\n            display_name=\"Retrieved News\",\n            input_types=[\"Data\", \"DataFrame\", \"Table\"],\n            info=\"Vector-search results from the Astra DB news store.\",\n        ),\n        HandleInput(\n            name=\"web_results\",\n            display_name=\"Web Results\",\n            input_types=[\"Data\", \"DataFrame\", \"Table\"],\n            info=\"Live web-search results (Tavily) for up-to-date context on any entity.\",\n        ),\n        MultilineInput(\n            name=\"live_data\",\n            display_name=\"Live Market Data\",\n            info=\"Real-time price / percent change lines injected by the app.\",\n        ),\n        MultilineInput(\n            name=\"history\",\n            display_name=\"Conversation History\",\n            info=\"Recent turns so follow-up questions keep their subject.\",\n        ),\n        MultilineInput(\n            name=\"focus_tickers\",\n            display_name=\"Focus Tickers\",\n            info=\"Comma-separated tickers in scope; keeps retrieved news on-subject.\",\n        ),\n    ]\n    outputs = [Output(display_name=\"Prompt\", name=\"prompt\", method=\"build_prompt\")]\n\n    def _to_records(self, data) -> list:\n        if data is None:\n            return []\n        if hasattr(data, \"to_dict\"):\n            try:\n                return data.to_dict(orient=\"records\")\n            except Exception:  # noqa: BLE001\n                pass\n        if isinstance(data, list):\n            return [getattr(x, \"data\", x) for x in data]\n        inner = getattr(data, \"data\", None)\n        if isinstance(inner, list):\n            return [getattr(x, \"data\", x) for x in inner]\n        if isinstance(inner, dict):\n            return [inner]\n        return []\n\n    @staticmethod\n    def _as_text(value) -> str:\n        if value is None:\n            return \"\"\n        if isinstance(value, str):\n            return value.strip()\n        return (getattr(value, \"text\", \"\") or \"\").strip()\n\n    def _focus(self) -> set:\n        tickers = set()\n        for part in self._as_text(self.focus_tickers).replace(\",\", \" \").split():\n            if part:\n                tickers.add(part.upper())\n        for tok in re.findall(r\"\\b[A-Z]{2,5}\\b\", self._as_text(self.question)):\n            if tok not in self._NOT_TICKERS:\n                tickers.add(tok)\n        return tickers\n\n    def _keywords(self) -> set:\n        words = re.findall(r\"[a-zA-Z]{3,}\", self._as_text(self.question).lower())\n        return {w for w in words if w not in self._STOP_WORDS}\n\n    def _news_row(self, record):\n        if not isinstance(record, dict):\n            return None\n        meta = record.get(\"metadata\") if isinstance(record.get(\"metadata\"), dict) else record\n        body = (\n            meta.get(\"key_observations\")\n            or meta.get(\"description\")\n            or record.get(\"page_content\")\n            or \"\"\n        )\n        return {\n            \"ticker\": str(meta.get(\"ticker\") or meta.get(\"ticket\") or \"?\").upper(),\n            \"title\": meta.get(\"title\") or \"(untitled)\",\n            \"source\": meta.get(\"source\") or \"unknown source\",\n            \"date\": str(meta.get(\"publication_date\") or \"n/a\"),\n            \"sentiment\": meta.get(\"sentiment\") or \"Neutral\",\n            \"importance\": str(meta.get(\"importance\") or \"Medium\"),\n            \"body\": body.strip() if isinstance(body, str) else \"\",\n        }\n\n    def _news_rows(self) -> list:\n        rows = [r for r in (self._news_row(rec) for rec in self._to_records(self.context)) if r]\n        if not rows:\n            return []\n        focus = self._focus()\n        words = self._keywords()\n        # Keep an article if it is tagged with a focus ticker OR it actually\n        # mentions a subject/keyword from the question. This surfaces relevant\n        # news even when it is filed under a different ticker (e.g. a market\n        # round-up that discusses several names), instead of hard-dropping it.\n        if focus or words:\n            def relevant(r):\n                hay = f\"{r['ticker']} {r['title']} {r['source']} {r['body']}\".lower()\n                if focus and r[\"ticker\"] in focus:\n                    return True\n                return any(w in hay for w in words)\n\n            rows = [r for r in rows if relevant(r)]\n        rows.sort(key=lambda r: r[\"date\"], reverse=True)\n        rows.sort(key=lambda r: self._IMPORTANCE.get(r[\"importance\"].lower(), 1))\n        return rows[: self.MAX_ARTICLES]\n\n    def _web_rows(self) -> list:\n        out = []\n        for rec in self._to_records(self.web_results):\n            if not isinstance(rec, dict):\n                continue\n            title = rec.get(\"title\") or rec.get(\"name\") or \"\"\n            url = rec.get(\"url\") or rec.get(\"link\") or rec.get(\"source\") or \"\"\n            content = (\n                rec.get(\"content\")\n                or rec.get(\"snippet\")\n                or rec.get(\"text\")\n                or rec.get(\"page_content\")\n                or rec.get(\"answer\")\n                or \"\"\n            )\n            date = rec.get(\"published_date\") or rec.get(\"date\") or \"\"\n            title = str(title).strip()\n            content = str(content).strip()\n            if not (title or content):\n                continue\n            out.append(\n                {\n                    \"title\": title,\n                    \"url\": str(url).strip(),\n                    \"content\": content,\n                    \"date\": str(date).strip(),\n                }\n            )\n        return out[: self.MAX_WEB]\n\n    def build_prompt(self) -> Message:\n        sections: list[str] = []\n\n        live = self._as_text(self.live_data)\n        if live:\n            sections.append(\n                \"LIVE MARKET DATA (quote these figures exactly; never alter or invent any):\\n\" + live\n            )\n\n        web = self._web_rows()\n        if web:\n            blocks = []\n            for i, w in enumerate(web, start=1):\n                block = f\"{i}. {w['title']}\".rstrip()\n                meta = \", \".join(x for x in (w[\"url\"], w[\"date\"]) if x)\n                if meta:\n                    block += f\"\\n   ({meta})\"\n                if w[\"content\"]:\n                    block += \"\\n   \" + w[\"content\"][:400]\n                blocks.append(block)\n            sections.append(\n                \"WEB CONTEXT (fresh search results; treat as the current truth, cite the source and date, ignore anything off topic):\\n\"\n                + \"\\n\".join(blocks)\n            )\n\n        rows = self._news_rows()\n        if rows:\n            blocks = []\n            for i, r in enumerate(rows, start=1):\n                block = (\n                    f\"{i}. [{r['ticker']}] {r['title']}\\n\"\n                    f\"   {r['source']}, {r['date']}, sentiment: {r['sentiment']}, importance: {r['importance']}\"\n                )\n                if r[\"body\"]:\n                    block += \"\\n   \" + r[\"body\"]\n                blocks.append(block)\n            sections.append(\n                \"BACKGROUND NEWS you may draw on (cite only what is relevant; never mention this list, its size or its absence):\\n\"\n                + \"\\n\".join(blocks)\n            )\n\n        convo = self._as_text(self.history)\n        if convo:\n            sections.append(\n                \"EARLIER CONVERSATION (resolve any follow-up reference against this thread):\\n\" + convo\n            )\n\n        question = self._as_text(self.question) or \"Give me a brief, concrete read on the market right now.\"\n        sections.append(\"QUESTION:\\n\" + question)\n\n        self.status = f\"web={len(web)} news={len(rows)} live={'yes' if live else 'no'}\"\n        return Message(text=\"\\n\\n\".join(sections))\n"
               },
               "context": {
                 "_input_type": "HandleInput",
@@ -1591,6 +1652,111 @@
                 "list": false,
                 "list_add_label": "Add More",
                 "name": "question",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "other",
+                "value": ""
+              },
+              "live_data": {
+                "_input_type": "MultilineInput",
+                "advanced": false,
+                "ai_enabled": false,
+                "copy_field": false,
+                "display_name": "Live Market Data",
+                "dynamic": false,
+                "info": "Real-time price / percent change / volume lines injected by the app.",
+                "input_types": [],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "live_data",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "history": {
+                "_input_type": "MultilineInput",
+                "advanced": false,
+                "ai_enabled": false,
+                "copy_field": false,
+                "display_name": "Conversation History",
+                "dynamic": false,
+                "info": "Recent turns so follow-up questions keep their subject.",
+                "input_types": [],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "history",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "focus_tickers": {
+                "_input_type": "MultilineInput",
+                "advanced": false,
+                "ai_enabled": false,
+                "copy_field": false,
+                "display_name": "Focus Tickers",
+                "dynamic": false,
+                "info": "Comma-separated tickers in scope; keeps retrieved news on-subject.",
+                "input_types": [],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "multiline": true,
+                "name": "focus_tickers",
+                "override_skip": false,
+                "password": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "web_results": {
+                "_input_type": "HandleInput",
+                "advanced": false,
+                "display_name": "Web Results",
+                "dynamic": false,
+                "info": "Live web-search results (Tavily) for up-to-date context on any entity.",
+                "input_types": [
+                  "Data",
+                  "DataFrame",
+                  "Table"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "web_results",
                 "override_skip": false,
                 "placeholder": "",
                 "required": false,
@@ -2062,7 +2228,7 @@
                 "trace_as_metadata": true,
                 "track_in_telemetry": false,
                 "type": "str",
-                "value": "You are StockSage, a sharp concise financial assistant for a stock-sentiment dashboard. Use the news context when it is relevant to the question; otherwise answer naturally from your own market knowledge. Be specific about tickers, sentiment and sources; never fabricate prices, dates or figures. When the user message contains a LIVE MARKET DATA block, lead with those exact figures (price, percent change, volume) and build the answer around them. When it contains a CONVERSATION SO FAR block, treat the latest message as a continuation of that thread and resolve any follow-up references from it. Be concrete and quantitative whenever numbers are available. Keep answers tight and skimmable, and add a one-line risk caveat when giving any outlook. Writing style: never use em dashes, en dashes or middle-dot separators. Do not stack clauses together with commas. Prefer short, direct sentences ended with a period. Write in a natural human voice, never a flowery AI tone."
+                "value": "You are StockSage, an equity research assistant for a live stock-sentiment dashboard. You write like a sharp analyst briefing a busy client. You are concise, specific and quantitative.\n\nRULE ZERO: Never tell the user anything about the material you were given. Do not say whether news was or was not provided. Do not call information limited, specific, available or unavailable. Never write phrases like 'no news was provided', 'no specific news', 'no information was provided' or 'based on the provided news'. You may cite a real article inline like (CNBC, 2026-06-13), but never narrate the existence, amount or absence of your sources. Just answer the question.\n\nHOW TO ANSWER (do not print these labels):\n1. Open with the bottom line in one sentence. Name the ticker. Give the latest price and percent change when they are provided. State the current sentiment read as Bullish, Bearish or Mixed.\n2. Add 2 to 4 tight points that justify the read. Anchor every point to a concrete fact such as a price move, a percentage, a catalyst, or a news item with its source and date.\n3. If you give a forward view, close with one specific thing to watch such as a real catalyst, level or event. Do not close with a generic disclaimer.\n\nUSING THE INPUTS:\n- LIVE MARKET DATA holds real figures. Quote them exactly. Never invent a price, change, volume or date that was not given.\n- BACKGROUND NEWS items each carry a source, date and sentiment. Cite the relevant ones inline and reflect their sentiment. Use only items about the company in question and ignore the rest in silence.\n- EARLIER CONVERSATION is the prior thread. Treat the newest question as a continuation. Resolve follow-up references like 'the former', 'the latter' or 'that one' from it.\n- When you have no figure or news for something, answer from your own market knowledge and state what is known plainly.\n\nREFERENCES AND COMPARISONS:\n- If a reference like 'the former' cannot be resolved from the question or the conversation, ask one short clarifying question instead of guessing a company.\n- When asked to compare against an index (IXIC is the Nasdaq Composite, SPX or GSPC is the S&P 500, DJI is the Dow Jones), address that index explicitly. If you lack a live figure for it, compare qualitatively rather than ignoring it or inventing a number.\n- For private companies such as SpaceX, say plainly that they are not publicly traded, give known context like last reported valuation and main business lines without inventing figures, and note there is no live quote.\n\nBE DECISIVE: commit to a sentiment read even when the picture is nuanced, then explain the nuance. Never fabricate numbers, dates, sources or quotes; if you lack a figure, speak qualitatively.\n\nSTYLE:\n- Short, direct sentences, each ending in a period. Never use em dashes, en dashes or middle dots. Do not stack clauses together with commas.\n- Use compact markdown. A short bold lead-in or a tight bullet list is good when you list drivers. Keep the whole reply skimmable and usually between 60 and 130 words. Expand only when the question covers several tickers.\n- Natural, human, analyst voice. Never flowery and never an AI tone."
               },
               "temperature": {
                 "_input_type": "SliderInput",
@@ -2092,7 +2258,7 @@
                 "tool_mode": false,
                 "track_in_telemetry": false,
                 "type": "slider",
-                "value": 0.1
+                "value": 0.2
               }
             },
             "tool_mode": false
@@ -2411,6 +2577,417 @@
           "y": 340
         },
         "selected": false,
+        "type": "genericNode"
+      },
+      {
+        "data": {
+          "description": "**Tavily AI** is a search engine optimized for LLMs and RAG,         aimed at efficient, quick, and persistent search results.",
+          "display_name": "Tavily AI Search",
+          "id": "TavilySearchComponent-LyDPQ",
+          "node": {
+            "base_classes": [
+              "Table"
+            ],
+            "beta": false,
+            "conditional_paths": [],
+            "custom_fields": {},
+            "description": "**Tavily Search** is a search engine optimized for LLMs and RAG,         aimed at efficient, quick, and persistent search results.",
+            "display_name": "Tavily Search API",
+            "documentation": "",
+            "edited": false,
+            "field_order": [
+              "api_key",
+              "query",
+              "search_depth",
+              "chunks_per_source",
+              "topic",
+              "days",
+              "max_results",
+              "include_answer",
+              "time_range",
+              "include_images",
+              "include_domains",
+              "exclude_domains",
+              "include_raw_content"
+            ],
+            "frozen": false,
+            "icon": "TavilyIcon",
+            "last_updated": "2026-06-17T10:14:33.327Z",
+            "legacy": false,
+            "lf_version": "1.10.0",
+            "metadata": {
+              "code_hash": "5638a305a99c",
+              "dependencies": {
+                "dependencies": [
+                  {
+                    "name": "httpx",
+                    "version": "0.28.1"
+                  },
+                  {
+                    "name": "lfx",
+                    "version": "1.10.0"
+                  }
+                ],
+                "total_dependencies": 2
+              },
+              "module": "custom_components.tavily_search_api"
+            },
+            "minimized": false,
+            "output_types": [],
+            "outputs": [
+              {
+                "allows_loop": false,
+                "cache": true,
+                "display_name": "Table",
+                "group_outputs": false,
+                "hidden": null,
+                "loop_types": null,
+                "method": "fetch_content_dataframe",
+                "name": "dataframe",
+                "options": null,
+                "required_inputs": null,
+                "selected": "Table",
+                "tool_mode": true,
+                "types": [
+                  "Table"
+                ],
+                "value": "__UNDEFINED__"
+              }
+            ],
+            "pinned": false,
+            "template": {
+              "_type": "Component",
+              "api_key": {
+                "_input_type": "SecretStrInput",
+                "advanced": false,
+                "display_name": "Tavily API Key",
+                "dynamic": false,
+                "info": "Your Tavily API Key.",
+                "input_types": [],
+                "load_from_db": false,
+                "name": "api_key",
+                "override_skip": false,
+                "password": true,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "chunks_per_source": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "display_name": "Chunks Per Source",
+                "dynamic": false,
+                "info": "The number of content chunks to retrieve from each source (1-3). Only works with advanced search.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "chunks_per_source",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "int",
+                "value": 3
+              },
+              "code": {
+                "advanced": true,
+                "dynamic": true,
+                "fileTypes": [],
+                "file_path": "",
+                "info": "",
+                "list": false,
+                "load_from_db": false,
+                "multiline": true,
+                "name": "code",
+                "password": false,
+                "placeholder": "",
+                "required": true,
+                "show": true,
+                "title_case": false,
+                "type": "code",
+                "value": "import httpx\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.inputs.inputs import BoolInput, DropdownInput, IntInput, MessageTextInput, SecretStrInput\nfrom lfx.log.logger import logger\nfrom lfx.schema.data import Data\nfrom lfx.schema.dataframe import DataFrame\nfrom lfx.template.field.base import Output\n\n\nclass TavilySearchComponent(Component):\n    display_name = \"Tavily Search API\"\n    description = \"\"\"**Tavily Search** is a search engine optimized for LLMs and RAG, \\\n        aimed at efficient, quick, and persistent search results.\"\"\"\n    icon = \"TavilyIcon\"\n\n    inputs = [\n        SecretStrInput(\n            name=\"api_key\",\n            display_name=\"Tavily API Key\",\n            required=True,\n            info=\"Your Tavily API Key.\",\n        ),\n        MessageTextInput(\n            name=\"query\",\n            display_name=\"Search Query\",\n            info=\"The search query you want to execute with Tavily.\",\n            tool_mode=True,\n        ),\n        DropdownInput(\n            name=\"search_depth\",\n            display_name=\"Search Depth\",\n            info=\"The depth of the search.\",\n            options=[\"basic\", \"advanced\"],\n            value=\"advanced\",\n            advanced=True,\n        ),\n        IntInput(\n            name=\"chunks_per_source\",\n            display_name=\"Chunks Per Source\",\n            info=(\"The number of content chunks to retrieve from each source (1-3). Only works with advanced search.\"),\n            value=3,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"topic\",\n            display_name=\"Search Topic\",\n            info=\"The category of the search.\",\n            options=[\"general\", \"news\"],\n            value=\"general\",\n            advanced=True,\n        ),\n        IntInput(\n            name=\"days\",\n            display_name=\"Days\",\n            info=\"Number of days back from current date to include. Only available with news topic.\",\n            value=7,\n            advanced=True,\n        ),\n        IntInput(\n            name=\"max_results\",\n            display_name=\"Max Results\",\n            info=\"The maximum number of search results to return.\",\n            value=5,\n            advanced=True,\n        ),\n        BoolInput(\n            name=\"include_answer\",\n            display_name=\"Include Answer\",\n            info=\"Include a short answer to original query.\",\n            value=True,\n            advanced=True,\n        ),\n        DropdownInput(\n            name=\"time_range\",\n            display_name=\"Time Range\",\n            info=\"The time range back from the current date to filter results.\",\n            options=[\"day\", \"week\", \"month\", \"year\"],\n            value=None,  # Default to None to make it optional\n            advanced=True,\n        ),\n        BoolInput(\n            name=\"include_images\",\n            display_name=\"Include Images\",\n            info=\"Include a list of query-related images in the response.\",\n            value=True,\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"include_domains\",\n            display_name=\"Include Domains\",\n            info=\"Comma-separated list of domains to include in the search results.\",\n            advanced=True,\n        ),\n        MessageTextInput(\n            name=\"exclude_domains\",\n            display_name=\"Exclude Domains\",\n            info=\"Comma-separated list of domains to exclude from the search results.\",\n            advanced=True,\n        ),\n        BoolInput(\n            name=\"include_raw_content\",\n            display_name=\"Include Raw Content\",\n            info=\"Include the cleaned and parsed HTML content of each search result.\",\n            value=False,\n            advanced=True,\n        ),\n    ]\n\n    outputs = [\n        Output(display_name=\"Table\", name=\"dataframe\", method=\"fetch_content_dataframe\"),\n    ]\n\n    def fetch_content(self) -> list[Data]:\n        try:\n            # Only process domains if they're provided\n            include_domains = None\n            exclude_domains = None\n\n            if self.include_domains:\n                include_domains = [domain.strip() for domain in self.include_domains.split(\",\") if domain.strip()]\n\n            if self.exclude_domains:\n                exclude_domains = [domain.strip() for domain in self.exclude_domains.split(\",\") if domain.strip()]\n\n            url = \"https://api.tavily.com/search\"\n            headers = {\n                \"content-type\": \"application/json\",\n                \"accept\": \"application/json\",\n            }\n\n            payload = {\n                \"api_key\": self.api_key,\n                \"query\": self.query,\n                \"search_depth\": self.search_depth,\n                \"topic\": self.topic,\n                \"max_results\": self.max_results,\n                \"include_images\": self.include_images,\n                \"include_answer\": self.include_answer,\n                \"include_raw_content\": self.include_raw_content,\n                \"days\": self.days,\n                \"time_range\": self.time_range,\n            }\n\n            # Only add domains to payload if they exist and have values\n            if include_domains:\n                payload[\"include_domains\"] = include_domains\n            if exclude_domains:\n                payload[\"exclude_domains\"] = exclude_domains\n\n            # Add conditional parameters only if they should be included\n            if self.search_depth == \"advanced\" and self.chunks_per_source:\n                payload[\"chunks_per_source\"] = self.chunks_per_source\n\n            if self.topic == \"news\" and self.days:\n                payload[\"days\"] = int(self.days)  # Ensure days is an integer\n\n            # Add time_range if it's set\n            if hasattr(self, \"time_range\") and self.time_range:\n                payload[\"time_range\"] = self.time_range\n\n            # Add timeout handling\n            with httpx.Client(timeout=90.0) as client:\n                response = client.post(url, json=payload, headers=headers)\n\n            response.raise_for_status()\n            search_results = response.json()\n\n            data_results = []\n\n            if self.include_answer and search_results.get(\"answer\"):\n                data_results.append(Data(text=search_results[\"answer\"]))\n\n            for result in search_results.get(\"results\", []):\n                content = result.get(\"content\", \"\")\n                result_data = {\n                    \"title\": result.get(\"title\"),\n                    \"url\": result.get(\"url\"),\n                    \"content\": content,\n                    \"score\": result.get(\"score\"),\n                }\n                if self.include_raw_content:\n                    result_data[\"raw_content\"] = result.get(\"raw_content\")\n\n                data_results.append(Data(text=content, data=result_data))\n\n            if self.include_images and search_results.get(\"images\"):\n                data_results.append(Data(text=\"Images found\", data={\"images\": search_results[\"images\"]}))\n\n        except httpx.TimeoutException:\n            error_message = \"Request timed out (90s). Please try again or adjust parameters.\"\n            logger.error(error_message)\n            return [Data(text=error_message, data={\"error\": error_message})]\n        except httpx.HTTPStatusError as exc:\n            error_message = f\"HTTP error occurred: {exc.response.status_code} - {exc.response.text}\"\n            logger.error(error_message)\n            return [Data(text=error_message, data={\"error\": error_message})]\n        except httpx.RequestError as exc:\n            error_message = f\"Request error occurred: {exc}\"\n            logger.error(error_message)\n            return [Data(text=error_message, data={\"error\": error_message})]\n        except ValueError as exc:\n            error_message = f\"Invalid response format: {exc}\"\n            logger.error(error_message)\n            return [Data(text=error_message, data={\"error\": error_message})]\n        else:\n            self.status = data_results\n            return data_results\n\n    def fetch_content_dataframe(self) -> DataFrame:\n        data = self.fetch_content()\n        return DataFrame(data)\n"
+              },
+              "days": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "display_name": "Days",
+                "dynamic": false,
+                "info": "Number of days back from current date to include. Only available with news topic.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "days",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "int",
+                "value": 14
+              },
+              "exclude_domains": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "display_name": "Exclude Domains",
+                "dynamic": false,
+                "info": "Comma-separated list of domains to exclude from the search results.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "exclude_domains",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "include_answer": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Include Answer",
+                "dynamic": false,
+                "info": "Include a short answer to original query.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "include_answer",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": false
+              },
+              "include_domains": {
+                "_input_type": "MessageTextInput",
+                "advanced": true,
+                "display_name": "Include Domains",
+                "dynamic": false,
+                "info": "Comma-separated list of domains to include in the search results.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "include_domains",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "include_images": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Include Images",
+                "dynamic": false,
+                "info": "Include a list of query-related images in the response.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "include_images",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": false
+              },
+              "include_raw_content": {
+                "_input_type": "BoolInput",
+                "advanced": true,
+                "display_name": "Include Raw Content",
+                "dynamic": false,
+                "info": "Include the cleaned and parsed HTML content of each search result.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "include_raw_content",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "bool",
+                "value": false
+              },
+              "is_refresh": false,
+              "max_results": {
+                "_input_type": "IntInput",
+                "advanced": true,
+                "display_name": "Max Results",
+                "dynamic": false,
+                "info": "The maximum number of search results to return.",
+                "list": false,
+                "list_add_label": "Add More",
+                "name": "max_results",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "int",
+                "value": 5
+              },
+              "query": {
+                "_input_type": "MessageTextInput",
+                "advanced": false,
+                "display_name": "Search Query",
+                "dynamic": false,
+                "info": "The search query you want to execute with Tavily.",
+                "input_types": [
+                  "Message"
+                ],
+                "list": false,
+                "list_add_label": "Add More",
+                "load_from_db": false,
+                "name": "query",
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "tool_mode": true,
+                "trace_as_input": true,
+                "trace_as_metadata": true,
+                "track_in_telemetry": false,
+                "type": "str",
+                "value": ""
+              },
+              "search_depth": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Search Depth",
+                "dynamic": false,
+                "external_options": {},
+                "info": "The depth of the search.",
+                "name": "search_depth",
+                "options": [
+                  "basic",
+                  "advanced"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "advanced"
+              },
+              "time_range": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Time Range",
+                "dynamic": false,
+                "external_options": {},
+                "info": "The time range back from the current date to filter results.",
+                "name": "time_range",
+                "options": [
+                  "day",
+                  "week",
+                  "month",
+                  "year"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str"
+              },
+              "topic": {
+                "_input_type": "DropdownInput",
+                "advanced": true,
+                "combobox": false,
+                "dialog_inputs": {},
+                "display_name": "Search Topic",
+                "dynamic": false,
+                "external_options": {},
+                "info": "The category of the search.",
+                "name": "topic",
+                "options": [
+                  "general",
+                  "news"
+                ],
+                "options_metadata": [],
+                "override_skip": false,
+                "placeholder": "",
+                "required": false,
+                "show": true,
+                "title_case": false,
+                "toggle": false,
+                "tool_mode": false,
+                "trace_as_metadata": true,
+                "track_in_telemetry": true,
+                "type": "str",
+                "value": "news"
+              }
+            },
+            "tool_mode": false
+          },
+          "showNode": true,
+          "type": "TavilySearchComponent"
+        },
+        "dragging": false,
+        "id": "TavilySearchComponent-LyDPQ",
+        "measured": {
+          "height": 321,
+          "width": 320
+        },
+        "position": {
+          "x": 600,
+          "y": 700
+        },
         "type": "genericNode"
       }
     ],

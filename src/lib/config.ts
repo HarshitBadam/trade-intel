@@ -34,13 +34,27 @@ const rawAstra = Boolean(
   ASTRA_DB_APPLICATION_TOKEN && ASTRA_DB_API_ENDPOINT
 );
 
-// ── Langflow (StockSage AI chat → OpenAI) ───────────────────────────────────
+// ── Langflow (StockSage AI chat → Gemini, RAG over Astra) ───────────────────
 export const LANGFLOW_BASE_URL = process.env.LANGFLOW_BASE_URL;
 export const LANGFLOW_FLOW_ID = process.env.LANGFLOW_FLOW_ID;
 export const LANGFLOW_API_KEY = process.env.LANGFLOW_API_KEY;
 const rawLangflow = Boolean(
   LANGFLOW_BASE_URL && LANGFLOW_FLOW_ID && LANGFLOW_API_KEY
 );
+
+// Chat-flow node IDs that the app targets with Langflow "tweaks" (grounding +
+// system message). IMPORTANT: Langflow regenerates each node's random suffix on
+// every import (e.g. StockSageRagPrompt-FwmYE → StockSageRagPrompt-p58fa), and a
+// tweak aimed at a node ID that doesn't exist is silently dropped. The app
+// therefore resolves these IDs at runtime from the live flow (by stable prefix)
+// — see resolveChatNodeIds() in app/actions.ts. These constants are only the
+// fallback used if that lookup can't run, so they track the CURRENT hosted
+// instance, not the committed JSON. Override via env if you wish.
+export const LANGFLOW_CHAT_PROMPT_ID =
+  process.env.LANGFLOW_CHAT_PROMPT_ID ?? "StockSageRagPrompt-p58fa";
+
+export const LANGFLOW_CHAT_LLM_ID =
+  process.env.LANGFLOW_CHAT_LLM_ID ?? "LanguageModelComponent-43zHf";
 
 // ── Langflow news ingestion (Tavily → Gemini → Astra ETL) ───────────────────
 // Separate flow from the chat one. When a ticker has no stored news, we trigger
@@ -50,9 +64,9 @@ const rawLangflow = Boolean(
 // different node IDs.
 export const LANGFLOW_INGEST_FLOW_ID = process.env.LANGFLOW_INGEST_FLOW_ID;
 export const LANGFLOW_INGEST_TAVILY_ID =
-  process.env.LANGFLOW_INGEST_TAVILY_ID ?? "TavilySearchComponent-wBPu4";
+  process.env.LANGFLOW_INGEST_TAVILY_ID ?? "TavilySearchComponent-LyDPQ";
 export const LANGFLOW_INGEST_STRUCTURED_ID =
-  process.env.LANGFLOW_INGEST_STRUCTURED_ID ?? "StructuredOutput-5fgb3";
+  process.env.LANGFLOW_INGEST_STRUCTURED_ID ?? "StructuredOutput-oUGso";
 
 // ── Auth (NextAuth / Auth.js) ───────────────────────────────────────────────
 export const hasAuthSecret = Boolean(
