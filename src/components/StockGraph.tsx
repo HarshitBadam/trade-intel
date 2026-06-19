@@ -19,6 +19,16 @@ const RANGES: { label: string; days: number; blurb: string }[] = [
   { label: "All", days: Infinity, blurb: "all time" },
 ];
 
+// Maps a range's day count to the hi-res chart kind it requires.
+function rangeToKind(
+  days: number,
+): "intraday" | "week" | "fine" | null {
+  if (days === 1) return "intraday";
+  if (days === 7) return "week";
+  if (days === 30 || days === 90) return "fine";
+  return null;
+}
+
 function normalize(data?: ChartPoint[]) {
   if (!Array.isArray(data)) return [] as { t: number; v: number }[];
   return data
@@ -40,6 +50,8 @@ export function StockGraph({
   weekData,
   fineData,
   hasShuffle,
+  onRequestRange,
+  loadingRange,
 }: {
   companyName: string;
   stockPrice: number;
@@ -50,6 +62,8 @@ export function StockGraph({
   weekData?: ChartPoint[];
   fineData?: ChartPoint[];
   hasShuffle: boolean;
+  onRequestRange?: (kind: "intraday" | "week" | "fine") => void;
+  loadingRange?: boolean;
 }) {
   const [rangeDays, setRangeDays] = useState<number>(365);
 
@@ -119,6 +133,10 @@ export function StockGraph({
     ? fineData ?? []
     : chartData;
 
+  // 1D loading state: no daily fallback, so show a spinner until intraday arrives.
+  const showIntradayLoading =
+    !!loadingRange && isIntraday && !has1D && !!onRequestRange;
+
   return (
     <div className="w-full h-full shadow-md bg-accent/10 glass-card rounded-lg flex flex-col">
       <div className="flex justify-between">
@@ -133,10 +151,16 @@ export function StockGraph({
 
           <div className="flex gap-1 mt-3">
             {RANGES.map((r) => {
-              const disabled =
-                r.days === 1
-                  ? !has1D
-                  : r.days !== Infinity && r.days > spanDays + 1;
+              const kind = rangeToKind(r.days);
+              const hiResAvailable =
+                r.days === 1 ? has1D : r.days === 7 ? hasWeek : hasFine;
+
+              const disabled = (() => {
+                if (kind && onRequestRange) return false;
+                if (r.days === 1) return !has1D;
+                return r.days !== Infinity && r.days > spanDays + 1;
+              })();
+
               const active = rangeDays === r.days;
               return (
                 <button
@@ -148,6 +172,9 @@ export function StockGraph({
                     // up and flip to the popularity view.
                     e.stopPropagation();
                     setRangeDays(r.days);
+                    if (onRequestRange && kind && !hiResAvailable) {
+                      onRequestRange(kind);
+                    }
                   }}
                   className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
                     active
@@ -173,7 +200,11 @@ export function StockGraph({
       </div>
 
       <div className="text-muted-foreground px-5 pb-5">
-        {chartData ? (
+        {showIntradayLoading ? (
+          <div className="flex items-center justify-center py-24">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground" />
+          </div>
+        ) : chartData ? (
           <MainChart cd={chartSeries} rangeDays={rangeDays} intraday={isIntraday} />
         ) : (
           <p>Loading chart data...</p>
