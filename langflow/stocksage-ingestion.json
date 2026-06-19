@@ -756,7 +756,7 @@
                 "advanced": true,
                 "display_name": "API Key",
                 "dynamic": false,
-                "info": "Falls back to GOOGLE_API_KEY environment variable",
+                "info": "Overrides global provider settings. Leave blank to use your pre-configured API Key.",
                 "input_types": [],
                 "load_from_db": true,
                 "name": "api_key",
@@ -1322,7 +1322,7 @@
             ],
             "frozen": false,
             "icon": "AstraDB",
-            "last_updated": "2026-06-17T12:47:21.483Z",
+            "last_updated": "2026-06-18T09:59:29.585Z",
             "legacy": false,
             "lf_version": "1.10.0",
             "metadata": {
@@ -1470,7 +1470,7 @@
                 "advanced": true,
                 "display_name": "API Key",
                 "dynamic": false,
-                "info": "Falls back to GOOGLE_API_KEY environment variable",
+                "info": "Overrides global provider settings. Leave blank to use your pre-configured API Key.",
                 "input_types": [],
                 "load_from_db": true,
                 "name": "api_key",
@@ -2317,9 +2317,9 @@
       }
     ],
     "viewport": {
-      "x": -51.07843137254906,
-      "y": 79.83382352941175,
-      "zoom": 0.5303921568627451
+      "x": -33.45227115799531,
+      "y": 205.16711335862493,
+      "zoom": 0.27083669276754635
     }
   },
   "description": "ETL: Tavily web news -> clean -> Gemini structured extraction -> Astra vector store. Query + per-ticker instructions are overridden at call time via tweaks.",
