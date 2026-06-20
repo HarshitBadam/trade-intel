@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Progress } from "@/components/ui/progress";
 import { NewsCard } from "./NewsCard";
 import { Bar } from "./Bar";
@@ -114,6 +114,23 @@ export function RecentInfluential({
 }: RecentInfluentialProps) {
   const [selected, setSelected] = useState<NewsArticle | null>(null);
 
+  // Chromium drops paint invalidations for content inside a `backdrop-filter`
+  // ancestor (this panel is a frosted `.glass-card` in dark mode). So when the
+  // 30s news poll swaps in fresh articles via state, the new rows land in the
+  // DOM but stay invisible until a pointer/scroll event dirties the compositor.
+  // Toggling a no-op `translateZ(0)` for one frame forces the layer to
+  // re-composite (and thus repaint) without any visible movement.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    el.style.transform = "translateZ(0)";
+    const raf = requestAnimationFrame(() => {
+      if (panelRef.current) panelRef.current.style.transform = "";
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [news, status]);
+
   // The remaining share is neutral sentiment; including it makes the bar
   // segments sum to 100 (and silences the Bar validation warning).
   const neutralSentimentPercentage = Math.max(
@@ -141,7 +158,7 @@ export function RecentInfluential({
   ];
 
   return (
-    <div className="w-full rounded-lg p-6 glass-card shadow-md flex flex-col h-full">
+    <div ref={panelRef} className="w-full rounded-lg p-6 glass-card shadow-md flex flex-col h-full">
       <div className="pb-8">
         <h2 className="text-xl font-bold mb-6">Sentiment Score Gauge</h2>
         <div className="flex justify-center items-center gap-4 pb-3">
