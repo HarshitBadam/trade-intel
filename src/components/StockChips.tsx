@@ -1,5 +1,4 @@
 "use client"
-import { Plus } from "lucide-react"
 import { mockStockData } from "@/data/mockStocks";
 
 interface StockChipsProps {
@@ -21,12 +20,6 @@ export function StockChips({ onStockSelect, selectedStockId }: StockChipsProps) 
           {stock.companyName}
         </button>
       ))}
-      {/* <button
-        className="cursor-pointer px-4 py-1.5 rounded-full bg-accent/20 hover:bg-accent/80 border-2 border-accent transition-all text-sm flex items-center gap-2 border-dashed"
-      >
-        <Plus className="h-4 w-4" />
-        Add watch stocks here
-      </button> */}
     </div>
   )
 } 

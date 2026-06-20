@@ -6,9 +6,7 @@ import { ChartProvider } from "@/context/ChartContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
-// Allow the AI chat Server Action enough time to call Langflow → Gemini.
-// Vercel functions default to ~10s; an LLM round-trip can exceed that. This
-// route-segment config is inherited by all nested (client) pages.
+// LLM round-trips can exceed Vercel's default 10s timeout.
 export const maxDuration = 60;
 
 export const metadata: Metadata = {
@@ -29,8 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} min-h-screen bg-background antialiased`}>
-        {/* Apply the saved (or system) theme before first paint so there's no
-            flash of the wrong theme. Runs synchronously, ahead of hydration. */}
+        {/* Sync theme before first paint to avoid FOUC. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('theme');var m=window.matchMedia('(prefers-color-scheme: dark)').matches;if(t==='dark'||(t!=='light'&&m)){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}}catch(e){}})();`,

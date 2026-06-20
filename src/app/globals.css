@@ -44,18 +44,8 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* ------------------------------------------------------------------ *
- * Smooth, Safari-safe theme cross-fade
- * Plain CSS custom properties are *untyped strings*, so when `.dark` swaps
- * them the dependent color/background values snap instead of interpolating.
- * Chrome/Blink is lenient, but WebKit/Safari follows the spec strictly — which
- * is why the toggle "mostly snaps" there no matter the JS timing.
- * Registering each colour token as a typed `<color>` via `@property` lets the
- * browser interpolate the *variables themselves*; we then transition those
- * variables on :root and every `var()` consumer (text, bg, border, fill, …)
- * cross-fades in lockstep — in every engine — with zero JS coordination and
- * without disturbing the bespoke sun ⇄ moon morph.
- * ------------------------------------------------------------------ */
+/* @property registrations let browsers interpolate color vars themselves,
+   enabling smooth cross-fades on theme switch in all engines (incl. WebKit). */
 @property --background { syntax: "<color>"; inherits: true; initial-value: oklch(1 0 0); }
 @property --foreground { syntax: "<color>"; inherits: true; initial-value: oklch(0.129 0.042 264.695); }
 @property --card { syntax: "<color>"; inherits: true; initial-value: oklch(1 0 0); }
@@ -83,9 +73,7 @@
 @property --sidebar-border { syntax: "<color>"; inherits: true; initial-value: oklch(0.929 0.013 255.508); }
 @property --sidebar-ring { syntax: "<color>"; inherits: true; initial-value: oklch(0.704 0.04 256.788); }
 
-/* The cross-fade itself. Always armed on :root (the variables only change on a
-   theme flip, so this never touches hover/interaction timings), and disabled
-   for reduced-motion users. */
+/* Always armed; only fires when theme variables actually change. */
 @media (prefers-reduced-motion: no-preference) {
   :root {
     transition: --background 0.45s ease, --foreground 0.45s ease,
@@ -138,10 +126,6 @@
   --sidebar-ring: oklch(0.704 0.04 256.788);
 }
  
-/* Dark theme — tuned to feel like Apple's system dark mode: a deep, soft
-   neutral charcoal (never a harsh pure black), gently elevated surfaces, soft
-   off-white text (easier on the eyes than #fff), and hairline white-alpha
-   borders. Low-chroma cool neutrals (hue ~286) keep it refined, not muddy. */
 .dark {
   --background: oklch(0.178 0.004 286);
   --foreground: oklch(0.941 0.003 286);
@@ -179,9 +163,7 @@
   * {
     @apply outline-ring/50;
   }
-  /* Kill the rubber-band/elastic overscroll bounce and stop scroll-chaining
-     between nested scroll areas and the page. `none` (not `contain`) also
-     removes the bounce at the document boundary on macOS/iOS WebKit. */
+  /* `none` (not `contain`) also removes bounce at document boundary on iOS. */
   html,
   body {
     overscroll-behavior: none;
@@ -190,13 +172,12 @@
     @apply bg-background text-foreground;
   }
 
-  /* Hide scrollbars everywhere while keeping scroll behaviour intact. */
   * {
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE / legacy Edge */
   }
   *::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, other WebKit */
+    display: none; /* WebKit */
   }
   :root {
     --chart-1: 12 76% 61%;
@@ -215,19 +196,9 @@
   }
 }
 
-/* ------------------------------------------------------------------ *
- * Animated sun ⇄ moon toggle
- * Light  → a sun: full disk + 8 rays.
- * Dark   → a crescent moon: the rays retract & a masked "bite" slides in.
- * Transitions are only enabled once `.tt-ready` is added (post-mount) so the
- * icon snaps to the correct shape on load instead of animating in.
- * ------------------------------------------------------------------ */
 .theme-toggle .tt-svg {
   overflow: visible;
 }
-/* The disk is a small sun in light mode; for the moon it scales UP (the
-   web.dev / Adam Argyle technique) so one shape gives a compact sun but a
-   large bold crescent. */
 .theme-toggle .tt-disk {
   transform-box: fill-box;
   transform-origin: center;
@@ -260,8 +231,6 @@
   opacity: 0;
   transform: rotate(-55deg) scale(0.45);
 }
-/* Slide the masking "bite" across the (unscaled) disk to carve a bold crescent
-   (~0.85× the disk radius), which then scales up with the disk. */
 .theme-toggle[data-dark="true"] .tt-bite {
   transform: translateX(-9.32px);
 }
@@ -273,14 +242,6 @@
   }
 }
 
-/* ================================================================== *
- * Ambient background — DARK MODE ONLY.
- * Light mode is intentionally pristine: the page's own white --background
- * shows through with no gradient and no clouds (the clean, original look).
- * Dark mode gets a refined violet/indigo "Siri" aurora that eases in via an
- * opacity cross-fade (opacity being the one property that interpolates) and
- * drifts with a cheap, GPU-composited transform.
- * ================================================================== */
 body::after {
   content: "";
   position: fixed;
@@ -320,13 +281,6 @@ body::after {
   }
 }
 
-/* ================================================================== *
- * Frosted glass surfaces — DARK MODE ONLY.
- * In light mode these classes are deliberate no-ops, so every surface keeps
- * its own original solid Tailwind background + shadow (the clean white look the
- * app shipped with). In dark mode they turn translucent + blurred + saturated
- * so the aurora glows through — which is what makes dark feel premium.
- * ================================================================== */
 .dark .glass-card {
   background-color: color-mix(in srgb, var(--card) 70%, transparent);
   -webkit-backdrop-filter: blur(20px) saturate(155%);
@@ -334,8 +288,6 @@ body::after {
   border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
 }
 
-/* Slightly more opaque + blurrier, for floating menus / popovers laid over
-   live content where legibility matters most. */
 .dark .glass-panel {
   background-color: color-mix(in srgb, var(--popover) 82%, transparent);
   -webkit-backdrop-filter: blur(24px) saturate(170%);
@@ -343,13 +295,6 @@ body::after {
   border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
 }
 
-/* ================================================================== *
- * Siri-iridescent accents (used sparingly to keep the monochrome feel)
- * ================================================================== */
-
-/* A gradient ring that fades + slowly rotates in only on focus. The angle is
-   animated through a registered <angle> custom prop so the box itself never
-   rotates — just the conic sweep. */
 @property --siri-angle {
   syntax: "<angle>";
   inherits: false;
@@ -382,7 +327,6 @@ body::after {
   transition: opacity 0.45s ease;
   pointer-events: none;
 }
-/* A soft outer bloom so the ring reads as a gentle glow, not a hard outline. */
 .siri-focus::before {
   content: "";
   position: absolute;
@@ -394,7 +338,6 @@ body::after {
   pointer-events: none;
   z-index: -1;
 }
-/* Dark-mode only — light mode keeps the plain, original search bar. */
 .dark .siri-focus:focus-within::after,
 .dark .siri-focus:focus-within::before {
   opacity: 1;
@@ -410,8 +353,6 @@ body::after {
   }
 }
 
-/* Light: a plain solid heading (original). Dark: a whisper of iridescence —
-   mostly the foreground colour with a faint violet tail, refined not colourful. */
 .siri-text {
   color: var(--foreground);
 }

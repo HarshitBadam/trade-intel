@@ -17,7 +17,6 @@ interface BarProps {
 
 export function Bar({ segments, height = "h-3", className = "" }: BarProps) {
 
-  // Validate that percentages sum to 100
   const totalPercentage = segments.reduce((sum, segment) => sum + segment.percentage, 0);
   if (totalPercentage !== 100) {
     console.warn('Bar segments percentages should sum to 100');

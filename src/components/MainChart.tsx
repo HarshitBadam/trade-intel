@@ -56,9 +56,6 @@ export default function MainChart({
   const [activeChart] = React.useState<"desktop" | "mobile">("desktop");
   const { hoveredTimestamp } = useChart();
 
-  // Render exactly the candles handed down from the page (live Polygon data for
-  // a real ticker, or deterministic mock data in demo mode). Both arrive as
-  // `{ date, value }`; normalise to the numeric-timestamp shape the chart uses.
   const chartData = React.useMemo<ChartDataPoint[]>(() => {
     if (!Array.isArray(cd)) return [];
     return cd

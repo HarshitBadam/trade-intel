@@ -11,27 +11,10 @@ import {
 } from "@/lib/config";
 import { rateLimit } from "@/lib/rate-limit";
 
-/**
- * On-demand AI news ingestion (Langflow → Astra), shared by both the on-demand
- * path (`getNews` in details/[id]/actions.ts) and the scheduled cron warm-up
- * (api/cron/ingest). Keeping a single implementation guarantees both callers use
- * the same dedup window, tweaks and auth.
- *
- * The heavy work (Tavily search + Gemini extraction, ~15-25s) is the caller's
- * responsibility to background where appropriate: the on-demand action wraps it
- * in `after()` so it never blocks the page, while the cron route awaits it.
- *
- * Each ticker is ingested at most once per 6h window so a burst of visits — or
- * an overlap between the cron and on-demand triggers — can't spam Gemini
- * (free-tier safe) or create duplicate Astra rows.
- *
- * @returns true if the flow ran and completed; false if ingestion is disabled,
- *          the ticker was deduped, or the run failed.
- */
 export async function ingestTickerNews(symbol: string): Promise<boolean> {
   if (!hasLangflowIngest) return false;
 
-  // Per-ticker dedupe (1 attempt / 6h), keyed by ticker independent of caller.
+  // Max 1 ingestion per ticker per 6h to avoid duplicate rows and Gemini spam.
   const slot = await rateLimit("news-ingest", symbol, 1, 6 * 60 * 60);
   if (!slot.success) return false;
 
@@ -52,8 +35,6 @@ export async function ingestTickerNews(symbol: string): Promise<boolean> {
         input_value: query,
         output_type: "chat",
         input_type: "chat",
-        // Override the flow's defaults at call time so one flow serves every
-        // ticker: point Tavily at this symbol and tag extracted rows with it.
         tweaks: {
           [LANGFLOW_INGEST_TAVILY_ID]: { query },
           [LANGFLOW_INGEST_STRUCTURED_ID]: {
@@ -68,8 +49,6 @@ export async function ingestTickerNews(symbol: string): Promise<boolean> {
       throw new Error(`ingest flow responded with ${response.status}`);
     }
 
-    // Fresh rows are in Astra now; drop the cached (empty) news result so the
-    // next read returns real data instead of the memoized miss.
     revalidateTag("news");
     return true;
   } catch (error) {

@@ -11,7 +11,6 @@ export default function TopNews({ title,newsTitle,newsContent, onClick }: TopNew
       className="rounded-lg p-6 h-full bg-card glass-card shadow-md cursor-pointer"
       onClick={onClick}
     >
-      {/* Title */}
       <h2 className="text-xl font-semibold mb-4">{title}</h2>
       
       <div className="space-y-6">
@@ -25,8 +24,6 @@ export default function TopNews({ title,newsTitle,newsContent, onClick }: TopNew
   );
 }
 
-// Loading placeholder shown until the real headline resolves, so the card never
-// flashes fabricated news.
 export function TopNewsSkeleton({ title = "Top News" }: { title?: string }) {
   return (
     <div className="rounded-lg p-6 h-full bg-card glass-card shadow-md animate-pulse">

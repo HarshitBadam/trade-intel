@@ -7,7 +7,6 @@ export function formatVolume(v: number): string {
   return String(v);
 }
 
-/** Maps a live market mover into the card shape the `TopGainer` component expects. */
 export function moverToCard(m: Mover) {
   const up = m.percentChange >= 0;
   const sign = up ? "+" : "";

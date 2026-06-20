@@ -19,7 +19,6 @@ const RANGES: { label: string; days: number; blurb: string }[] = [
   { label: "All", days: Infinity, blurb: "all time" },
 ];
 
-// Maps a range's day count to the hi-res chart kind it requires.
 function rangeToKind(
   days: number,
 ): "intraday" | "week" | "fine" | null {

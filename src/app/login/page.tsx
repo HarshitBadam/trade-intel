@@ -8,7 +8,6 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>
 }) {
-  // If already signed in, there's nothing to do here.
   if (authConfigured) {
     const session = await auth()
     if (session?.user) redirect("/")

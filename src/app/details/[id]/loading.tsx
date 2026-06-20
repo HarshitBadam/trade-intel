@@ -1,12 +1,7 @@
 import { Search } from "lucide-react";
 import { TopGainerSkeleton } from "@/components/TopGainer";
 
-/* Route-level loading UI. Next.js renders this instantly during the client
-   navigation transition while the dynamic page (`await getDetailsData`) renders
-   on the server — so clicking a stock redirects immediately and this skeleton
-   pops in, instead of the user being stuck on the previous page. Mirrors the
-   real DetailsView grid so the layout doesn't shift when data arrives. */
-
+// Mirrors DetailsView's grid so the layout doesn't shift when data arrives.
 function SearchBarSkeleton() {
   return (
     <div className="relative w-full shadow-md rounded-lg glass-card">

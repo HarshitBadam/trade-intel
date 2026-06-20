@@ -2,14 +2,8 @@ import type { NextConfig } from "next";
 
 const isProd = process.env.NODE_ENV === "production";
 
-// Content-Security-Policy.
-// NOTE: 'unsafe-inline'/'unsafe-eval' are required by Next.js' runtime, Recharts
-// and Framer Motion without a nonce setup. This is a pragmatic baseline that
-// won't break the app; tightening to a nonce-based CSP is a follow-up task.
-//
-// connect-src: the browser only ever talks to our own origin (all third-party
-// API keys live server-side, OAuth happens via top-level navigation). So we lock
-// it to 'self' in production, and only relax it in dev for the HMR websocket.
+// 'unsafe-inline'/'unsafe-eval' needed by Next.js runtime, Recharts, Framer Motion; nonce-based CSP is a follow-up.
+// Locked to 'self' in prod; relaxed in dev for HMR websocket.
 const connectSrc = isProd
   ? "connect-src 'self'"
   : "connect-src 'self' ws: wss: http://localhost:* https:";
@@ -25,17 +19,13 @@ const csp = [
   "base-uri 'self'",
   "form-action 'self'",
   "object-src 'none'",
-  // Force HTTPS only in production. In local dev the server speaks plain HTTP,
-  // and Safari honors this directive on localhost (Chrome exempts localhost) —
-  // it would upgrade http://localhost asset requests to https and break every
-  // stylesheet/script, leaving the page completely unstyled.
+  // Prod-only: Safari honors this on localhost and would break local dev.
   ...(isProd ? ["upgrade-insecure-requests"] : []),
 ].join("; ");
 
 const securityHeaders = [
   { key: "Content-Security-Policy", value: csp },
-  // HSTS is meaningful only over real HTTPS (and is ignored over plain HTTP per
-  // spec). Emit it in production only so it never interferes with local dev.
+  // HSTS is only meaningful over real HTTPS; skip in dev.
   ...(isProd
     ? [
         {
@@ -52,8 +42,7 @@ const securityHeaders = [
     value: "camera=(), microphone=(), geolocation=(), browsing-topics=()",
   },
   { key: "X-DNS-Prefetch-Control", value: "on" },
-  // Belt-and-suspenders alongside the metadata `robots` tag in layout.tsx —
-  // also covers non-HTML responses. Drop this once the app should be indexable.
+  // Supplements layout.tsx robots meta for non-HTML responses.
   { key: "X-Robots-Tag", value: "noindex, nofollow" },
 ];
 

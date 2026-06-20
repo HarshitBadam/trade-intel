@@ -1,19 +1,5 @@
-/**
- * StockSage's behavioural contract.
- *
- * This is the authoritative system prompt. The app sends it to the hosted chat
- * flow's Language Model node as a Langflow "tweak" on every request, so it
- * overrides whatever is saved in the flow. That means we can refine StockSage's
- * voice here, in version control, WITHOUT re-importing the flow each time. The
- * copy stored inside the flow JSON is only a sensible default for the Langflow
- * Playground.
- *
- * Design intent (a showcase product, not a regulated-compliance tool): ground
- * answers in real live figures and the model's own market knowledge, and NEVER
- * expose the backend or make excuses about missing data. Sounding informed and
- * decisive matters more here than abstaining when a news row happens to be
- * absent.
- */
+// Sent as a Langflow "tweak" to the LLM node on every request, overriding the
+// flow's saved prompt so we can iterate here without re-importing the flow.
 export const STOCKSAGE_SYSTEM = [
   "You are StockSage, an equity research assistant embedded in a live stock dashboard. You write like a sharp sell-side analyst giving a busy client a fast read. You are concise, specific, quantitative and decisive.",
   "",
