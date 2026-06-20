@@ -3,14 +3,7 @@ import Google from "next-auth/providers/google";
 import Apple from "next-auth/providers/apple";
 import { enforceAuth, hasApple, hasGoogle } from "@/lib/config";
 
-/**
- * Edge-safe Auth.js configuration. Shared between the middleware (edge runtime)
- * and the full Node instance in auth.ts. Keep this free of Node-only imports.
- *
- * Providers are added only when their credentials exist, so the app builds and
- * runs in demo mode with zero auth configuration.
- */
-
+// Edge-safe: keep this file free of Node-only imports (shared with middleware).
 const providers = [];
 if (hasGoogle) {
   providers.push(
@@ -25,7 +18,6 @@ if (hasApple) {
   providers.push(Apple);
 }
 
-// Routes that never require authentication.
 const PUBLIC_PREFIXES = ["/login", "/api/auth"];
 
 export const authConfig = {
@@ -34,10 +26,6 @@ export const authConfig = {
   pages: { signIn: "/login" },
   trustHost: true,
   callbacks: {
-    /**
-     * Gatekeeper used by the middleware. Returning false / a redirect blocks
-     * the request. When auth isn't configured we stay fully open (demo mode).
-     */
     authorized({ auth, request }) {
       if (!enforceAuth) return true;
 

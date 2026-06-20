@@ -1,8 +1,3 @@
-// Resolves company names / symbols mentioned in free-form chat text into ticker
-// symbols, so the chat layer can attach live quotes. Covers the well-known names
-// a showcase is likely to be asked about; anything unknown simply yields no
-// ticker (the model then answers from general knowledge without inventing data).
-
 const NAME_TO_TICKER: Record<string, string> = {
   apple: "AAPL",
   microsoft: "MSFT",
@@ -46,16 +41,14 @@ const NAME_TO_TICKER: Record<string, string> = {
   shopify: "SHOP",
   snowflake: "SNOW",
   zoom: "ZM",
-  // Major indices — no live quote on the free tier, but resolving them keeps
-  // the comparison subject explicit so the model addresses it instead of
-  // silently dropping it (e.g. "Tesla vs the Nasdaq").
+  // Indices have no free-tier quote but resolving them keeps the comparison
+  // subject explicit so the model addresses it rather than dropping it.
   nasdaq: "IXIC",
   "dow jones": "DJI",
   "s&p 500": "GSPC",
   "s&p500": "GSPC",
 };
 
-// Common all-caps tokens that are NOT tickers, so we don't fetch quotes for them.
 const NOT_TICKERS = new Set([
   "A", "I", "AI", "AN", "AND", "OR", "THE", "US", "USA", "EV", "EVS", "IPO",
   "CEO", "CFO", "CTO", "COO", "ETF", "GDP", "OK", "AM", "PM", "USD", "EPS",
@@ -63,17 +56,12 @@ const NOT_TICKERS = new Set([
   "IT", "ID", "UI", "UX", "ML", "LLM", "RAG", "SEC", "FED", "YOY", "QOQ",
 ]);
 
-/**
- * Extracts likely tickers from text: known company names plus explicit
- * uppercase symbols (e.g. "AAPL", "MU"). De-duplicated, capped for safety.
- */
 export function resolveTickers(text: string, max = 4): string[] {
   if (!text) return [];
   const found = new Set<string>();
 
   const lower = text.toLowerCase();
   for (const [name, ticker] of Object.entries(NAME_TO_TICKER)) {
-    // Word-boundary match so "intel" doesn't fire on "intelligence".
     const re = new RegExp(`\\b${name}\\b`, "i");
     if (re.test(lower)) found.add(ticker);
   }

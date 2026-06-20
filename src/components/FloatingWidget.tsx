@@ -28,7 +28,6 @@ interface FloatingWidgetProps {
 export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: FloatingWidgetProps) {
   const [isExpandedInternal, setIsExpandedInternal] = useState(false);
 
-  // Use either prop-controlled or internal state
   const isExpanded = propIsExpanded ?? isExpandedInternal;
 
   const handleOpen = () => {
@@ -191,7 +190,6 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                     </button>
                   </div>
 
-                  {/* chat history with left scrollbar */}
                   <div className={`flex-1 overflow-y-scroll`}>
                     <div className={styles.chatContent}>
                       {messages.map((msg) => (

@@ -73,7 +73,6 @@ export default function DetailsView({
 }) {
   const router = useRouter();
 
-  // ── Core data (seeded from SSR, updated by news polling) ──────────────
   const [stockData, setStockData] = useState<StockData>(initial);
   const [news, setNews] = useState<News[]>(initial.news);
 
@@ -112,7 +111,6 @@ export default function DetailsView({
     };
   }, [initial.newsStatus, ticker]);
 
-  // ── Lazy chart ranges ────────────────────────────────────────────────
   const [intradayData, setIntradayData] = useState<
     { date: string; value: number }[] | undefined
   >(initial.intradayData);
@@ -153,7 +151,6 @@ export default function DetailsView({
     [ticker],
   );
 
-  // ── Deferred related stocks rail ─────────────────────────────────────
   const [related, setRelated] = useState<RelatedCard[] | null>(null);
   const relatedRef = useRef<HTMLDivElement>(null);
 
@@ -186,11 +183,9 @@ export default function DetailsView({
     <div className="min-h-screen">
       <div className="max-w-[1600px] mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Main Content - Takes up 8 columns on large screens */}
           <div className="lg:col-span-8 p-8">
             <div className="space-y-6">
               <SearchBar />
-              {/* Stock Graph Section */}
               <div className="mt-8 h-[600px]">
                 {stockData ? (
                   <FlipCard
@@ -227,10 +222,9 @@ export default function DetailsView({
             </div>
           </div>
 
-          {/* Recent Influential Section - Takes up 4 columns on large screens.
-              On large screens the inner panel is absolutely positioned so it
-              fills (and never exceeds) the chart column's height — its bottom
-              lines up with the chart, and the news list scrolls internally. */}
+          {/* Absolutely positioned so it fills (and never exceeds) the chart
+              column's height — its bottom lines up with the chart, and the
+              news list scrolls internally. */}
           <div className="lg:col-span-4 relative">
             <div className="p-8 lg:pl-0 lg:absolute lg:inset-0">
               {stockData ? (
@@ -253,10 +247,6 @@ export default function DetailsView({
 
           <FloatingWidget />
 
-          {/* Related Stocks Section — companies genuinely comparable to the one
-              being viewed (same sector → closest market cap, via Polygon
-              fundamentals), with live prices. Skeletons while loading; hidden
-              only if nothing relevant could be found. */}
           <div ref={relatedRef} className="lg:col-span-12">
             {related === null ? (
               <div className="px-8 pb-12">

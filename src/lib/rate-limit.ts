@@ -2,15 +2,6 @@ import "server-only";
 
 import { hasUpstash } from "./config";
 
-/**
- * Rate limiting for expensive / billable server actions.
- *
- * Primary backend: Upstash Redis (works across serverless instances on Vercel).
- * Fallback: an in-memory sliding window. The fallback is per-instance only, so
- * it is best-effort under horizontal scaling — good enough for local dev and a
- * safety net in prod, but Upstash should be configured for real protection.
- */
-
 export type RateLimitResult = {
   success: boolean;
   remaining: number;
@@ -18,7 +9,6 @@ export type RateLimitResult = {
   reset: number;
 };
 
-// ── In-memory fallback ──────────────────────────────────────────────────────
 type Bucket = { count: number; reset: number };
 const buckets = new Map<string, Bucket>();
 
@@ -50,10 +40,7 @@ function memoryLimit(
 
 const MAX_BUCKETS = 10_000;
 
-// Opportunistic cleanup so the map can't grow unbounded. First drop expired
-// entries; if still over the hard cap (e.g. a flood of unique/spoofed keys),
-// evict the soonest-to-reset entries so memory stays bounded and the instance
-// cannot be OOM-crashed.
+// Evict expired entries then cap size to prevent OOM from unique-key floods.
 function sweep() {
   if (buckets.size < 5000) return;
   const now = Date.now();
@@ -67,7 +54,6 @@ function sweep() {
   }
 }
 
-// ── Upstash backend (lazy-loaded so it's free when unconfigured) ─────────────
 let upstashLimiters: Map<string, unknown> | null = null;
 
 async function upstashLimit(
@@ -99,14 +85,6 @@ async function upstashLimit(
   return { success: res.success, remaining: res.remaining, reset: res.reset };
 }
 
-/**
- * Check (and consume) one unit against the limiter for `key`.
- *
- * @param namespace logical action name (e.g. "chat", "search")
- * @param key       caller identity (user id or IP)
- * @param limit     max requests per window
- * @param windowSec window length in seconds
- */
 export async function rateLimit(
   namespace: string,
   key: string,
@@ -119,7 +97,7 @@ export async function rateLimit(
     try {
       return await upstashLimit(namespace, key, limit, windowSec);
     } catch (error) {
-      // Never let a limiter outage take down the action; fall back to memory.
+      // Limiter outage must not take down the action; fall back to memory.
       console.error("Upstash rate limit failed, using in-memory fallback:", error);
     }
   }

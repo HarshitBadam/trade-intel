@@ -25,7 +25,6 @@ export type News = {
   };
 };
 
-/** Provenance of the news currently shown, used to drive the UI badge. */
 export type NewsStatus = "fresh" | "analyzing" | "live" | "sample";
 
 interface RecentInfluentialProps {
@@ -36,7 +35,6 @@ interface RecentInfluentialProps {
   negativeSentimentPercentage: number;
 }
 
-// Human "x ago" label from an ISO timestamp, used by the `fresh` badge.
 function timeAgo(iso?: string): string {
   if (!iso) return "";
   const diffMs = Date.now() - Date.parse(iso);
@@ -140,8 +138,6 @@ export function RecentInfluential({
   const sentimentBreakdown = [
     {
       percentage: positiveSentimentPercentage,
-      // Stays the brightest (most prominent) segment, but a soft light-grey in
-      // dark mode so it reads as refined rather than glaring against the deep UI.
       color: "bg-sidebar-accent-foreground dark:bg-zinc-300",
       sentiment: "Positive",
     },

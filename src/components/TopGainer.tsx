@@ -24,11 +24,9 @@ export default function TopGainer({ title, data }: TopGainerProps) {
     const changeColor = negative ? "text-red-500" : "text-green-500";
     return (
       <div className="rounded-lg p-6 h-full bg-card glass-card shadow-md cursor-pointer">
-        {/* Title */}
         <h2 className="text-xl font-semibold mb-4">{title}</h2>
         
         <div className="space-y-6">
-          {/* Header with ticker and current price */}
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-2xl font-bold">{data.ticker}</h3>
@@ -43,13 +41,11 @@ export default function TopGainer({ title, data }: TopGainerProps) {
             </div>
           </div>
   
-          {/* Volume */}
           <div className="flex items-center justify-between py-2 border-t">
             <span className="text-sm text-muted-foreground">Volume</span>
             <span className="font-medium">{data.volume}</span>
           </div>
   
-          {/* Sentiment */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Sentiment</span>
@@ -64,7 +60,6 @@ export default function TopGainer({ title, data }: TopGainerProps) {
             </div>
           </div>
   
-          {/* Reason */}
           <div className="pt-2 border-t">
             <p className="text-sm text-muted-foreground">Key Reason</p>
             <p className="text-sm mt-1">{data.reason}</p>
@@ -74,7 +69,6 @@ export default function TopGainer({ title, data }: TopGainerProps) {
     );
   }
 
-// Loading placeholder for a TopGainer card, so rails never flash fake numbers.
 export function TopGainerSkeleton({ title }: { title?: string }) {
   return (
     <div className="rounded-lg p-6 h-full bg-card glass-card shadow-md animate-pulse">

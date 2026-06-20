@@ -1,10 +1,3 @@
-/**
- * Renders a sentiment string with a small colored dot instead of an emoji, so
- * it matches the rest of the UI's flat aesthetic. The tone (color) is inferred
- * from the text ("bull" → positive, "bear" → negative, else neutral) and any
- * leading emoji is stripped.
- */
-
 function toneFor(text: string): { dot: string; label: string } {
   const cleaned = text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "").trim();
   const lower = cleaned.toLowerCase();

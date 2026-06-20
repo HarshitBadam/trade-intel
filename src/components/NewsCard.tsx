@@ -9,7 +9,7 @@ interface NewsCardProps {
   username: string;
   content: string;
   date: string;  // Format: YYYY-MM-DD to match with the chart data
-  significance: string; //use LOW, MEDIUM, HIGH
+  significance: string;
   avatarUrl: string;
   source: string;
   onClick?: () => void;
@@ -18,16 +18,6 @@ interface NewsCardProps {
 export function NewsCard({ id, username, content, date, avatarUrl, significance, source, onClick }: NewsCardProps) {
   const { hoveredTimestamp, setHoveredTimestamp } = useChart();
   const [currentlyHovered, setCurrentlyHovered] = useState<string | null>(null);
-  // Format the display date for UI
-  // const formatDisplayDate = (dateStr: string) => {
-  //   const formattedDate = new Date(dateStr);
-  //   return formattedDate.toLocaleDateString("en-US", {
-  //     month: "short",
-  //     day: "numeric",
-  //     year: "numeric",
-  //   });
-  // };
-
 
   return (
     <div 
@@ -38,7 +28,7 @@ export function NewsCard({ id, username, content, date, avatarUrl, significance,
       }`} 
       onClick={onClick}
       onMouseEnter={() => {
-        setHoveredTimestamp(date);  // This will be in YYYY-MM-DD format
+        setHoveredTimestamp(date);
         setCurrentlyHovered(id);
       }} 
       onMouseLeave={() => {

@@ -23,8 +23,6 @@ export const topShifts: Shift[] = [
 export function Overview({ title, shifts = topShifts, children }: OverviewProps) {
   const router = useRouter();
 
-  // Tickers route directly to their details page; the page resolves live data
-  // (price + AI news) from the symbol itself.
   const handleStockClick = (ticker: string) => {
     router.push(`/details/${ticker}`);
   };

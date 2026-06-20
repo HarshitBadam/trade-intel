@@ -2,19 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-/**
- * A sun ⇄ moon theme toggle, styled to feel native to Apple's UI.
- *
- * The icon is a single SVG that morphs: in light mode it's a sun (disk + 8
- * rays); tapping it retracts the rays and slides a masked "bite" across the disk
- * to carve a crescent moon. The actual theme is applied by toggling the `.dark`
- * class on <html> (read on first paint by the inline script in the layout), and
- * the choice is persisted to localStorage.
- *
- * Animation timing lives in globals.css (`.theme-toggle …`); transitions only
- * switch on once `.tt-ready` is added post-mount, so the icon snaps to the
- * correct shape on load rather than animating in.
- */
 export function ThemeToggle() {
   const [isDark, setIsDark] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -26,7 +13,6 @@ export function ThemeToggle() {
     // Enable the icon transitions on the next frame so mounting doesn't animate.
     const id = requestAnimationFrame(() => setReady(true));
 
-    // Keep in sync with OS-level changes when the user hasn't chosen explicitly.
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     const onSystemChange = (e: MediaQueryListEvent) => {
       try {
@@ -43,13 +29,8 @@ export function ThemeToggle() {
     };
   }, []);
 
-  // Flip `.dark` + persist. The colour cross-fade is handled entirely in CSS by
-  // transitioning the @property-typed theme variables on :root, so it's smooth
-  // and consistent across engines (incl. Safari) with no JS timing.
-  //
-  // System-preference UX: if the user's pick matches the OS, we *clear* the
-  // saved override so the app keeps auto-following the system (and the
-  // matchMedia listener above will track future OS changes). Only a choice that
+  // System-preference UX: if the user's pick matches the OS, clear the saved
+  // override so the app keeps auto-following the system. Only a choice that
   // diverges from the OS is persisted as an explicit override.
   const toggle = () => {
     const root = document.documentElement;

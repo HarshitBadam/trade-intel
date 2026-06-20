@@ -41,14 +41,13 @@ export function SearchBar() {
       }
     };
 
-    const debounceTimer = setTimeout(fetchSearchResults, 300); // Debounce API call
+    const debounceTimer = setTimeout(fetchSearchResults, 300);
     return () => {
       cancelled = true;
       clearTimeout(debounceTimer);
     };
   }, [searchQuery]);
 
-  // Handle click outside to close results dropdown
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
@@ -88,7 +87,6 @@ export function SearchBar() {
         />
       </div>
 
-      {/* Search Results Dropdown */}
       {showResults && searchQuery && (
         <div className="absolute top-full left-0 right-0 mt-2 p-1.5 bg-popover text-popover-foreground border border-border rounded-xl shadow-xl max-h-[320px] overflow-y-auto z-50">
           {isLoading ? (

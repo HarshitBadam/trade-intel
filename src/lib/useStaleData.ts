@@ -2,10 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export type StaleState<T> = {
   data: T | undefined;
   isStale: boolean;
@@ -18,10 +14,6 @@ export type UseStaleDataOptions = {
   enabled?: boolean;
   maxAgeMs?: number;
 };
-
-// ---------------------------------------------------------------------------
-// Cache helpers (SSR-safe, shared with prefetch.ts)
-// ---------------------------------------------------------------------------
 
 const NAMESPACE = "tradeintel:swr:";
 const DEFAULT_MAX_AGE = 5 * 60 * 1000;
@@ -61,10 +53,6 @@ export function writeStaleCache<T>(key: string, value: T): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
-
 export function useStaleData<T>(
   key: string | null,
   fetcher: () => Promise<T>,
@@ -101,7 +89,6 @@ export function useStaleData<T>(
     const cached = readStaleCache<T>(activeKey, maxAgeMs);
 
     if (cached !== undefined) {
-      // Show the last-known value instantly; revalidate in the background.
       setData(cached);
       setIsStale(true);
       setIsLoading(false);
