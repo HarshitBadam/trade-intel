@@ -23,11 +23,14 @@ const rawLangflow = Boolean(
 // Langflow regenerates node-ID suffixes on every import; app resolves live IDs
 // by stable prefix at runtime (see resolveChatNodeIds in actions.ts). These are
 // only fallbacks for the current hosted instance — override via env if rebuilt.
+// Fallback node IDs, used only if the live flow-fetch in resolveChatNodeIds
+// can't run. Kept in sync with langflow/stocksage-chat.json so even the fallback
+// path targets the right nodes when the hosted flow preserved the imported IDs.
 export const LANGFLOW_CHAT_PROMPT_ID =
-  process.env.LANGFLOW_CHAT_PROMPT_ID ?? "StockSageRagPrompt-p58fa";
+  process.env.LANGFLOW_CHAT_PROMPT_ID ?? "StockSageRagPrompt-FwmYE";
 
 export const LANGFLOW_CHAT_LLM_ID =
-  process.env.LANGFLOW_CHAT_LLM_ID ?? "LanguageModelComponent-43zHf";
+  process.env.LANGFLOW_CHAT_LLM_ID ?? "LanguageModelComponent-0ZJmW";
 
 export const LANGFLOW_INGEST_FLOW_ID = process.env.LANGFLOW_INGEST_FLOW_ID;
 export const LANGFLOW_INGEST_TAVILY_ID =

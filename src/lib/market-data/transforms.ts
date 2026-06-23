@@ -9,7 +9,7 @@ import {
   generateMockPopularity,
   type RelatedStock,
 } from "@/data/fallbacks";
-import { formatVolume } from "@/lib/movers";
+import { formatVolume, moveStrength } from "@/lib/movers";
 import type {
   Quote,
   Headline,
@@ -208,21 +208,24 @@ export function relatedData(c: Candidate, reason: string): RelatedStock {
   let percentageChange: string;
   let volume: string;
   let up: boolean;
+  let pct: number;
 
   if (c.quote) {
-    up = c.quote.percentChange >= 0;
+    pct = c.quote.percentChange;
+    up = pct >= 0;
     const sign = up ? "+" : "";
     currentPrice = `$${c.quote.price.toFixed(2)}`;
     priceChange = `${sign}${c.quote.change.toFixed(2)}`;
-    percentageChange = `${sign}${c.quote.percentChange.toFixed(2)}%`;
+    percentageChange = `${sign}${pct.toFixed(2)}%`;
     volume = formatVolume(c.quote.volume);
   } else {
     const m = generateMockStockData(c.ticker);
-    up = m.price_change >= 0;
+    pct = m.percent_change;
+    up = pct >= 0;
     const sign = up ? "+" : "";
     currentPrice = `$${m.stock_price.toFixed(2)}`;
     priceChange = `${sign}${m.price_change.toFixed(2)}`;
-    percentageChange = `${sign}${m.percent_change.toFixed(2)}%`;
+    percentageChange = `${sign}${pct.toFixed(2)}%`;
     volume = formatVolume(generateMockPopularity(c.ticker).searchVolume);
   }
 
@@ -234,7 +237,7 @@ export function relatedData(c: Candidate, reason: string): RelatedStock {
     percentageChange,
     volume,
     sentiment: up ? "Bullish" : "Bearish",
-    sentimentSource: ["Polygon"],
+    sentimentSource: [moveStrength(pct)],
     reason,
   };
 }

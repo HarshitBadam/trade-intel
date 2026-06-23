@@ -27,14 +27,16 @@ export default function TopGainer({ title, data }: TopGainerProps) {
         <h2 className="text-xl font-semibold mb-4">{title}</h2>
         
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
               <h3 className="text-2xl font-bold">{data.ticker}</h3>
-              <p className="text-sm text-muted-foreground">{data.name}</p>
+              <p className="text-sm text-muted-foreground truncate" title={data.name}>
+                {data.name}
+              </p>
             </div>
-            <div className="text-right">
+            <div className="text-right shrink-0">
               <p className="text-2xl font-bold">{data.currentPrice}</p>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-end gap-2">
                 <span className={changeColor}>{data.priceChange}</span>
                 <span className={changeColor}>{data.percentageChange}</span>
               </div>

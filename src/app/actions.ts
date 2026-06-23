@@ -12,16 +12,21 @@ import {
 import { guard } from "@/lib/guard";
 import { resolveTickers } from "@/lib/tickers";
 import { getChatQuotes } from "@/lib/market-data";
+import type { ChatQuote } from "@/lib/market-data";
 import { STOCKSAGE_SYSTEM } from "@/lib/stocksage-prompt";
 
 export type ChatTurn = { role: "user" | "ai"; text: string };
 
 // Grounding is injected via Langflow tweaks, NOT the search query — keeps
 // vector retrieval clean while the LLM still sees live data and context.
+// Structured quotes/indices are kept alongside the formatted string so the
+// offline fallback can answer from the same data without re-fetching.
 type ChatGrounding = {
   liveData: string;
   history: string;
   focusTickers: string;
+  quotes: ChatQuote[];
+  indices: string[];
 };
 
 function fmtPct(p: number | null): string | null {
@@ -69,7 +74,21 @@ async function buildGrounding(
     (t) => `- ${t}: ${INDEX_NAMES[t]} (market index; refer to it by name)`
   );
 
-  const liveData = [...quoteLines, ...indexLines].join("\n");
+  // Anchor the model in real time. Without this it has no idea what "today" is,
+  // so it dates "recent" events from its training cut-off and mis-reads how fresh
+  // the web/news context is. US Eastern matches the market day. This rides the
+  // live_data tweak, which the hosted flow honours (the system_message one does
+  // not), so it reliably reaches the prompt.
+  const today = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "America/New_York",
+  }).format(new Date());
+  const dateLine = `Today's date is ${today} (US Eastern). Treat this as the current date when judging how recent any news or figure is.`;
+
+  const liveData = [dateLine, ...quoteLines, ...indexLines].join("\n");
 
   const historyText =
     history.length > 0
@@ -79,7 +98,55 @@ async function buildGrounding(
           .join("\n")
       : "";
 
-  return { liveData, history: historyText, focusTickers: tickers.join(", ") };
+  return {
+    liveData,
+    history: historyText,
+    focusTickers: tickers.join(", "),
+    quotes,
+    indices,
+  };
+}
+
+// Deterministic, data-grounded reply used when the hosted AI can't be reached
+// (cold-start timeout exhausted, Gemini rate limit, or Space down). Answering
+// from the live quotes we already fetched is far better than an error: the
+// visitor still gets a real read, so a flaky free-tier backend never produces a
+// visibly broken chat.
+function fallbackReply(grounding: ChatGrounding): string {
+  const { quotes, indices } = grounding;
+
+  if (quotes.length === 0 && indices.length === 0) {
+    return (
+      "StockSage is taking a moment to respond. Please try again shortly. " +
+      "You can also ask about a specific ticker like AAPL or TSLA for a live market snapshot."
+    );
+  }
+
+  const lines: string[] = [];
+  for (const q of quotes) {
+    const read = q.dayPct > 0.25 ? "Bullish" : q.dayPct < -0.25 ? "Bearish" : "Mixed";
+    const dir = q.dayPct > 0.25 ? "up" : q.dayPct < -0.25 ? "down" : "roughly flat";
+    const horizons = [
+      q.weekPct !== null ? `1W ${fmtPct(q.weekPct)}` : null,
+      q.monthPct !== null ? `1M ${fmtPct(q.monthPct)}` : null,
+      q.yearPct !== null ? `1Y ${fmtPct(q.yearPct)}` : null,
+    ].filter(Boolean);
+    const tail = horizons.length ? ` (${horizons.join(", ")})` : "";
+    lines.push(
+      `**${q.ticker}** is at $${q.price.toFixed(2)}, ${dir} ${fmtPct(q.dayPct) ?? "0.0%"} today${tail}. Read: ${read}.`
+    );
+  }
+  for (const t of indices) {
+    lines.push(`**${t}** is the ${INDEX_NAMES[t]}.`);
+  }
+
+  return [
+    "Here's a quick snapshot from the latest market data:",
+    "",
+    ...lines.map((l) => `- ${l}`),
+    "",
+    "_Ask again in a moment for StockSage's full analysis._",
+  ].join("\n");
 }
 
 const MAX_MESSAGE_CHARS = 1000;
@@ -102,48 +169,72 @@ export async function warmStockSage(): Promise<void> {
 // Langflow regenerates node ID suffixes on every import; resolve by stable
 // prefix so tweaks survive re-imports. Cached per revalidate window.
 
-const resolveChatNodeIds = unstable_cache(
+// Fetch the live flow and resolve the prompt/LLM node IDs by stable prefix.
+// THROWS on any failure (network, cold-start timeout, missing nodes) so the
+// failure is NOT cached — otherwise a single cold-start miss would pin the
+// fallback IDs for the whole revalidate window, silently misrouting the
+// system-prompt and live-data tweaks long after the Space is warm again.
+const fetchChatNodeIds = unstable_cache(
   async (): Promise<{ promptId: string; llmId: string }> => {
-    const fallback = {
-      promptId: LANGFLOW_CHAT_PROMPT_ID,
-      llmId: LANGFLOW_CHAT_LLM_ID,
+    const controller = new AbortController();
+    // Match the run timeout's tolerance: on a cold HF Space the flow fetch must
+    // wait through the same wake-up the run does, otherwise resolution fails,
+    // falls back to stale IDs, and the live-data tweak misroutes on the very
+    // first (cold) request — exactly when grounding matters most.
+    const timeout = setTimeout(() => controller.abort(), 50_000);
+    const res = await fetch(
+      `${LANGFLOW_BASE_URL}/api/v1/flows/${LANGFLOW_FLOW_ID}`,
+      {
+        headers: { "x-api-key": LANGFLOW_API_KEY as string },
+        cache: "no-store",
+        signal: controller.signal,
+      }
+    ).finally(() => clearTimeout(timeout));
+    if (!res.ok) throw new Error(`flow fetch failed: ${res.status}`);
+    const flow = await res.json();
+    const nodes: Array<{ id?: unknown }> = flow?.data?.nodes ?? [];
+    const idByPrefix = (prefix: string): string | undefined => {
+      const hit = nodes.find(
+        (n) => typeof n.id === "string" && (n.id as string).startsWith(prefix)
+      );
+      return typeof hit?.id === "string" ? (hit.id as string) : undefined;
     };
-    if (!hasLangflow || !LANGFLOW_BASE_URL) return fallback;
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15_000);
-      const res = await fetch(
-        `${LANGFLOW_BASE_URL}/api/v1/flows/${LANGFLOW_FLOW_ID}`,
-        {
-          headers: { "x-api-key": LANGFLOW_API_KEY as string },
-          cache: "no-store",
-          signal: controller.signal,
-        }
-      ).finally(() => clearTimeout(timeout));
-      if (!res.ok) return fallback;
-      const flow = await res.json();
-      const nodes: Array<{ id?: unknown }> = flow?.data?.nodes ?? [];
-      const idByPrefix = (prefix: string, fb: string): string => {
-        const hit = nodes.find(
-          (n) => typeof n.id === "string" && (n.id as string).startsWith(prefix)
-        );
-        return typeof hit?.id === "string" ? (hit.id as string) : fb;
-      };
-      return {
-        promptId: idByPrefix("StockSageRagPrompt", fallback.promptId),
-        llmId: idByPrefix("LanguageModel", fallback.llmId),
-      };
-    } catch {
-      return fallback;
+    const promptId = idByPrefix("StockSageRagPrompt");
+    const llmId = idByPrefix("LanguageModel");
+    if (!promptId || !llmId) {
+      throw new Error("chat flow is missing expected nodes");
     }
+    return { promptId, llmId };
   },
   ["langflow-chat-node-ids"],
   { revalidate: 1800 }
 );
 
+async function resolveChatNodeIds(): Promise<{
+  promptId: string;
+  llmId: string;
+}> {
+  const fallback = {
+    promptId: LANGFLOW_CHAT_PROMPT_ID,
+    llmId: LANGFLOW_CHAT_LLM_ID,
+  };
+  if (!hasLangflow || !LANGFLOW_BASE_URL) return fallback;
+  try {
+    return await fetchChatNodeIds();
+  } catch (error) {
+    // Uncached fallback: the next request retries resolution, so once the Space
+    // is warm the correct IDs are picked up and cached on the very next turn.
+    console.error("Chat node-id resolution failed, using fallback:", error);
+    return fallback;
+  }
+}
+
 export type ChatReply = {
   text: string;
   live: boolean;
+  /** True when the failure was a cold-start timeout: the client should retry
+   *  transparently rather than surfacing the message and asking the user to. */
+  retryable?: boolean;
 };
 
 export async function getSummary(
@@ -225,10 +316,13 @@ export async function getSummary(
       console.error("Langflow request failed:", error);
       const aborted = error instanceof Error && error.name === "AbortError";
       return {
-        text: aborted
-          ? "StockSage's AI service was idle and is waking up. The first message after a break can take around 30 seconds. Please send it again in a moment."
-          : "StockSage couldn't reach its AI service just now. Please try again in a moment.",
+        // Graceful degradation: a real read from the live quotes beats an error.
+        text: fallbackReply(grounding),
         live: false,
+        // Cold-start timeouts are transient: signal the client to retry once the
+        // Space has had time to boot. The fallback only surfaces if every retry
+        // fails; a hard failure (rate limit, Space down) shows it immediately.
+        retryable: aborted,
       };
     }
   }
