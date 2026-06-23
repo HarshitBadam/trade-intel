@@ -7,6 +7,14 @@ export function formatVolume(v: number): string {
   return String(v);
 }
 
+export function moveStrength(percentChange: number): string {
+  const magnitude = Math.abs(percentChange);
+  if (magnitude < 1) return "Light";
+  if (magnitude < 3) return "Notable";
+  if (magnitude < 6) return "Strong";
+  return "Heavy";
+}
+
 export function moverToCard(m: Mover) {
   const up = m.percentChange >= 0;
   const sign = up ? "+" : "";
@@ -18,7 +26,7 @@ export function moverToCard(m: Mover) {
     percentageChange: `${sign}${m.percentChange.toFixed(2)}%`,
     volume: formatVolume(m.volume),
     sentiment: up ? "Bullish" : "Bearish",
-    sentimentSource: ["Polygon"],
+    sentimentSource: [moveStrength(m.percentChange)],
     reason: `Moved ${sign}${m.percentChange.toFixed(2)}% in the latest session`,
   };
 }

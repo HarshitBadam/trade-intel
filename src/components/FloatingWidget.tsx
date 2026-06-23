@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X, ArrowUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import styles from '@/styles/FloatingWidget.module.css';
 import { getSummary, warmStockSage } from '@/app/actions';
@@ -15,9 +15,72 @@ const initialMessages: Message[] = [
   {
     id: 1,
     sender: 'ai',
-    text: 'Welcome to StockSage. Ask me about any stock trend or its news sentiment. How can I help you today?',
+    text: "Welcome to StockSage, your AI markets assistant. Ask me about any stock's trend or its news sentiment.\n\n_Heads up: StockSage is AI and can be wrong or out of date. This is general information, not financial advice._",
   },
 ];
+
+// Render a markdown link from an AI message as a compact, inline source chip
+// (favicon + outlet name) that opens in a new tab — like the citation pills in
+// Gemini/ChatGPT. Every link the model emits in this context is a citation, so
+// styling all of them as chips is intentional. Sizes are em-relative so the
+// chip tracks the surrounding text and sits on one line instead of wrapping.
+function CitationChip({
+  href,
+  children,
+}: {
+  href?: string;
+  children?: React.ReactNode;
+}) {
+  let domain = '';
+  try {
+    if (href) domain = new URL(href).hostname.replace(/^www\./, '');
+  } catch {
+    /* malformed url — render without a favicon */
+  }
+  const favicon = domain
+    ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
+    : '';
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={domain || undefined}
+      className="mx-0.5 inline-flex items-center gap-1 align-middle whitespace-nowrap rounded-md bg-muted/70 px-1.5 py-px text-[0.78em] font-medium leading-none text-foreground/70 no-underline transition-colors hover:bg-accent hover:text-foreground"
+    >
+      {favicon && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={favicon}
+          alt=""
+          aria-hidden
+          className="h-[1.05em] w-[1.05em] rounded-[3px]"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+          }}
+        />
+      )}
+      <span>{children}</span>
+    </a>
+  );
+}
+
+// Belt-and-suspenders for citation formatting: even with the prompt instructing
+// bare links, a model will occasionally wrap one in parens or tack on a date,
+// e.g. "([CNBC](url), 2026-06-04)" or "[CNBC](url) (2026-06-04)". Those leftover
+// "(", ", date)" fragments look broken once the link renders as a chip, so we
+// normalise them to a bare link before markdown parsing. The url matcher allows
+// one level of balanced parens (Wikipedia-style "/Foo_(bar)" urls).
+function tidyCitations(text: string): string {
+  const LINK = '\\[[^\\]]+\\]\\((?:[^()]|\\([^()]*\\))*\\)';
+  const wrapped = new RegExp(`\\(\\s*(${LINK})\\s*(?:,[^()]*?)?\\)`, 'g');
+  const trailingDate = new RegExp(`(${LINK})\\s*\\(\\s*\\d[\\d\\-/.\\s]*\\)`, 'g');
+  return text
+    .replace(wrapped, '$1')
+    .replace(trailingDate, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([.,;:])/g, '$1');
+}
 
 interface FloatingWidgetProps {
   isExpanded?: boolean;
@@ -59,6 +122,12 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  // True while we're waiting through (or retrying past) a cold-start. Drives the
+  // "Waking up…" indicator so the wait reads as intentional, not a hang.
+  const [wakingUp, setWakingUp] = useState(false);
+  // Flip once the first real answer lands, so we only pre-warn about cold starts
+  // on the very first message (the one most likely to hit a sleeping Space).
+  const firstReplyDoneRef = useRef(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Stable id for this chat session so the Langflow RAG flow can keep memory
@@ -91,18 +160,35 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
       { id: prev.length + 1, sender: 'user', text },
     ]);
     setIsThinking(true);
+    // The first message most often hits a sleeping Space, so pre-warn there.
+    setWakingUp(!firstReplyDoneRef.current);
+
+    // Pass the turns so far (excludes the canned welcome) so the flow has
+    // conversational memory for follow-up questions.
+    const history = messages
+      .filter((m) => m.id !== 1)
+      .map((m) => ({ role: m.sender, text: m.text }));
 
     try {
-      // Pass the turns so far (excludes the canned welcome) so the flow has
-      // conversational memory for follow-up questions.
-      const history = messages
-        .filter((m) => m.id !== 1)
-        .map((m) => ({ role: m.sender, text: m.text }));
-      const reply = await getSummary(
+      // Cold starts return `retryable`: the Space is booting, so resend the same
+      // turn transparently (the user sent once) instead of asking them to retry.
+      const MAX_ATTEMPTS = 3;
+      let reply = await getSummary(
         text,
         sessionIdRef.current ?? undefined,
         history
       );
+      for (let attempt = 1; attempt < MAX_ATTEMPTS && reply.retryable; attempt++) {
+        setWakingUp(true);
+        await new Promise((r) => setTimeout(r, 1500));
+        reply = await getSummary(
+          text,
+          sessionIdRef.current ?? undefined,
+          history
+        );
+      }
+
+      if (reply.live) firstReplyDoneRef.current = true;
       setMessages((prev) => [
         ...prev,
         { id: prev.length + 1, sender: 'ai', text: reply.text },
@@ -118,6 +204,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
       ]);
     } finally {
       setIsThinking(false);
+      setWakingUp(false);
     }
   };
 
@@ -203,8 +290,10 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                             }`}
                           >
                             {msg.sender === "ai" ? (
-                              <div className="text-sm leading-relaxed space-y-2 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:underline [&_a]:text-blue-600 dark:[&_a]:text-blue-400">
-                                <ReactMarkdown>{msg.text}</ReactMarkdown>
+                              <div className="text-sm leading-relaxed space-y-2 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4">
+                                <ReactMarkdown components={{ a: CitationChip }}>
+                                  {tidyCitations(msg.text)}
+                                </ReactMarkdown>
                               </div>
                             ) : (
                               msg.text
@@ -215,7 +304,9 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                       {isThinking && (
                         <div className="flex max-w-full justify-start">
                           <div className="p-3 rounded-lg max-w-xs text-muted-foreground animate-pulse">
-                            Thinking...
+                            {wakingUp
+                              ? "Waking StockSage up. This can take a moment…"
+                              : "Thinking…"}
                           </div>
                         </div>
                       )}
@@ -235,12 +326,15 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                         />
                       </form>
                     </div>
-                    <img 
-                      src="/chatSendButton.svg" 
-                      alt="SendChat" 
+                    <button
+                      type="button"
                       onClick={sendMessage}
-                      className="w-10 h-full cursor-pointer dark:invert" 
-                    />
+                      disabled={isThinking || !inputValue.trim()}
+                      aria-label="Send message"
+                      className="flex h-12 w-12 shrink-0 self-center items-center justify-center rounded-full bg-foreground text-background shadow-sm transition-all duration-150 hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    >
+                      <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
+                    </button>
                   </div>
                 </div>
               </div>

@@ -62,7 +62,7 @@ Answers questions grounded in the ingested news **and** live market figures.
 ```mermaid
 flowchart LR
     A[Chat Input<br/>user message] --> B[(Astra DB<br/>Vector Search, k=8)]
-    A --> W[Tavily Search<br/>live web, topic=news]
+    A --> W[Tavily Search<br/>live web, topic=general]
     A --> C[RAG Prompt Builder<br/>custom]
     B --> C
     W --> C
@@ -75,7 +75,7 @@ flowchart LR
 |------|------|------|
 | `ChatInput-k6AeC` | Chat Input | The user message. Drives both the vector search and the live web search. |
 | `AstraDB-WBI01` | Astra DB | Vector search over `prototype_db_v2`, top 8, with reranking. |
-| `TavilySearchComponent-LyDPQ` | Tavily Search | **Live web search on the question** (topic=news, advanced, 5 results). Gives up-to-date context on *any* entity — new listings, private companies, indices, foreign ADRs — not just tickers already in Astra. |
+| `TavilySearchComponent-LyDPQ` | Tavily Search | **Live web search on the question** (topic=general, 5 results). `general` (not `news`) is deliberate: conversational questions about non-US or lightly-covered names return near-zero relevant hits under the `news` topic, so a broad web search gives far better coverage of *any* entity — new listings, private companies, indices, foreign ADRs — not just tickers already in Astra. |
 | `StockSageRagPrompt-FwmYE` | custom | Builds one grounded prompt from the question, **live web results**, retrieved news, and the app-supplied grounding (below). Keeps a news item when it matches a `focus_tickers` entry **or mentions a subject from the question**, so a relevant cross-tagged story still surfaces; orders by importance/recency. |
 | `LanguageModelComponent-0ZJmW` | Language Model | Gemini 2.5-flash. A strict "sharp analyst" system message forces quantitative, decisive, source-cited answers, treats the supplied web/live/news context as current truth, and bans hedging/boilerplate. |
 | `ChatOutput-HXFDh` | Chat Output | Returns the reply. |

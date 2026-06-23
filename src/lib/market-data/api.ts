@@ -232,11 +232,8 @@ export async function getRelatedStocksData(
         (allowFuzzy ? rem.find((c) => c.sector) || rem[0] : undefined);
       if (!pick) return;
       used.add(pick.ticker);
-      const exact = Boolean(curSic && pick.sicCode === curSic);
       const reason = pick.sector
-        ? exact
-          ? `Same industry as ${symbol}`
-          : `${titleCase(pick.sector)} sector`
+        ? `${titleCase(pick.sector)} sector`
         : `Peer of ${symbol}`;
       byCategory.industry = {
         title: "Similar Industry",
