@@ -1,73 +1,128 @@
-import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { authConfigured, hasApple, hasGoogle } from "@/lib/config"
 import { signInWith } from "@/lib/auth-actions"
+import { LegalModal } from "@/components/LegalModal"
 
-export function LoginForm({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+function GoogleIcon({ className }: { className?: string }) {
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Welcome to TradeIntel</CardTitle>
-          <CardDescription>
-            Sign in with your Apple or Google account to continue
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-6">
-            <div className="flex flex-col gap-4">
-              {authConfigured && hasApple && (
-                <form action={signInWith.bind(null, "apple")}>
-                  <Button variant="outline" className="w-full" type="submit">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                      <path
-                        d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"
-                        fill="currentColor"
-                      />
-                    </svg>
-                    Continue with Apple
-                  </Button>
-                </form>
-              )}
-              {authConfigured && hasGoogle && (
-                <form action={signInWith.bind(null, "google")}>
-                  <Button variant="outline" className="w-full" type="submit">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                      <path
-                        d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                    Continue with Google
-                  </Button>
-                </form>
-              )}
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+      />
+    </svg>
+  )
+}
 
-              {!authConfigured && (
-                <div className="rounded-md border border-dashed border-amber-300 bg-amber-50 p-3 text-center text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                  Authentication isn&apos;t configured yet. The app is running in
-                  open <span className="font-medium">demo mode</span>. Add
-                  Google/Apple OAuth credentials and{" "}
-                  <code className="font-mono">AUTH_SECRET</code> to enable login.
-                </div>
-              )}
-            </div>
+function AppleIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M16.36 12.78c.02 2.7 2.36 3.6 2.39 3.61-.02.06-.37 1.28-1.23 2.53-.74 1.09-1.5 2.17-2.71 2.19-1.18.02-1.56-.7-2.91-.7-1.35 0-1.78.68-2.9.72-1.16.05-2.05-1.17-2.8-2.25C4.66 16.97 3.5 12.9 5.08 10.16c.78-1.36 2.18-2.22 3.7-2.24 1.14-.02 2.22.77 2.91.77.7 0 2.01-.95 3.39-.81.58.02 2.2.23 3.25 1.76-.08.05-1.94 1.13-1.92 3.38M14.13 6.27c.61-.74 1.03-1.78.92-2.81-.88.04-1.96.59-2.6 1.33-.57.65-1.07 1.71-.94 2.71.99.08 1.99-.5 2.62-1.23"
+      />
+    </svg>
+  )
+}
+
+// TradeIntel brand mark — mirrors /icon.svg (the favicon) so branding stays
+// consistent. Kept dark in both themes; a faint ring keeps it legible on the
+// dark glass card without the high-contrast white block that read as garish.
+function BrandLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <rect width="32" height="32" rx="7" fill="#0A0A0B" />
+      <path
+        d="M6 21.5L13 14.5L17.5 19L26 10.5"
+        stroke="#fff"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M21 10.5H26V15.5"
+        stroke="#fff"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+export function LoginForm() {
+  return (
+    <div className="w-full rounded-2xl border border-foreground/12 bg-white p-7 shadow-[0_12px_34px_-22px_rgba(15,23,42,0.3)] dark:border-white/10 dark:bg-white/[0.04] dark:shadow-xl dark:backdrop-blur-xl sm:p-8">
+      <div className="flex items-center gap-2.5">
+        <span className="inline-flex overflow-hidden rounded-lg dark:ring-1 dark:ring-white/10">
+          <BrandLogo className="size-8" />
+        </span>
+        <span className="text-sm font-extrabold tracking-tight">TRADEINTEL</span>
+      </div>
+
+      <div className="mt-7 space-y-1.5">
+        <h2 className="text-2xl font-semibold tracking-tight">Welcome back</h2>
+        <p className="text-sm text-muted-foreground">
+          Sign in to access your market dashboard.
+        </p>
+      </div>
+
+      <div className="mt-7 flex flex-col gap-3">
+        {authConfigured && hasGoogle && (
+          <form
+            action={signInWith.bind(null, "google")}
+            className="login-cta rounded-xl"
+          >
+            <Button
+              size="lg"
+              type="submit"
+              variant="outline"
+              className="h-12 w-full justify-center gap-3 rounded-xl border-black/15 bg-white text-[15px] font-semibold text-zinc-800 shadow-md transition-all hover:-translate-y-0.5 hover:border-black/25 hover:bg-white hover:shadow-lg dark:border-white/15 dark:bg-white/[0.07] dark:text-foreground dark:shadow-none dark:hover:bg-white/[0.12]"
+            >
+              <GoogleIcon className="size-[18px]" />
+              Continue with Google
+            </Button>
+          </form>
+        )}
+
+        {authConfigured && hasApple && (
+          <form action={signInWith.bind(null, "apple")}>
+            <Button
+              size="lg"
+              type="submit"
+              className="h-12 w-full justify-center gap-2.5 rounded-xl bg-foreground text-[15px] font-medium text-background transition-all hover:-translate-y-px hover:bg-foreground/90"
+            >
+              <AppleIcon className="size-[18px]" />
+              Continue with Apple
+            </Button>
+          </form>
+        )}
+
+        {!authConfigured && (
+          <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-3.5 text-center text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+            Authentication isn&apos;t configured yet. The app is running in open{" "}
+            <span className="font-medium">demo mode</span>. Add Google/Apple
+            OAuth credentials and{" "}
+            <code className="font-mono text-xs">AUTH_SECRET</code> to enable
+            login.
           </div>
-        </CardContent>
-      </Card>
-      <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
-        By continuing, you agree to our <a href="#">Terms of Service</a>{" "}
-        and <a href="#">Privacy Policy</a>.
+        )}
+      </div>
+
+      <div className="mt-7">
+        <LegalModal />
       </div>
     </div>
   )
