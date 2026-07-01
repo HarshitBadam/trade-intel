@@ -143,7 +143,7 @@ export default function HomeView({ initial }: HomeViewProps) {
   );
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold mb-2">Stock Analysis</h1>
         <p className="text-muted-foreground">
