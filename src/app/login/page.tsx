@@ -18,7 +18,7 @@ const CAPABILITIES = [
   {
     icon: Gauge,
     title: "Sentiment Signals",
-    body: "Bullish or bearish — scored, and explained.",
+    body: "Bullish or bearish, scored and explained.",
   },
   {
     icon: Quote,
@@ -45,16 +45,13 @@ export default async function LoginPage({
   }).format(new Date())
 
   return (
-    <div className="login-newsprint relative flex min-h-svh flex-col overflow-x-hidden bg-[#f7f5f0] md:h-svh md:overflow-hidden dark:bg-transparent">
-      {/* Warm paper glow in light; the global aurora shows through in dark. */}
-      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(110%_80%_at_50%_0%,rgba(0,0,0,0.045),transparent_60%)] dark:hidden" />
-
-      {/* Tactile grain: paper tooth in light, film/CRT grain in dark. */}
+    <div className="login-newsprint relative flex min-h-svh flex-col overflow-x-hidden bg-white md:h-svh md:overflow-hidden dark:bg-transparent">
+      {/* Tactile grain: subtle in light, film/CRT grain in dark. */}
       <div className="login-grain" aria-hidden="true" />
 
-      <div className="relative z-10 mx-auto flex w-full max-w-[1280px] min-h-0 flex-1 flex-col px-6 sm:px-8 lg:px-12">
-        {/* ── Masthead ──────────────────────────────────────────────────────── */}
-        <header className="pt-4 sm:pt-5">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        {/* ── Masthead: spans the full window width ─────────────────────────── */}
+        <header className="w-full px-6 pt-4 sm:px-8 sm:pt-5 lg:px-12">
           <div className="flex items-center justify-between gap-4 border-b border-foreground/15 pb-2 text-[10.5px] font-semibold uppercase tracking-[0.22em] text-muted-foreground sm:text-[11px] dark:border-white/15">
             <span>Market Intelligence</span>
             <div className="flex items-center gap-3 sm:gap-4">
@@ -74,7 +71,8 @@ export default async function LoginPage({
             </p>
           </div>
 
-          {/* Broadsheet rule, capped with a centered diamond terminator. */}
+          {/* Broadsheet double-rule spanning the window, capped with a centered
+              diamond terminator. */}
           <div className="mt-2.5 flex items-center gap-3 sm:mt-3">
             <span className="h-0.5 flex-1 bg-foreground/70 dark:bg-white/40" />
             <span className="size-1.5 rotate-45 bg-foreground/70 dark:bg-white/50" />
@@ -84,7 +82,7 @@ export default async function LoginPage({
         </header>
 
         {/* ── Hero: guilloché + editorial + sign-in ─────────────────────────── */}
-        <section className="relative flex min-h-0 flex-1 items-center py-5 md:py-6">
+        <section className="relative mx-auto flex w-full min-h-0 max-w-[1280px] flex-1 items-center px-6 py-5 sm:px-8 md:py-6 lg:px-12">
           <InteractiveGuilloche className="login-guilloche pointer-events-none absolute left-1/2 top-1/2 z-0 aspect-square w-[min(680px,64vw)] -translate-x-1/2 -translate-y-1/2 sm:left-[56%]" />
 
           <div className="relative z-10 grid w-full grid-cols-1 items-center gap-8 md:grid-cols-[1.5fr_1fr] md:gap-10 lg:grid-cols-[1.55fr_1fr] lg:gap-14">
@@ -96,8 +94,7 @@ export default async function LoginPage({
               </p>
 
               <h2 className="font-display mt-3 text-4xl font-extrabold leading-[1.04] tracking-tight sm:text-5xl lg:mt-4 xl:text-[3.75rem]">
-                What&rsquo;s moving every stock
-                <span className="text-muted-foreground"> — </span>
+                What&rsquo;s moving every stock,{" "}
                 <em className="font-medium italic">and why.</em>
               </h2>
 

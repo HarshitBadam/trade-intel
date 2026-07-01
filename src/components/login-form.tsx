@@ -37,23 +37,23 @@ function AppleIcon({ className }: { className?: string }) {
   )
 }
 
-// TradeIntel brand mark — mirrors /icon.svg (the favicon) so branding stays
-// consistent. Kept dark in both themes; a faint ring keeps it legible on the
-// dark glass card without the high-contrast white block that read as garish.
+// TradeIntel brand mark — the trending-up arrow from /icon.svg drawn in
+// currentColor so it inherits the theme (dark ink on a light chip in light,
+// light ink on a dark chip in dark) instead of a hard black block that read
+// as out of place on the sign-in card.
 function BrandLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
-      <rect width="32" height="32" rx="7" fill="#0A0A0B" />
+    <svg viewBox="0 0 32 32" className={className} fill="none" aria-hidden="true">
       <path
         d="M6 21.5L13 14.5L17.5 19L26 10.5"
-        stroke="#fff"
+        stroke="currentColor"
         strokeWidth="2.6"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M21 10.5H26V15.5"
-        stroke="#fff"
+        stroke="currentColor"
         strokeWidth="2.6"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -64,10 +64,10 @@ function BrandLogo({ className }: { className?: string }) {
 
 export function LoginForm() {
   return (
-    <div className="w-full rounded-2xl border border-foreground/12 bg-white p-7 shadow-[0_12px_34px_-22px_rgba(15,23,42,0.3)] dark:border-white/10 dark:bg-white/[0.04] dark:shadow-xl dark:backdrop-blur-xl sm:p-8">
+    <div className="w-full rounded-2xl bg-white p-7 shadow-[0_4px_10px_-2px_rgba(15,23,42,0.08),0_20px_44px_-16px_rgba(15,23,42,0.24)] dark:border dark:border-white/10 dark:bg-white/[0.04] dark:shadow-xl dark:backdrop-blur-xl sm:p-8">
       <div className="flex items-center gap-2.5">
-        <span className="inline-flex overflow-hidden rounded-lg dark:ring-1 dark:ring-white/10">
-          <BrandLogo className="size-8" />
+        <span className="inline-flex size-8 items-center justify-center rounded-lg bg-white text-foreground ring-1 ring-inset ring-transparent shadow-[0_0_5px_rgba(0,0,0,0.14)] dark:bg-white/10 dark:text-foreground">
+          <BrandLogo className="size-[18px]" />
         </span>
         <span className="text-sm font-extrabold tracking-tight">TRADEINTEL</span>
       </div>
@@ -89,7 +89,7 @@ export function LoginForm() {
               size="lg"
               type="submit"
               variant="outline"
-              className="h-12 w-full justify-center gap-3 rounded-xl border-black/15 bg-white text-[15px] font-semibold text-zinc-800 shadow-md transition-all hover:-translate-y-0.5 hover:border-black/25 hover:bg-white hover:shadow-lg dark:border-white/15 dark:bg-white/[0.07] dark:text-foreground dark:shadow-none dark:hover:bg-white/[0.12]"
+              className="h-12 w-full justify-center gap-3 rounded-xl border-transparent bg-white text-[15px] font-semibold text-zinc-800 shadow-md transition-all hover:-translate-y-0.5 hover:bg-white hover:shadow-lg dark:border-transparent dark:bg-white/[0.08] dark:text-foreground dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] dark:hover:bg-white/[0.12]"
             >
               <GoogleIcon className="size-[18px]" />
               Continue with Google

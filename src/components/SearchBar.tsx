@@ -73,7 +73,13 @@ export function SearchBar() {
   // the cards — which was the original bug.
   return (
     <div className="relative w-full" ref={searchRef}>
-      <div className="relative w-full shadow-md rounded-lg glass-card siri-focus">
+      <div
+        className="relative w-full rounded-lg glass-card siri-focus"
+        style={{
+          boxShadow:
+            "4px 3px 9px -3px rgba(0, 0, 0, 0.13), 1px 2px 4px -2px rgba(0, 0, 0, 0.1)",
+        }}
+      >
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
@@ -83,7 +89,7 @@ export function SearchBar() {
             setShowResults(true);
           }}
           placeholder="Search for stocks..."
-          className="w-full rounded-lg bg-background dark:bg-transparent px-10 py-2 text-sm outline-none focus:outline-none"
+          className="w-full rounded-lg bg-background dark:bg-transparent px-10 py-2.5 text-sm outline-none focus:outline-none"
         />
       </div>
 

@@ -4,9 +4,8 @@
 const WORDS = [
   "TradeIntel",
   "AI Market Intelligence",
-  "Sentiment, Summarized",
+  "Sentiment Summarized",
   "Cites Its Sources",
-  "Coverage For Every Ticker",
 ];
 
 export function BrandMarquee() {
@@ -18,12 +17,9 @@ export function BrandMarquee() {
         {row.map((word, i) => (
           <span
             key={i}
-            className="mx-7 inline-flex items-center gap-7 text-[11px] font-semibold uppercase tracking-[0.26em] text-muted-foreground dark:text-[#b9a9ff]"
+            className="mx-8 text-[11px] font-semibold uppercase tracking-[0.26em] text-muted-foreground dark:text-[#b9a9ff]"
           >
             {word}
-            <span aria-hidden="true" className="text-foreground/30 dark:text-[#8b7bff]/60">
-              &bull;
-            </span>
           </span>
         ))}
       </div>
