@@ -281,6 +281,15 @@ body::after {
   }
 }
 
+/* Card elevation for the dashboard + stock-details cards: a directional shadow
+   leaning to the bottom-right so the right edge reads nearly as strongly as the
+   bottom. Unlayered, so it overrides the `shadow-*` utility these cards carry. */
+.glass-card {
+  box-shadow:
+    3px 6px 11px -3px rgba(0, 0, 0, 0.12),
+    1px 3px 5px -2px rgba(0, 0, 0, 0.1);
+}
+
 .dark .glass-card {
   background-color: color-mix(in srgb, var(--card) 70%, transparent);
   -webkit-backdrop-filter: blur(20px) saturate(155%);
@@ -378,8 +387,9 @@ body::after {
     rgba(11, 11, 16, 0.6);
 }
 
-/* Faint ruled-paper texture for the light-mode editorial page (newsprint). */
-.login-newsprint {
+/* Faint ruled-paper texture for the editorial login. Dark-mode only so the
+   light mode reads as a clean, pure-white (#FFFFFF) sheet. */
+.dark .login-newsprint {
   background-image: repeating-linear-gradient(
     0deg,
     transparent,

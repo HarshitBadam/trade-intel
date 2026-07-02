@@ -37,8 +37,11 @@ function InitialsBadge({
       aria-hidden="true"
       className={cn(
         "inline-flex items-center justify-center rounded-full font-semibold select-none ring-1 ring-inset",
-        "bg-gradient-to-br from-zinc-200 to-zinc-300 text-zinc-700 ring-black/5",
-        "dark:from-zinc-700 dark:to-zinc-800 dark:text-zinc-100 dark:ring-white/10",
+        // Light mode is borderless — no ring — but a soft, even halo (offset-free,
+        // pill-strength) gives the circle just enough definition against the bar;
+        // hover adds a body highlight (see trigger). The ring stays dark-only.
+        "bg-background text-foreground/90 ring-transparent shadow-[0_0_5px_rgba(0,0,0,0.14)]",
+        "dark:text-foreground/90 dark:ring-white/12 dark:shadow-[0_0_5px_rgba(0,0,0,0.4)]",
         className
       )}
     >
@@ -54,9 +57,12 @@ export function UserMenu({ name, email, isAdmin }: UserMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Open account menu"
-        className="rounded-full outline-none transition-transform hover:ring-2 hover:ring-foreground/15 focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-95 cursor-pointer"
+        className="group rounded-full outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-95 cursor-pointer"
       >
-        <InitialsBadge label={label} className="size-9 text-sm" />
+        <InitialsBadge
+          label={label}
+          className="size-9 text-sm transition-colors group-hover:bg-accent group-hover:text-foreground"
+        />
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" sideOffset={10} className="w-72">
@@ -107,13 +113,12 @@ export function UserMenu({ name, email, isAdmin }: UserMenuProps) {
         <div className="mt-1.5 pt-1.5">
           <form action={signOutAction}>
             <DropdownMenuItem
-              variant="destructive"
               asChild
-              className="gap-3 rounded-xl px-2 py-1.5"
+              className="gap-3 rounded-xl px-2 py-1.5 focus:bg-muted/70"
             >
               <button type="submit" className="w-full">
-                <span className="flex size-8 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-                  <LogOut className="size-4" />
+                <span className="flex size-8 items-center justify-center rounded-lg bg-muted text-foreground/80">
+                  <LogOut className="size-4 text-foreground/80" />
                 </span>
                 <span className="text-sm font-medium">Sign out</span>
               </button>

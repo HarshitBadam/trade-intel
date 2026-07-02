@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Guilloche } from "./Guilloche"
 
 // Wraps the server-rendered engraving and makes it drift/tilt toward the
@@ -9,6 +9,24 @@ import { Guilloche } from "./Guilloche"
 // frame. Honors reduced motion and cleans up its listener on unmount.
 export function InteractiveGuilloche({ className }: { className?: string }) {
   const stageRef = useRef<HTMLDivElement>(null)
+  // Bumping this key remounts the SVG so its CSS draw-in animation replays.
+  const [drawKey, setDrawKey] = useState(0)
+
+  // Re-plot the engraving whenever the theme flips (the `dark` class on <html>
+  // toggles), so switching modes re-runs the guilloché draw animation.
+  useEffect(() => {
+    const root = document.documentElement
+    let wasDark = root.classList.contains("dark")
+    const observer = new MutationObserver(() => {
+      const isDark = root.classList.contains("dark")
+      if (isDark !== wasDark) {
+        wasDark = isDark
+        setDrawKey((k) => k + 1)
+      }
+    })
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] })
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const stage = stageRef.current
@@ -49,7 +67,10 @@ export function InteractiveGuilloche({ className }: { className?: string }) {
   return (
     <div ref={stageRef} className={className} aria-hidden="true">
       <div className="guilloche-depth-1 h-full w-full">
-        <Guilloche className="guilloche-depth-2 h-full w-full text-[color:var(--guilloche-ink)]" />
+        <Guilloche
+          key={drawKey}
+          className="guilloche-depth-2 h-full w-full text-[color:var(--guilloche-ink)]"
+        />
       </div>
     </div>
   )

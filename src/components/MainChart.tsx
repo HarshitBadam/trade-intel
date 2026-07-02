@@ -135,7 +135,7 @@ export default function MainChart({
               right: 12,
             }}
           >
-            <CartesianGrid vertical={false} />
+            <CartesianGrid />
             <XAxis
               dataKey="date"
               tickLine={false}

@@ -40,10 +40,10 @@ export function AdminForm() {
 
   return (
     <div className="flex min-h-[calc(100svh-3.5rem)] items-center justify-center px-4 py-10">
-      <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-white/60 bg-white/80 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-card/85">
+      <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-black/[0.06] bg-white/90 shadow-[0_2px_6px_rgba(0,0,0,0.03),0_20px_44px_-20px_rgba(0,0,0,0.22)] backdrop-blur-xl dark:border-white/10 dark:bg-card/85">
         <div className="p-8 sm:p-10">
           <div className="mb-8 flex items-center gap-4">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-violet-600/25">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-secondary text-muted-foreground shadow-sm">
               <Building2 className="size-6" />
             </div>
             <div>
@@ -131,8 +131,9 @@ export function AdminForm() {
                 )}
                 <Button
                   type="submit"
+                  variant="secondary"
                   disabled={form.formState.isSubmitting}
-                  className="border-0 bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg shadow-violet-600/25 transition-all hover:from-indigo-500 hover:to-violet-500"
+                  className="shadow-sm"
                 >
                   {form.formState.isSubmitting ? "Saving..." : "Add company"}
                 </Button>

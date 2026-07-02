@@ -180,7 +180,7 @@ export default function HomeView({ initial }: HomeViewProps) {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-6">
           <Overview title="Top Sentiment Shifts" shifts={shiftRows} />
           <div
             className="rounded-lg h-1/2 bg-card glass-card shadow-md flex flex-col items-start justify-center p-4 cursor-pointer"

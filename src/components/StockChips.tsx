@@ -13,8 +13,10 @@ export function StockChips({ onStockSelect, selectedStockId }: StockChipsProps) 
         <button
           key={stock.id}
           onClick={() => onStockSelect(selectedStockId === stock.id ? null : stock.id)}
-          className={`cursor-pointer px-4 py-1.5 rounded-full border-2 border-accent transition-[background-color] duration-150 ease-out text-sm ${
-            selectedStockId === stock.id ? 'bg-input/40' : 'bg-accent/5 hover:bg-accent/80'
+          className={`cursor-pointer rounded-full px-4 py-1.5 text-sm text-foreground transition-colors duration-150 ease-out ${
+            selectedStockId === stock.id
+              ? 'bg-muted shadow-[inset_0_1px_3px_rgba(0,0,0,0.10)] font-medium'
+              : 'bg-card shadow-[0_2px_5px_-1px_rgba(0,0,0,0.14)] hover:bg-muted'
           }`}
         >
           {stock.companyName}
