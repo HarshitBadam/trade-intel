@@ -21,7 +21,10 @@ export default function TopGainer({ title, data }: TopGainerProps) {
     // Colour by the actual move (sign of the % change), not the card title, so
     // a "Same Sector" peer that's down shows red and one that's up shows green.
     const negative = data.percentageChange.trim().startsWith("-");
-    const changeColor = negative ? "text-red-500" : "text-green-500";
+    // Deeper shades on light paper for contrast; dark keeps its original hues.
+    const changeColor = negative
+      ? "text-red-600 dark:text-red-500"
+      : "text-green-600 dark:text-green-500";
     return (
       <div className="rounded-lg p-6 h-full bg-card glass-card shadow-md cursor-pointer">
         <h2 className="text-xl font-semibold mb-4">{title}</h2>

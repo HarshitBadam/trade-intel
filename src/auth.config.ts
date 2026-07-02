@@ -23,7 +23,10 @@ const PUBLIC_PREFIXES = ["/login", "/api/auth"];
 export const authConfig = {
   providers,
   session: { strategy: "jwt" },
-  pages: { signIn: "/login" },
+  // Route OAuth failures (state-cookie replays from back/forward navigation,
+  // config errors, denied consent) back to the styled login page instead of
+  // NextAuth's raw built-in error screen.
+  pages: { signIn: "/login", error: "/login" },
   trustHost: true,
   callbacks: {
     authorized({ auth, request }) {

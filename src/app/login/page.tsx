@@ -27,6 +27,20 @@ const CAPABILITIES = [
   },
 ]
 
+// Human-readable copy for the NextAuth ?error= codes we can actually hit.
+// "OAuthCallbackError" is the classic back/forward-navigation replay: the
+// one-time state/PKCE cookie was consumed or overwritten, so the handshake
+// can't be verified — retrying from scratch always works.
+const ERROR_MESSAGES: Record<string, string> = {
+  OAuthCallbackError:
+    "That sign-in attempt expired (this happens after using the back button mid-sign-in). Just try again.",
+  OAuthSignInError: "We couldn't reach the sign-in provider. Please try again.",
+  AccessDenied: "Access was denied for that account.",
+  Configuration:
+    "Sign-in is misconfigured on our end. Please try again later.",
+  Verification: "That sign-in link expired. Please try again.",
+}
+
 export default async function LoginPage({
   searchParams,
 }: {
@@ -51,7 +65,7 @@ export default async function LoginPage({
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         {/* ── Masthead: spans the full window width ─────────────────────────── */}
-        <header className="w-full px-6 pt-4 sm:px-8 sm:pt-5 lg:px-12">
+        <header className="w-full select-none px-6 pt-4 sm:px-8 sm:pt-5 lg:px-12">
           <div className="flex items-center justify-between gap-4 border-b border-foreground/15 pb-2 text-[10.5px] font-semibold uppercase tracking-[0.22em] text-muted-foreground sm:text-[11px] dark:border-white/15">
             <span>Market Intelligence</span>
             <div className="flex items-center gap-3 sm:gap-4">
@@ -86,7 +100,7 @@ export default async function LoginPage({
           <InteractiveGuilloche className="login-guilloche pointer-events-none absolute left-1/2 top-1/2 z-0 aspect-square w-[min(680px,64vw)] -translate-x-1/2 -translate-y-1/2 sm:left-[56%]" />
 
           <div className="relative z-10 grid w-full grid-cols-1 items-center gap-8 md:grid-cols-[1.5fr_1fr] md:gap-10 lg:grid-cols-[1.55fr_1fr] lg:gap-14">
-            <div className="max-w-[620px]">
+            <div className="max-w-[620px] select-none">
               <p className="flex flex-wrap items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                 <span>Est. MMXXVI</span>
                 <span className="h-3 w-px bg-foreground/20" />
@@ -98,9 +112,12 @@ export default async function LoginPage({
                 <em className="font-medium italic">and why.</em>
               </h2>
 
-              <p className="font-display mt-4 max-w-[30em] text-base italic leading-relaxed text-foreground/70 sm:text-lg lg:text-xl">
-                StockSage summarizes the news behind each move, scores the
-                sentiment, and cites every source.
+              <p className="tagline-legible relative font-display mt-4 max-w-[30em] text-base italic leading-relaxed text-foreground/90 sm:text-lg lg:text-xl">
+                <span className="tagline-scrim" aria-hidden="true" />
+                <span className="relative">
+                  StockSage summarizes the news behind each move, scores the
+                  sentiment, and cites every source.
+                </span>
               </p>
 
               <dl className="mt-5 max-w-[31em] lg:mt-7">
@@ -127,7 +144,7 @@ export default async function LoginPage({
               <div className="w-full max-w-[400px]">
                 {error && (
                   <div className="mb-4 rounded-xl border border-red-300/70 bg-red-50 px-4 py-3 text-center text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
-                    Sign-in failed. Please try again.
+                    {ERROR_MESSAGES[error] ?? "Sign-in failed. Please try again."}
                   </div>
                 )}
                 <LoginForm />
