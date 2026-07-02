@@ -1,6 +1,3 @@
-// Foot marquee for the login page. Keeps the kinetic "tape" energy of a markets
-// site but scrolls only brand/product words — deliberately NO tickers, prices,
-// or quotes, since nothing market-related should appear before the auth wall.
 const WORDS = [
   "TradeIntel",
   "AI Market Intelligence",
@@ -9,7 +6,6 @@ const WORDS = [
 ];
 
 export function BrandMarquee() {
-  // Duplicated so the -50% translate loops seamlessly.
   const row = [...WORDS, ...WORDS];
   return (
     <div className="login-marquee relative z-10 select-none overflow-hidden border-y border-foreground/12 dark:border-[rgba(139,123,255,0.18)]">

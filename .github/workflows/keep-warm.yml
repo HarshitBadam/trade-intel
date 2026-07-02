@@ -1,23 +1,10 @@
 name: Keep StockSage warm
 
-# Free-tier HuggingFace Spaces sleep after ~48h idle, and a cold boot can take
-# 60-120s — long enough to time out the first chat. A lightweight scheduled
-# health ping keeps the Space awake so visitors rarely (if ever) hit a cold
-# start. This runs entirely on GitHub's free Actions minutes and is independent
-# of where the Next.js app itself is hosted.
-#
-# Setup: add a repo secret named LANGFLOW_BASE_URL with your Space base URL,
-# e.g. https://<user>-<space>.hf.space  (Settings → Secrets and variables →
-# Actions → New repository secret). Without it, the job no-ops gracefully.
-
 on:
   schedule:
-    # Every 15 minutes. GitHub may coalesce/delay scheduled runs under load, but
-    # this comfortably keeps the Space under its idle-sleep threshold.
     - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
-# A late run is pointless once a newer one is due — keep only the latest.
 concurrency:
   group: keep-warm
   cancel-in-progress: true
@@ -37,7 +24,5 @@ jobs:
           fi
           url="${LANGFLOW_BASE_URL%/}/health"
           echo "Pinging ${url}"
-          # Allow up to 2 min for a cold boot; a non-200 just means it's still
-          # waking, which is fine — the point is to trigger/maintain the wake.
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 "${url}" || echo 000)
           echo "HTTP ${code}"

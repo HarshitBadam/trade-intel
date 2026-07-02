@@ -20,12 +20,6 @@ const rawLangflow = Boolean(
   LANGFLOW_BASE_URL && LANGFLOW_FLOW_ID && LANGFLOW_API_KEY
 );
 
-// Langflow regenerates node-ID suffixes on every import; app resolves live IDs
-// by stable prefix at runtime (see resolveChatNodeIds in actions.ts). These are
-// only fallbacks for the current hosted instance — override via env if rebuilt.
-// Fallback node IDs, used only if the live flow-fetch in resolveChatNodeIds
-// can't run. Kept in sync with langflow/stocksage-chat.json so even the fallback
-// path targets the right nodes when the hosted flow preserved the imported IDs.
 export const LANGFLOW_CHAT_PROMPT_ID =
   process.env.LANGFLOW_CHAT_PROMPT_ID ?? "StockSageRagPrompt-FwmYE";
 
@@ -49,12 +43,8 @@ export const hasApple = Boolean(
 );
 export const authConfigured = hasAuthSecret && (hasGoogle || hasApple);
 
-// Secure-by-default: production enforces auth when configured; dev stays open
-// so the demo runs with zero config (expensive actions are still rate-limited).
 export const enforceAuth = authConfigured;
 
-// Live API calls only allowed when auth is enforced in prod — prevents an
-// unauthenticated production deploy from incurring cost.
 const liveAllowed = !isProd || enforceAuth;
 
 export const hasPolygon = rawPolygon && liveAllowed;

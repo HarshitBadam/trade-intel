@@ -1,5 +1,5 @@
 import { useRouter } from "next/navigation";
-import { SentimentLabel } from "./SentimentLabel";
+import { SentimentLabel } from "@/components/shared/SentimentLabel";
 
 export type Shift = {
   ticker: string;

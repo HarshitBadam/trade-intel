@@ -12,7 +12,7 @@ import type {
   RelatedCard,
   TickerDetail,
   Candidate,
-} from "../market-data-types";
+} from "./types";
 import {
   sanitizeTicker,
   mockQuote,
@@ -120,8 +120,6 @@ export async function getLiveQuotes(tickers: string[]): Promise<LiveQuote[]> {
   }
 }
 
-// Per-ticker daily aggregates (shared cache with detail page) — unlike getLiveQuotes,
-// these resolve before the market-wide grouped snapshot closes.
 export async function getChatQuotes(tickers: string[]): Promise<ChatQuote[]> {
   if (!hasPolygon || tickers.length === 0) return [];
   const uniq = [...new Set(tickers.map((t) => t.toUpperCase()))].slice(0, 3);

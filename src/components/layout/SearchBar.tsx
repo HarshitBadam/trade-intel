@@ -4,7 +4,7 @@ import { Search } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { searchStocks } from "@/app/details/[id]/actions";
-import type { SearchResult } from "@/lib/market-data-types";
+import type { SearchResult } from "@/lib/market-data/types";
 
 export function SearchBar() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -14,10 +14,6 @@ export function SearchBar() {
   const searchRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Debounced search to avoid excessive API calls. The `cancelled` flag makes
-  // this "latest-wins": when the query changes (fast typing / paste) the prior
-  // run is cancelled so a slower, stale in-flight request can't resolve later
-  // and clobber the newest results with empty/partial ones.
   useEffect(() => {
     if (searchQuery.trim().length === 0) {
       setSearchResults([]);
@@ -64,13 +60,6 @@ export function SearchBar() {
     router.push(`/details/${ticker}`);
   };
 
-  // The OUTER wrapper is a plain `position: relative` box with NO
-  // backdrop-filter, so it never becomes a stacking context. That's what lets
-  // the dropdown's z-50 resolve against the page root (above the sibling cards)
-  // in BOTH themes. The frosted glass + focus glow live on the INNER row, so
-  // dark mode behaves exactly like light mode. Putting `glass-card` on the outer
-  // element would add a dark-only backdrop-filter and trap the dropdown behind
-  // the cards — which was the original bug.
   return (
     <div className="relative w-full" ref={searchRef}>
       <div

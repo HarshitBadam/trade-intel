@@ -36,7 +36,7 @@ import type {
   LiveQuote,
   RelatedCard,
   SearchResult,
-} from "@/lib/market-data-types";
+} from "@/lib/market-data/types";
 
 export async function searchStocks(query: string): Promise<SearchResult[]> {
   const cleaned = (query ?? "").toString().slice(0, 64).trim();

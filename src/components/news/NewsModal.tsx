@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import { SentimentLabel } from "./SentimentLabel";
+import { SentimentLabel } from "@/components/shared/SentimentLabel";
 
 export type NewsArticle = {
   title: string;

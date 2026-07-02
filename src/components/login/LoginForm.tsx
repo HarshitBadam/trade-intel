@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { authConfigured, hasApple, hasGoogle } from "@/lib/config"
 import { signInWith } from "@/lib/auth-actions"
-import { LegalModal } from "@/components/LegalModal"
+import { LegalModal } from "@/components/legal/LegalModal"
 
 function GoogleIcon({ className }: { className?: string }) {
   return (
@@ -37,10 +37,6 @@ function AppleIcon({ className }: { className?: string }) {
   )
 }
 
-// TradeIntel brand mark — the trending-up arrow from /icon.svg drawn in
-// currentColor so it inherits the theme (dark ink on a light chip in light,
-// light ink on a dark chip in dark) instead of a hard black block that read
-// as out of place on the sign-in card.
 function BrandLogo({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" className={className} fill="none" aria-hidden="true">

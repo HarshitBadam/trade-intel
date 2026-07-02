@@ -1,17 +1,17 @@
 "use client";
 
-import { StockGraph } from "@/components/StockGraph";
-import { RecentInfluential } from "@/components/RecentInfluential";
-import { SearchBar } from "@/components/SearchBar";
-import TopGainer, { TopGainerSkeleton } from "@/components/TopGainer";
-import { FlipCard } from "@/components/FlipCard";
-import { PopularityGraph } from "@/components/PopularityGraph";
-import { FloatingWidget } from "@/components/FloatingWidget";
+import { StockGraph } from "@/components/charts/StockGraph";
+import { RecentInfluential } from "@/components/news/RecentInfluential";
+import { SearchBar } from "@/components/layout/SearchBar";
+import TopGainer, { TopGainerSkeleton } from "@/components/stocks/TopGainer";
+import { FlipCard } from "@/components/shared/FlipCard";
+import { PopularityGraph } from "@/components/charts/PopularityGraph";
+import { FloatingWidget } from "@/components/chat/FloatingWidget";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { News } from "@/components/RecentInfluential";
+import type { News } from "@/components/news/RecentInfluential";
 import { fetchDetails, fetchRelatedStocks, fetchChartRange } from "./actions";
-import type { RelatedCard } from "@/lib/market-data-types";
+import type { RelatedCard } from "@/lib/market-data/types";
 import type { StockData } from "./page";
 
 function ChartCardSkeleton() {

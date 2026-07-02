@@ -1,7 +1,7 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
-import { News } from "@/components/RecentInfluential";
+import { News } from "@/components/news/RecentInfluential";
 import { DataAPIClient } from "@datastax/astra-db-ts";
 import { FALLBACK_TICKERS } from "@/data/fallbacks";
 import {
@@ -16,7 +16,7 @@ import type {
   LiveQuote,
   TickerDetail,
   Mover,
-} from "../market-data-types";
+} from "./types";
 
 const MOVER_NAMES = new Map(FALLBACK_TICKERS.map((t) => [t.ticker, t.name]));
 const MOVER_SYMBOLS = new Set(FALLBACK_TICKERS.map((t) => t.ticker));

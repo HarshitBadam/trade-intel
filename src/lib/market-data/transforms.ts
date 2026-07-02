@@ -1,4 +1,4 @@
-import { News, NewsStatus } from "@/components/RecentInfluential";
+import { News, NewsStatus } from "@/components/news/RecentInfluential";
 import {
   FALLBACK_TICKERS,
   generateMockStockData,
@@ -17,7 +17,7 @@ import type {
   Movers,
   NewsSummary,
   Candidate,
-} from "../market-data-types";
+} from "./types";
 
 export function sanitizeTicker(input: string): string {
   return (input ?? "").toString().toUpperCase().replace(/[^A-Z.]/g, "").slice(0, 6);

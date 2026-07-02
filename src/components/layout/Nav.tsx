@@ -1,8 +1,8 @@
 import Link from "next/link"
 import { auth } from "@/auth"
 import { authConfigured } from "@/lib/config"
-import { ThemeToggle } from "@/components/ThemeToggle"
-import { UserMenu } from "@/components/UserMenu"
+import { ThemeToggle } from "@/components/layout/ThemeToggle"
+import { UserMenu } from "@/components/layout/UserMenu"
 
 export async function MainNav() {
   const session = authConfigured ? await auth() : null

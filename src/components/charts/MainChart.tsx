@@ -34,8 +34,6 @@ const chartConfig = {
   },
   desktop: {
     label: "Price",
-    // Brighter, higher-contrast blue in dark mode so the line reads clearly
-    // against the deep background.
     theme: { light: "#0369a1", dark: "#409cff" },
   },
   mobile: {
@@ -67,9 +65,6 @@ export default function MainChart({
       .sort((a, b) => a.date - b.date);
   }, [cd]);
 
-  // Window the series to the selected range, anchored to the latest candle. If
-  // the filter would leave too few points (e.g. sparse demo data), fall back to
-  // the full series so the chart never collapses to a flat segment.
   const visibleData = React.useMemo<ChartDataPoint[]>(() => {
     if (chartData.length === 0 || rangeDays === Infinity) return chartData;
     const latest = chartData[chartData.length - 1].date;
@@ -78,9 +73,6 @@ export default function MainChart({
     return filtered.length >= 2 ? filtered : chartData;
   }, [chartData, rangeDays]);
 
-  // Tighten the y-scale to the visible window with a 5% cushion top & bottom, so
-  // low-volatility windows (notably 1D) fill the height instead of flat-lining,
-  // and the line never sits flush against the edges. The axis itself is hidden.
   const yDomain = React.useMemo<[number, number]>(() => {
     if (visibleData.length === 0) return [0, 1];
     let min = Infinity;
@@ -95,9 +87,6 @@ export default function MainChart({
     return [min - pad, max + pad];
   }, [visibleData, activeChart]);
 
-  // News cards publish a `YYYY-MM-DD` day string while the chart's x values are
-  // epoch-ms numbers. Match by calendar day so the cross-highlight lands on the
-  // right candle, and anchor the marker to that candle's actual x value.
   const hoveredPoint = React.useMemo(() => {
     if (!hoveredTimestamp) return undefined;
     const toDayKey = (v: number | string) => {
@@ -168,9 +157,6 @@ export default function MainChart({
                   className="w-[150px]"
                   nameKey="views"
                   labelFormatter={(_value, payload) => {
-                    // The x value is a numeric timestamp, so the chart helper
-                    // passes the series label here instead of the date. Read the
-                    // real timestamp off the hovered point's payload.
                     const ts = payload?.[0]?.payload?.date ?? _value;
                     const date = new Date(ts);
                     if (Number.isNaN(date.getTime())) return "";

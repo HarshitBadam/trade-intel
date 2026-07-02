@@ -3,13 +3,10 @@ import Google from "next-auth/providers/google";
 import Apple from "next-auth/providers/apple";
 import { enforceAuth, hasApple, hasGoogle } from "@/lib/config";
 
-// Edge-safe: keep this file free of Node-only imports (shared with middleware).
 const providers = [];
 if (hasGoogle) {
   providers.push(
     Google({
-      // Force account chooser + refresh token semantics; helps avoid silent
-      // re-auth surprises during a showcase demo.
       authorization: { params: { prompt: "select_account" } },
     })
   );
@@ -23,9 +20,6 @@ const PUBLIC_PREFIXES = ["/login", "/api/auth"];
 export const authConfig = {
   providers,
   session: { strategy: "jwt" },
-  // Route OAuth failures (state-cookie replays from back/forward navigation,
-  // config errors, denied consent) back to the styled login page instead of
-  // NextAuth's raw built-in error screen.
   pages: { signIn: "/login", error: "/login" },
   trustHost: true,
   callbacks: {

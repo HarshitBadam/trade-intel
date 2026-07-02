@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ArrowUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import styles from '@/styles/FloatingWidget.module.css';
+import styles from './FloatingWidget.module.css';
 import { getSummary, warmStockSage } from '@/app/actions';
 
 type Message = {
@@ -19,11 +19,6 @@ const initialMessages: Message[] = [
   },
 ];
 
-// Render a markdown link from an AI message as a compact, inline source chip
-// (favicon + outlet name) that opens in a new tab — like the citation pills in
-// Gemini/ChatGPT. Every link the model emits in this context is a citation, so
-// styling all of them as chips is intentional. Sizes are em-relative so the
-// chip tracks the surrounding text and sits on one line instead of wrapping.
 function CitationChip({
   href,
   children,
@@ -35,7 +30,6 @@ function CitationChip({
   try {
     if (href) domain = new URL(href).hostname.replace(/^www\./, '');
   } catch {
-    /* malformed url — render without a favicon */
   }
   const favicon = domain
     ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
@@ -65,12 +59,6 @@ function CitationChip({
   );
 }
 
-// Belt-and-suspenders for citation formatting: even with the prompt instructing
-// bare links, a model will occasionally wrap one in parens or tack on a date,
-// e.g. "([CNBC](url), 2026-06-04)" or "[CNBC](url) (2026-06-04)". Those leftover
-// "(", ", date)" fragments look broken once the link renders as a chip, so we
-// normalise them to a bare link before markdown parsing. The url matcher allows
-// one level of balanced parens (Wikipedia-style "/Foo_(bar)" urls).
 function tidyCitations(text: string): string {
   const LINK = '\\[[^\\]]+\\]\\((?:[^()]|\\([^()]*\\))*\\)';
   const wrapped = new RegExp(`\\(\\s*(${LINK})\\s*(?:,[^()]*?)?\\)`, 'g');
@@ -122,16 +110,10 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  // True while we're waiting through (or retrying past) a cold-start. Drives the
-  // "Waking up…" indicator so the wait reads as intentional, not a hang.
   const [wakingUp, setWakingUp] = useState(false);
-  // Flip once the first real answer lands, so we only pre-warn about cold starts
-  // on the very first message (the one most likely to hit a sleeping Space).
   const firstReplyDoneRef = useRef(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Stable id for this chat session so the Langflow RAG flow can keep memory
-  // across turns. Generated once per mounted widget.
   const sessionIdRef = useRef<string | null>(null);
   if (sessionIdRef.current === null) {
     sessionIdRef.current =
@@ -144,8 +126,6 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isThinking]);
 
-  // Nudge the hosted AI Space awake on mount so it's warm by the time the user
-  // sends their first message (avoids the cold-start delay).
   useEffect(() => {
     warmStockSage();
   }, []);
@@ -160,18 +140,13 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
       { id: prev.length + 1, sender: 'user', text },
     ]);
     setIsThinking(true);
-    // The first message most often hits a sleeping Space, so pre-warn there.
     setWakingUp(!firstReplyDoneRef.current);
 
-    // Pass the turns so far (excludes the canned welcome) so the flow has
-    // conversational memory for follow-up questions.
     const history = messages
       .filter((m) => m.id !== 1)
       .map((m) => ({ role: m.sender, text: m.text }));
 
     try {
-      // Cold starts return `retryable`: the Space is booting, so resend the same
-      // turn transparently (the user sent once) instead of asking them to retry.
       const MAX_ATTEMPTS = 3;
       let reply = await getSummary(
         text,

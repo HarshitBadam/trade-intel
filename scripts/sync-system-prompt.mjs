@@ -1,17 +1,6 @@
-// Bakes the canonical StockSage system prompt (src/lib/stocksage-system-prompt.json)
-// into the chat flow's embedded Language Model `system_message`.
-//
-// Why: the hosted Langflow version ignores a `system_message` tweak sent to the
-// LLM node at run time, so the only prompt the model actually obeys is the one
-// saved inside the flow. This keeps that embedded prompt in sync with the JSON
-// source of truth without hand-editing the 3000-line flow export.
-//
-// Usage:  node scripts/sync-system-prompt.mjs
-// Then re-import langflow/stocksage-chat.json into your Langflow Space.
-
 import { readFileSync, writeFileSync } from "node:fs";
 
-const promptPath = new URL("../src/lib/stocksage-system-prompt.json", import.meta.url);
+const promptPath = new URL("../src/lib/stocksage/system-prompt.json", import.meta.url);
 const flowPath = new URL("../langflow/stocksage-chat.json", import.meta.url);
 
 const lines = JSON.parse(readFileSync(promptPath, "utf8"));
