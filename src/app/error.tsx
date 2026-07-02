@@ -22,19 +22,20 @@ export default function Error({
       <Button
         size="lg"
         onClick={reset}
-        className="h-11 gap-2 rounded-xl px-6 font-semibold transition-all hover:-translate-y-0.5"
+        variant="outline"
+        className="h-11 gap-2.5 rounded-full border-foreground/30 bg-background/70 px-8 font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-foreground backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-foreground hover:bg-foreground hover:text-background dark:bg-background/85"
       >
-        <RotateCcw className="size-4" />
+        <RotateCcw className="size-3.5" />
         Try again
       </Button>
       <Button
         size="lg"
         variant="outline"
         asChild
-        className="h-11 gap-2 rounded-xl px-6 font-semibold transition-all hover:-translate-y-0.5"
+        className="h-11 gap-2.5 rounded-full border-foreground/15 bg-transparent px-8 font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground transition-all hover:-translate-y-0.5 hover:border-foreground/40 hover:text-foreground"
       >
         <Link href="/">
-          <Home className="size-4" />
+          <Home className="size-3.5" />
           Go home
         </Link>
       </Button>

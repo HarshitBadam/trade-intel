@@ -2,11 +2,7 @@ import "server-only";
 
 import { headers } from "next/headers";
 import { auth } from "@/auth";
-import {
-  authConfigured,
-  enforceAuth,
-  isAdminEmail,
-} from "@/lib/config";
+import { authConfigured, enforceAuth } from "@/lib/config";
 import { rateLimit } from "@/lib/rate-limit";
 
 async function getClientIp(): Promise<string> {
@@ -54,9 +50,4 @@ export async function guard(
   }
 
   return { ok: true, identity, email };
-}
-
-export async function isAdmin(): Promise<boolean> {
-  const session = authConfigured ? await auth() : null;
-  return isAdminEmail(session?.user?.email);
 }

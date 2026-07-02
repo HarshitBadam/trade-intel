@@ -73,19 +73,6 @@ if (isProd && (rawPolygon || rawAstra || rawLangflow) && !enforceAuth) {
   );
 }
 
-// Comma-separated email allowlist for /admin access.
-// When unset, admin is open in dev but locked in prod.
-const adminEmails = (process.env.ADMIN_EMAILS ?? "")
-  .split(",")
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean);
-
-export function isAdminEmail(email?: string | null): boolean {
-  if (!email) return !isProd && adminEmails.length === 0;
-  if (adminEmails.length === 0) return !isProd;
-  return adminEmails.includes(email.toLowerCase());
-}
-
 export const hasUpstash = Boolean(
   process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
 );

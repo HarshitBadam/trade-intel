@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { LayoutDashboard, LogOut, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -16,7 +16,6 @@ import { signOutAction } from "@/lib/auth-actions";
 type UserMenuProps = {
   name?: string | null;
   email?: string | null;
-  isAdmin?: boolean;
 };
 
 function initials(name?: string | null, email?: string | null): string {
@@ -76,7 +75,7 @@ function ItemTile({
   );
 }
 
-export function UserMenu({ name, email, isAdmin }: UserMenuProps) {
+export function UserMenu({ name, email }: UserMenuProps) {
   const label = initials(name, email);
   const [open, setOpen] = useState(false);
 
@@ -150,22 +149,6 @@ export function UserMenu({ name, email, isAdmin }: UserMenuProps) {
                 </span>
               </Link>
             </DropdownMenuItem>
-
-            {isAdmin ? (
-              <DropdownMenuItem
-                asChild
-                className="group/item gap-3 rounded-xl px-2 py-1.5 focus:bg-transparent"
-              >
-                <Link href="/admin">
-                  <ItemTile>
-                    <ShieldCheck className="size-4 text-foreground/80 transition-colors group-focus/item:text-foreground" />
-                  </ItemTile>
-                  <span className="text-sm font-medium transition-transform duration-200 group-focus/item:translate-x-0.5">
-                    Admin
-                  </span>
-                </Link>
-              </DropdownMenuItem>
-            ) : null}
 
             <form action={signOutAction}>
               <DropdownMenuItem
