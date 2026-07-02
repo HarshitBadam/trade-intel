@@ -675,6 +675,52 @@ body::after {
   mix-blend-mode: overlay;
 }
 
+/* Soft tinted washes so the page doesn't read as a bare white sheet in light
+   mode. Dark mode already has the body aurora, so the layer stays subtler
+   there and just deepens the corners slightly. */
+.err-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(46% 42% at 12% 8%, rgba(139, 92, 246, 0.1), transparent 70%),
+    radial-gradient(44% 40% at 90% 12%, rgba(79, 70, 229, 0.08), transparent 72%),
+    radial-gradient(56% 52% at 82% 96%, rgba(168, 85, 247, 0.09), transparent 72%),
+    radial-gradient(50% 48% at 18% 92%, rgba(67, 56, 160, 0.08), transparent 72%);
+}
+.dark .err-bg {
+  background-image:
+    radial-gradient(46% 42% at 12% 8%, rgba(139, 92, 246, 0.07), transparent 70%),
+    radial-gradient(56% 52% at 82% 96%, rgba(168, 85, 247, 0.06), transparent 72%);
+}
+
+/* The login guilloché, restaged as the error-page centrepiece: the big code
+   reads like a seal stamped over the engraving. Fainter ink than the login
+   (it sits directly behind copy), same paper/hologram duality per theme. */
+.err-guilloche {
+  --guilloche-ink: rgba(24, 30, 48, 0.34);
+}
+.dark .err-guilloche {
+  --guilloche-ink: rgba(173, 160, 255, 0.42);
+  filter: drop-shadow(0 0 7px rgba(139, 123, 255, 0.35));
+}
+
+/* Feathered knockout of the page colour behind the copy so title and body
+   stay legible over the busiest part of the engraving — same trick as the
+   login tagline scrim, sized for the whole content column. */
+.err-halo {
+  position: absolute;
+  inset: -3rem -4rem;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    closest-side,
+    var(--background) 0%,
+    color-mix(in srgb, var(--background) 82%, transparent) 55%,
+    transparent 100%
+  );
+}
+
 /* Static CRT scanlines — texture only, no vertical motion. */
 .err-scanlines {
   position: absolute;

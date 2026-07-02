@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { auth } from "@/auth"
-import { authConfigured, isAdminEmail } from "@/lib/config"
+import { authConfigured } from "@/lib/config"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { UserMenu } from "@/components/UserMenu"
 
@@ -24,7 +24,6 @@ export async function MainNav() {
             <UserMenu
               name={user.name}
               email={user.email}
-              isAdmin={isAdminEmail(user.email)}
             />
           ) : null}
         </div>

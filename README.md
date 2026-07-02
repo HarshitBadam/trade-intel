@@ -44,8 +44,7 @@ depth, in order of the owner's priorities (don't lose money → don't go down �
 5. **Caching** (`unstable_cache`, 5–10 min): repeated requests for the same ticker hit a
    cache, not the upstream API — cutting both API spend and Vercel function time.
 6. **Authentication** (Auth.js, Google/Apple, JWT sessions): when configured, the
-   middleware redirects all unauthenticated traffic to `/login`. `/admin` (DB writes) is
-   further restricted to an email allowlist (`ADMIN_EMAILS`).
+   middleware redirects all unauthenticated traffic to `/login`.
 7. **Server-only secrets:** no `NEXT_PUBLIC_` secrets; the Polygon key is sent via an
    `Authorization` header, never in a URL. Security headers + CSP in `next.config.ts`
    (`connect-src` locked to `'self'` in production); `X-Powered-By` removed; the app is
@@ -63,7 +62,6 @@ before sharing the URL, and live data will light up at the same time.
 
 - `src/app/page.tsx` — dashboard (trending, gainers/losers, news)
 - `src/app/details/[id]/` — per-ticker detail (charts, sentiment, news)
-- `src/app/admin/` — add companies to Astra DB (admin-only)
 - `src/components/FloatingWidget.tsx` — StockSage chat
 - `src/auth.ts` / `src/auth.config.ts` / `src/middleware.ts` — Auth.js + route gating
 - `src/lib/config.ts` / `guard.ts` / `rate-limit.ts` — config, auth+rate-limit guard
@@ -131,8 +129,6 @@ openssl rand -base64 32        # → AUTH_SECRET
   a Sign in with Apple key (`.p8`). `AUTH_APPLE_SECRET` is a JWT you generate from the key
   (expires ≤6 months — must be rotated). See "Apple Sign In" below. Set `AUTH_APPLE_ID` /
   `AUTH_APPLE_SECRET`.
-- **Admin allowlist** — set `ADMIN_EMAILS` to the comma-separated emails allowed to use
-  `/admin`. Leave empty to keep `/admin` disabled in production.
 
 ### 4 · Rate limiting (Upstash Redis) — do this before going public
 
