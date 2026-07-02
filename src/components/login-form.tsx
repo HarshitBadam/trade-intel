@@ -83,7 +83,7 @@ export function LoginForm() {
         {authConfigured && hasGoogle && (
           <form
             action={signInWith.bind(null, "google")}
-            className="login-cta rounded-xl"
+            className="rounded-xl"
           >
             <Button
               size="lg"

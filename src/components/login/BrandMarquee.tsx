@@ -12,7 +12,7 @@ export function BrandMarquee() {
   // Duplicated so the -50% translate loops seamlessly.
   const row = [...WORDS, ...WORDS];
   return (
-    <div className="login-marquee relative z-10 overflow-hidden border-y border-foreground/12 dark:border-[rgba(139,123,255,0.18)]">
+    <div className="login-marquee relative z-10 select-none overflow-hidden border-y border-foreground/12 dark:border-[rgba(139,123,255,0.18)]">
       <div className="login-ticker-track py-2.5">
         {row.map((word, i) => (
           <span
