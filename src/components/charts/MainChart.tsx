@@ -18,6 +18,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { innerGridLines } from "@/components/charts/grid";
 import { useChart } from "@/context/ChartContext";
 
 type ChartDataPoint = {
@@ -124,7 +125,14 @@ export default function MainChart({
               right: 12,
             }}
           >
-            <CartesianGrid />
+            <CartesianGrid
+              horizontalCoordinatesGenerator={({ offset }) =>
+                innerGridLines(offset?.top ?? 0, offset?.height ?? 0, 4)
+              }
+              verticalCoordinatesGenerator={({ offset }) =>
+                innerGridLines(offset?.left ?? 0, offset?.width ?? 0, 8)
+              }
+            />
             <XAxis
               dataKey="date"
               tickLine={false}

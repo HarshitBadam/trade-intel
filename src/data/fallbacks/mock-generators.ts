@@ -91,13 +91,13 @@ export function generateMockIntraday(ticker: string) {
   const rand = seededRandom(hashTicker(ticker) ^ 0x1d1d);
 
   const points: { date: string; value: number }[] = [];
-  const steps = 78; // 6.5 trading hours @ 5-min bars
-  const stepMs = 5 * 60 * 1000;
+  const steps = 390; // 6.5 trading hours @ 1-min bars
+  const stepMs = 60 * 1000;
   const now = Date.now();
   let price = anchor * (0.99 + rand() * 0.02);
 
   for (let i = steps; i >= 0; i--) {
-    price = Math.max(1, price + price * (rand() - 0.5) * 0.004);
+    price = Math.max(1, price + price * (rand() - 0.5) * 0.0018);
     points.push({
       date: new Date(now - i * stepMs).toISOString(),
       value: Number(price.toFixed(2)),

@@ -1,9 +1,18 @@
 import "server-only";
 
+import { createHash } from "crypto";
 import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { authConfigured, enforceAuth } from "@/lib/config";
 import { rateLimit } from "@/lib/rate-limit";
+
+const RL_SALT = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET ?? "";
+
+// One-way hash so raw identifiers (Google id, email, IP) never reach an
+// external rate-limit store such as Upstash Redis.
+function hashIdentity(identity: string): string {
+  return createHash("sha256").update(`${RL_SALT}:${identity}`).digest("hex");
+}
 
 async function getClientIp(): Promise<string> {
   const h = await headers();
@@ -37,7 +46,12 @@ export async function guard(
   }
 
   const identity = userId ?? (await getClientIp());
-  const res = await rateLimit(namespace, identity, opts.limit, opts.windowSec);
+  const res = await rateLimit(
+    namespace,
+    hashIdentity(identity),
+    opts.limit,
+    opts.windowSec
+  );
 
   if (!res.success) {
     return {

@@ -6,10 +6,6 @@ import { X } from "lucide-react";
 
 const SECTIONS = [
   {
-    h: "Your privacy",
-    p: "TradeIntel does not collect or sell your data. Google handles sign in and shares only your name and email.",
-  },
-  {
     h: "Not financial advice",
     p: "TradeIntel is an informational tool. Nothing here is financial or investment advice. You stay responsible for your own decisions.",
   },
@@ -18,20 +14,29 @@ const SECTIONS = [
     p: "StockSage writes answers from public news sources. It can be wrong or incomplete. It does not guarantee accuracy and is not liable for any decision you make from its output.",
   },
   {
+    h: "Your privacy",
+    p: "TradeIntel uses Google to handle sign in and only accesses your name and email address. This information is used solely to operate your account and is never sold to third parties.",
+  },
+  {
     h: "No liability",
     p: "TradeIntel and its authors are not accountable for any loss or outcome that comes from using this site.",
   },
 ];
 
-export function LegalModal() {
-  const [open, setOpen] = useState(false);
+export function LegalDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
@@ -39,7 +44,52 @@ export function LegalModal() {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [open]);
+  }, [open, onClose]);
+
+  if (!open || !mounted) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4 backdrop-blur-xl duration-200 animate-in fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-lg rounded-2xl border border-white/50 bg-white/80 p-8 shadow-2xl backdrop-blur-xl duration-200 animate-in zoom-in-95 dark:border-white/10 dark:bg-card/85"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-4 top-4 cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <h2 className="mb-5 font-serif text-2xl font-bold leading-snug">
+          Terms &amp; Privacy
+        </h2>
+
+        <div className="max-h-[55vh] space-y-5 overflow-y-auto pr-1">
+          {SECTIONS.map((s) => (
+            <div key={s.h}>
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {s.h}
+              </p>
+              <p className="text-sm leading-relaxed text-foreground/80">
+                {s.p}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+export function LegalModal() {
+  const [open, setOpen] = useState(false);
 
   const trigger =
     "font-medium text-foreground/80 underline-offset-4 hover:underline cursor-pointer";
@@ -58,46 +108,7 @@ export function LegalModal() {
         .
       </p>
 
-      {open &&
-        mounted &&
-        createPortal(
-          <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4 backdrop-blur-xl duration-200 animate-in fade-in"
-            onClick={() => setOpen(false)}
-          >
-            <div
-              className="relative w-full max-w-lg rounded-2xl border border-white/50 bg-white/80 p-8 shadow-2xl backdrop-blur-xl duration-200 animate-in zoom-in-95 dark:border-white/10 dark:bg-card/85"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label="Close"
-                className="absolute right-4 top-4 cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
-
-              <h2 className="mb-5 font-serif text-2xl font-bold leading-snug">
-                Terms &amp; Privacy
-              </h2>
-
-              <div className="max-h-[55vh] space-y-5 overflow-y-auto pr-1">
-                {SECTIONS.map((s) => (
-                  <div key={s.h}>
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      {s.h}
-                    </p>
-                    <p className="text-sm leading-relaxed text-foreground/80">
-                      {s.p}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
+      <LegalDialog open={open} onClose={() => setOpen(false)} />
     </>
   );
 }

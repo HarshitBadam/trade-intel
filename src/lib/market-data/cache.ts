@@ -201,7 +201,7 @@ export const getIntradayCached = unstable_cache(
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
     const response = await fetch(
-      `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/5/minute/${fmt(
+      `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/minute/${fmt(
         from
       )}/${fmt(to)}?adjusted=true&sort=asc&limit=50000`,
       {
@@ -225,7 +225,7 @@ export const getIntradayCached = unstable_cache(
       value: c.c,
     }));
   },
-  ["polygon-intraday"],
+  ["polygon-intraday-1m"],
   { revalidate: 300, tags: ["candles"] }
 );
 

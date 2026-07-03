@@ -8,7 +8,7 @@ type ChartPoint = { date: string | number; value: number };
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // `days: 1` is the sentinel for the intraday (1D) view, which renders the
-// 5-minute session series instead of the daily candles.
+// 1-minute session series instead of the daily candles.
 const RANGES: { label: string; days: number; blurb: string }[] = [
   { label: "1D", days: 1, blurb: "today" },
   { label: "1W", days: 7, blurb: "past week" },
@@ -76,7 +76,7 @@ export function StockGraph({
   const has1D = intradayPoints.length >= 2;
   const hasWeek = weekPoints.length >= 2;
   const hasFine = finePoints.length >= 2;
-  // Bucketing per range: 1D → 5-min session (time axis), 1W → 15-min bars,
+  // Bucketing per range: 1D → 1-min session (time axis), 1W → 15-min bars,
   // 1M / 3M → 1-hour bars (date axis, hundreds of points), 6M+ → daily candles.
   const isIntraday = rangeDays === 1;
   const isWeek = rangeDays === 7 && hasWeek;

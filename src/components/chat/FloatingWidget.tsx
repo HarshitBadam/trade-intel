@@ -4,6 +4,7 @@ import { X, ArrowUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import styles from './FloatingWidget.module.css';
 import { getSummary, warmStockSage } from '@/app/actions';
+import { LegalDialog } from '@/components/legal/LegalModal';
 
 type Message = {
   id: number;
@@ -15,7 +16,7 @@ const initialMessages: Message[] = [
   {
     id: 1,
     sender: 'ai',
-    text: "Welcome to StockSage, your AI markets assistant. Ask me about any stock's trend or its news sentiment.\n\n_Heads up: StockSage is AI and can be wrong or out of date. This is general information, not financial advice._",
+    text: "Welcome to StockSage, your AI markets assistant. Ask me about any stock's trend or its news sentiment.",
   },
 ];
 
@@ -111,6 +112,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
   const [inputValue, setInputValue] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [wakingUp, setWakingUp] = useState(false);
+  const [showLegal, setShowLegal] = useState(false);
   const firstReplyDoneRef = useRef(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -311,12 +313,25 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                       <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
                     </button>
                   </div>
+
+                  <p className="mt-4 text-center text-xs text-muted-foreground">
+                    StockSage is AI and can be wrong or out of date.{" "}
+                    <button
+                      type="button"
+                      onClick={() => setShowLegal(true)}
+                      className="font-medium text-foreground/80 underline-offset-4 hover:underline cursor-pointer"
+                    >
+                      Terms &amp; Privacy
+                    </button>
+                  </p>
                 </div>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      <LegalDialog open={showLegal} onClose={() => setShowLegal(false)} />
     </>
   );
 }
