@@ -6,6 +6,37 @@ import { useRouter } from "next/navigation";
 import { searchStocks } from "@/app/details/[id]/actions";
 import type { SearchResult } from "@/lib/market-data/types";
 
+const NAME_NOISE_WORDS = new Set([
+  "inc",
+  "corp",
+  "corporation",
+  "co",
+  "company",
+  "ltd",
+  "plc",
+  "group",
+  "holding",
+  "holdings",
+  "class",
+  "common",
+  "ordinary",
+  "stock",
+  "shares",
+  "warrants",
+  "adr",
+]);
+
+function stockInitials(name: string, ticker: string): string {
+  const words = name
+    .split(/\s+/)
+    .map((word) => word.replace(/[^a-zA-Z]/g, ""))
+    .filter((word) => word && !NAME_NOISE_WORDS.has(word.toLowerCase()));
+
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return ticker.slice(0, 2).toUpperCase();
+}
+
 export function SearchBar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
@@ -83,7 +114,7 @@ export function SearchBar() {
       </div>
 
       {showResults && searchQuery && (
-        <div className="absolute top-full left-0 right-0 mt-2 p-1.5 bg-popover text-popover-foreground border border-border rounded-xl shadow-xl max-h-[320px] overflow-y-auto z-50">
+        <div className="absolute top-full left-0 right-0 mt-2 p-2 bg-white dark:bg-card/85 dark:backdrop-blur-xl text-popover-foreground border border-black/[0.08] dark:border-white/10 rounded-2xl shadow-[0_16px_40px_-12px_rgba(0,0,0,0.18),0_4px_12px_-6px_rgba(0,0,0,0.08)] dark:shadow-2xl max-h-[320px] overflow-y-auto z-50">
           {isLoading ? (
             <div className="px-3 py-6 text-center text-sm text-muted-foreground">
               Searching…
@@ -93,16 +124,19 @@ export function SearchBar() {
               <button
                 key={stock.ticker}
                 type="button"
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-accent focus:bg-accent focus:outline-none"
+                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent focus:bg-accent focus:outline-none"
                 onClick={() => handleStockClick(stock.ticker)}
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-accent text-[11px] font-semibold text-foreground/80">
-                  {stock.ticker.slice(0, 2)}
+                <span
+                  aria-hidden="true"
+                  className="flex size-8 shrink-0 select-none items-center justify-center rounded-md text-[11px] font-medium tracking-wide bg-muted text-muted-foreground"
+                >
+                  {stockInitials(stock.name, stock.ticker)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">
                   {stock.name}
                 </span>
-                <span className="shrink-0 rounded-md border border-border bg-muted/60 px-2 py-0.5 font-mono text-xs font-semibold tracking-wide text-muted-foreground">
+                <span className="shrink-0 font-mono text-[11px] font-medium tracking-widest text-muted-foreground/80">
                   {stock.ticker}
                 </span>
               </button>

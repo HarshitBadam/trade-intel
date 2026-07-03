@@ -4,6 +4,7 @@ import * as React from "react"
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
 
 import { generateMockPopularity } from "@/data/fallbacks"
+import { innerGridLines } from "@/components/charts/grid"
 import {
   Card,
   CardContent,
@@ -69,7 +70,12 @@ export function PopularityChart({
                 <stop offset="95%" style={{ stopColor: "var(--color-positive)", stopOpacity: 0.03 }} />
               </linearGradient>
             </defs>
-            <CartesianGrid vertical={false} />
+            <CartesianGrid
+              vertical={false}
+              horizontalCoordinatesGenerator={({ offset }) =>
+                innerGridLines(offset?.top ?? 0, offset?.height ?? 0, 4)
+              }
+            />
             <XAxis
               dataKey="date"
               tickLine={false}
