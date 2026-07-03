@@ -7,8 +7,6 @@ import { rateLimit } from "@/lib/rate-limit";
 
 async function getClientIp(): Promise<string> {
   const h = await headers();
-  // x-real-ip is platform-set (not spoofable); x-forwarded-for leftmost entry
-  // is attacker-controlled — used only as last resort.
   const realIp = h.get("x-real-ip")?.trim();
   if (realIp) return realIp;
   const xff = h.get("x-forwarded-for");

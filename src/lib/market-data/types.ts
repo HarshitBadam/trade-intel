@@ -9,7 +9,7 @@
 // share the contract without violating either constraint.
 
 import type { RelatedStock } from "@/data/fallbacks";
-import type { News, NewsStatus } from "@/components/RecentInfluential";
+import type { News, NewsStatus } from "@/components/news/RecentInfluential";
 
 export type SearchResult = {
   ticker: string;

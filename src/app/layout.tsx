@@ -1,21 +1,18 @@
 import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
-import { MainNav } from "@/components/nav";
-import { HeaderGate } from "@/components/HeaderGate";
+import { MainNav } from "@/components/layout/Nav";
+import { HeaderGate } from "@/components/layout/HeaderGate";
 import { ChartProvider } from "@/context/ChartContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
-// Editorial display serif (masthead + headlines), exposed as a CSS variable so
-// it can be applied via the `.font-display` utility without changing body copy.
 const playfair = Playfair_Display({
   subsets: ["latin"],
   variable: "--font-playfair",
   display: "swap",
 });
 
-// LLM round-trips can exceed Vercel's default 10s timeout.
 export const maxDuration = 60;
 
 export const metadata: Metadata = {
@@ -36,7 +33,6 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} ${playfair.variable} min-h-screen bg-background antialiased`}>
-        {/* Sync theme before first paint to avoid FOUC. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('theme');var m=window.matchMedia('(prefers-color-scheme: dark)').matches;if(t==='dark'||(t!=='light'&&m)){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}}catch(e){}})();`,

@@ -13,14 +13,10 @@ import { guard } from "@/lib/guard";
 import { resolveTickers } from "@/lib/tickers";
 import { getChatQuotes } from "@/lib/market-data";
 import type { ChatQuote } from "@/lib/market-data";
-import { STOCKSAGE_SYSTEM } from "@/lib/stocksage-prompt";
+import { STOCKSAGE_SYSTEM } from "@/lib/stocksage/prompt";
 
 export type ChatTurn = { role: "user" | "ai"; text: string };
 
-// Grounding is injected via Langflow tweaks, NOT the search query — keeps
-// vector retrieval clean while the LLM still sees live data and context.
-// Structured quotes/indices are kept alongside the formatted string so the
-// offline fallback can answer from the same data without re-fetching.
 type ChatGrounding = {
   liveData: string;
   history: string;
@@ -34,7 +30,6 @@ function fmtPct(p: number | null): string | null {
   return `${p >= 0 ? "+" : ""}${p.toFixed(1)}%`;
 }
 
-// Indices have no tradable quote — name them explicitly so the model doesn't drop them.
 const INDEX_NAMES: Record<string, string> = {
   IXIC: "Nasdaq Composite",
   COMP: "Nasdaq Composite",
@@ -50,7 +45,6 @@ async function buildGrounding(
   message: string,
   history: ChatTurn[]
 ): Promise<ChatGrounding> {
-  // Include recent turns so bare follow-ups still carry their subject.
   const recentText = [message, ...history.slice(-4).map((t) => t.text)].join(
     " "
   );
@@ -74,11 +68,6 @@ async function buildGrounding(
     (t) => `- ${t}: ${INDEX_NAMES[t]} (market index; refer to it by name)`
   );
 
-  // Anchor the model in real time. Without this it has no idea what "today" is,
-  // so it dates "recent" events from its training cut-off and mis-reads how fresh
-  // the web/news context is. US Eastern matches the market day. This rides the
-  // live_data tweak, which the hosted flow honours (the system_message one does
-  // not), so it reliably reaches the prompt.
   const today = new Intl.DateTimeFormat("en-US", {
     weekday: "long",
     year: "numeric",
@@ -107,11 +96,6 @@ async function buildGrounding(
   };
 }
 
-// Deterministic, data-grounded reply used when the hosted AI can't be reached
-// (cold-start timeout exhausted, Gemini rate limit, or Space down). Answering
-// from the live quotes we already fetched is far better than an error: the
-// visitor still gets a real read, so a flaky free-tier backend never produces a
-// visibly broken chat.
 function fallbackReply(grounding: ChatGrounding): string {
   const { quotes, indices } = grounding;
 
@@ -151,7 +135,6 @@ function fallbackReply(grounding: ChatGrounding): string {
 
 const MAX_MESSAGE_CHARS = 1000;
 
-// Wake sleeping HF Space early so the first real message doesn't cold-start.
 export async function warmStockSage(): Promise<void> {
   if (!hasLangflow || !LANGFLOW_BASE_URL) return;
   try {
@@ -162,25 +145,12 @@ export async function warmStockSage(): Promise<void> {
       signal: controller.signal,
     }).finally(() => clearTimeout(timeout));
   } catch {
-    /* best-effort */
   }
 }
 
-// Langflow regenerates node ID suffixes on every import; resolve by stable
-// prefix so tweaks survive re-imports. Cached per revalidate window.
-
-// Fetch the live flow and resolve the prompt/LLM node IDs by stable prefix.
-// THROWS on any failure (network, cold-start timeout, missing nodes) so the
-// failure is NOT cached — otherwise a single cold-start miss would pin the
-// fallback IDs for the whole revalidate window, silently misrouting the
-// system-prompt and live-data tweaks long after the Space is warm again.
 const fetchChatNodeIds = unstable_cache(
   async (): Promise<{ promptId: string; llmId: string }> => {
     const controller = new AbortController();
-    // Match the run timeout's tolerance: on a cold HF Space the flow fetch must
-    // wait through the same wake-up the run does, otherwise resolution fails,
-    // falls back to stale IDs, and the live-data tweak misroutes on the very
-    // first (cold) request — exactly when grounding matters most.
     const timeout = setTimeout(() => controller.abort(), 50_000);
     const res = await fetch(
       `${LANGFLOW_BASE_URL}/api/v1/flows/${LANGFLOW_FLOW_ID}`,
@@ -222,8 +192,6 @@ async function resolveChatNodeIds(): Promise<{
   try {
     return await fetchChatNodeIds();
   } catch (error) {
-    // Uncached fallback: the next request retries resolution, so once the Space
-    // is warm the correct IDs are picked up and cached on the very next turn.
     console.error("Chat node-id resolution failed, using fallback:", error);
     return fallback;
   }
@@ -232,8 +200,6 @@ async function resolveChatNodeIds(): Promise<{
 export type ChatReply = {
   text: string;
   live: boolean;
-  /** True when the failure was a cold-start timeout: the client should retry
-   *  transparently rather than surfacing the message and asking the user to. */
   retryable?: boolean;
 };
 
@@ -270,7 +236,6 @@ export async function getSummary(
       const apiUrl = `${LANGFLOW_BASE_URL}/api/v1/run/${LANGFLOW_FLOW_ID}`;
 
       const controller = new AbortController();
-      // 55s: allows for HF Space cold-start while staying under 60s maxDuration.
       const timeout = setTimeout(() => controller.abort(), 55_000);
 
       const response = await fetch(apiUrl, {
@@ -316,12 +281,8 @@ export async function getSummary(
       console.error("Langflow request failed:", error);
       const aborted = error instanceof Error && error.name === "AbortError";
       return {
-        // Graceful degradation: a real read from the live quotes beats an error.
         text: fallbackReply(grounding),
         live: false,
-        // Cold-start timeouts are transient: signal the client to retry once the
-        // Space has had time to boot. The fallback only surfaces if every retry
-        // fails; a hard failure (rate limit, Space down) shows it immediately.
         retryable: aborted,
       };
     }

@@ -1,12 +1,12 @@
 "use client";
 
-import { StockGraph } from "@/components/StockGraph";
-import { Overview } from "@/components/Overview";
-import TopGainer, { TopGainerSkeleton } from "@/components/TopGainer";
-import TopNews, { TopNewsSkeleton } from "@/components/TopNews";
+import { StockGraph } from "@/components/charts/StockGraph";
+import { Overview } from "@/components/stocks/Overview";
+import TopGainer, { TopGainerSkeleton } from "@/components/stocks/TopGainer";
+import TopNews, { TopNewsSkeleton } from "@/components/news/TopNews";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { SearchBar } from "@/components/SearchBar";
+import { SearchBar } from "@/components/layout/SearchBar";
 import { mockStockData } from "@/data/mockStocks";
 import {
   generateMockCandles,
@@ -15,12 +15,12 @@ import {
   generateMockIntraday,
 } from "@/data/fallbacks";
 import { fetchHomeTicker } from "./details/[id]/actions";
-import type { Mover, Movers, Quote, Headline } from "@/lib/market-data-types";
-import { StockChips } from "@/components/StockChips";
-import { NewsModal, type NewsArticle } from "@/components/NewsModal";
-import { type Shift } from "@/components/Overview";
+import type { Mover, Movers, Quote, Headline } from "@/lib/market-data/types";
+import { StockChips } from "@/components/stocks/StockChips";
+import { NewsModal, type NewsArticle } from "@/components/news/NewsModal";
+import { type Shift } from "@/components/stocks/Overview";
 import { moverToCard } from "@/lib/movers";
-import { FloatingWidget } from "@/components/FloatingWidget";
+import { FloatingWidget } from "@/components/chat/FloatingWidget";
 import { useStaleData } from "@/lib/useStaleData";
 import { prefetch } from "@/lib/prefetch";
 
@@ -38,7 +38,6 @@ function moverToShift(m: Mover): Shift {
 const defaultStock =
   mockStockData.find((s) => s.id === 1) ?? mockStockData[0];
 
-// Event-delegation lookup: company name → ticker (StockChips is not editable).
 const companyToTicker = new Map(
   mockStockData.map((s) => [s.companyName, s.ticker]),
 );

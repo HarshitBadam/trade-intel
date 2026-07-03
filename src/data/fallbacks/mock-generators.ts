@@ -1,4 +1,4 @@
-import { News } from "@/components/RecentInfluential";
+import { News } from "@/components/news/RecentInfluential";
 
 export function hashTicker(ticker: string): number {
   let hash = 0;

@@ -1,5 +1,5 @@
 import { Search } from "lucide-react";
-import { TopGainerSkeleton } from "@/components/TopGainer";
+import { TopGainerSkeleton } from "@/components/stocks/TopGainer";
 
 // Mirrors DetailsView's grid so the layout doesn't shift when data arrives.
 function SearchBarSkeleton() {

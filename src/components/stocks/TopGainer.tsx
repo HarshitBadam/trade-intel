@@ -1,4 +1,4 @@
-import { SentimentLabel } from "./SentimentLabel";
+import { SentimentLabel } from "@/components/shared/SentimentLabel";
 
 interface TopGainerInfo {
   ticker: string;
@@ -18,10 +18,7 @@ interface TopGainerProps {
 }
 
 export default function TopGainer({ title, data }: TopGainerProps) {
-    // Colour by the actual move (sign of the % change), not the card title, so
-    // a "Same Sector" peer that's down shows red and one that's up shows green.
     const negative = data.percentageChange.trim().startsWith("-");
-    // Deeper shades on light paper for contrast; dark keeps its original hues.
     const changeColor = negative
       ? "text-red-600 dark:text-red-500"
       : "text-green-600 dark:text-green-500";

@@ -3,17 +3,10 @@
 import { useEffect, useRef, useState } from "react"
 import { Guilloche } from "./Guilloche"
 
-// Wraps the server-rendered engraving and makes it drift/tilt toward the
-// pointer. We only write two CSS custom properties (--gx/--gy, smoothed in a
-// rAF loop) and let CSS do the transforms, so there is no React re-render per
-// frame. Honors reduced motion and cleans up its listener on unmount.
 export function InteractiveGuilloche({ className }: { className?: string }) {
   const stageRef = useRef<HTMLDivElement>(null)
-  // Bumping this key remounts the SVG so its CSS draw-in animation replays.
   const [drawKey, setDrawKey] = useState(0)
 
-  // Re-plot the engraving whenever the theme flips (the `dark` class on <html>
-  // toggles), so switching modes re-runs the guilloché draw animation.
   useEffect(() => {
     const root = document.documentElement
     let wasDark = root.classList.contains("dark")

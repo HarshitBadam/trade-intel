@@ -38,11 +38,6 @@ function InitialsBadge({
       aria-hidden="true"
       className={cn(
         "inline-flex items-center justify-center rounded-full font-semibold select-none ring-1 ring-inset",
-        // Light: a crisp hairline ring plus a small *directional* drop shadow reads
-        // as a refined, elevated chip — the old even 0-offset glow looked smudged.
-        // Dark: a recessed, near-transparent fill so the badge sits quietly at rest
-        // instead of looking permanently hovered; the trigger's bg-accent hover then
-        // clearly brightens it.
         "bg-background text-foreground/90 ring-black/[0.07] shadow-[0_1px_2px_rgba(0,0,0,0.08)]",
         "dark:bg-white/[0.04] dark:text-foreground/90 dark:ring-transparent dark:shadow-none",
         className
@@ -53,9 +48,6 @@ function InitialsBadge({
   );
 }
 
-/* Icon tile used by every menu row: a soft square holding the row's glyph.
-   The hover highlight lives on the row itself (see DropdownMenuItem), so the
-   whole row — icon + label — lifts into one white box together. */
 function ItemTile({
   children,
   className,
@@ -79,9 +71,6 @@ export function UserMenu({ name, email }: UserMenuProps) {
   const label = initials(name, email);
   const [open, setOpen] = useState(false);
 
-  // The frosted page-dim overlay is portaled to <body>: the sticky header has
-  // a backdrop-filter, which would capture `position: fixed` and trap the
-  // overlay inside the bar (same trick as NewsModal). Gate on mount for SSR.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -92,10 +81,6 @@ export function UserMenu({ name, email }: UserMenuProps) {
           <div
             aria-hidden="true"
             className={cn(
-              // Deliberately lighter than the modal overlay (bg-black/30 +
-              // blur-xl): a dropdown is transient, so the dim should whisper,
-              // not shout. Always mounted + opacity transition so the blur
-              // fades out smoothly instead of vanishing when the menu closes.
               "pointer-events-none fixed inset-0 z-[60] bg-black/15 dark:bg-black/30 backdrop-blur-md transition-opacity duration-300",
               open ? "opacity-100" : "opacity-0"
             )}

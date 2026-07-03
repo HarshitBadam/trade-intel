@@ -1,6 +1,6 @@
 import { getDetailsData } from "@/lib/market-data";
 import DetailsView from "./DetailsView";
-import type { News, NewsStatus } from "@/components/RecentInfluential";
+import type { News, NewsStatus } from "@/components/news/RecentInfluential";
 
 export const dynamic = "force-dynamic";
 

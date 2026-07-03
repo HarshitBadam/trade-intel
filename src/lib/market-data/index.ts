@@ -10,7 +10,7 @@ export type {
   NewsSummary,
   TickerDetail,
   Candidate,
-} from "../market-data-types";
+} from "./types";
 
 export {
   sanitizeTicker,

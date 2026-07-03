@@ -1,19 +1,7 @@
-// A guilloché — the spirograph-style line engraving used on banknotes and
-// stock certificates. It is pure mathematics (layered hypotrochoids), carries
-// zero market data, and is the visual bridge between the two login themes:
-// ink-on-paper in light, a glowing security hologram over the aurora in dark.
-//
-// Server-rendered (deterministic, no hooks) so it paints instantly with no
-// layout shift. On load each curve is "plotted" via an SVG stroke-draw, then
-// the layers rotate slowly — both CSS-only and disabled under reduced motion.
-// Pointer parallax is layered on top by <InteractiveGuilloche>.
-
 function gcd(a: number, b: number): number {
   return b ? gcd(b, a % b) : a;
 }
 
-// One closed hypotrochoid as an SVG path string. `R` is the fixed ring, `r` the
-// rolling circle and `d` the pen offset; the curve closes after r/gcd(R,r) turns.
 function hypotrochoid(
   R: number,
   r: number,

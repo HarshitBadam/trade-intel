@@ -12,7 +12,7 @@ import {
 } from "@/data/fallbacks";
 import { hasAstra, hasPolygon, hasLangflowIngest } from "@/lib/config";
 import { ingestTickerNews } from "@/lib/news-ingest";
-import type { NewsSummary } from "../market-data-types";
+import type { NewsSummary } from "./types";
 import { sanitizeTicker, summarizeNews, mockNewsSummary, latestNewsTimestamp } from "./transforms";
 import {
   getCandlesCached,
