@@ -8,7 +8,6 @@ type ChartPoint = { date: string | number; value: number };
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // `days: 1` is the sentinel for the intraday (1D) view, which renders the
-// 1-minute session series instead of the daily candles.
 const RANGES: { label: string; days: number; blurb: string }[] = [
   { label: "1D", days: 1, blurb: "today" },
   { label: "1W", days: 7, blurb: "past week" },
@@ -76,8 +75,6 @@ export function StockGraph({
   const has1D = intradayPoints.length >= 2;
   const hasWeek = weekPoints.length >= 2;
   const hasFine = finePoints.length >= 2;
-  // Bucketing per range: 1D → 1-min session (time axis), 1W → 15-min bars,
-  // 1M / 3M → 1-hour bars (date axis, hundreds of points), 6M+ → daily candles.
   const isIntraday = rangeDays === 1;
   const isWeek = rangeDays === 7 && hasWeek;
   const isFine = (rangeDays === 30 || rangeDays === 90) && hasFine;
@@ -89,8 +86,6 @@ export function StockGraph({
     ? finePoints
     : dailyPoints;
 
-  // Span of the DAILY history, so the longer ranges can be disabled when the
-  // data doesn't reach back that far.
   const spanDays = useMemo(() => {
     if (dailyPoints.length < 2) return 0;
     return (
@@ -98,9 +93,6 @@ export function StockGraph({
     );
   }, [dailyPoints]);
 
-  // The change shown next to the price reflects the SELECTED range (first vs.
-  // last visible point) — for 1D that's the intraday session, otherwise the
-  // daily window. Falls back to the server's daily change when data is sparse.
   const windowChange = useMemo(() => {
     if (activePoints.length < 2) return { abs: priceChange, pct: percentChange };
     let series = activePoints;
@@ -132,7 +124,10 @@ export function StockGraph({
     ? fineData ?? []
     : chartData;
 
-  // 1D loading state: no daily fallback, so show a spinner until intraday arrives.
+  // 1D (1-min), 1W/1M/3M (15-min) all carry sub-daily bars, so their tooltips
+  // need a time component; daily+ ranges (6M/1Y/All) don't.
+  const subDaily = isIntraday || isWeek || isFine;
+
   const showIntradayLoading =
     !!loadingRange && isIntraday && !has1D && !!onRequestRange;
 
@@ -167,8 +162,6 @@ export function StockGraph({
                   type="button"
                   disabled={disabled}
                   onClick={(e) => {
-                    // The card flips on click; don't let a range change bubble
-                    // up and flip to the popularity view.
                     e.stopPropagation();
                     setRangeDays(r.days);
                     if (onRequestRange && kind && !hiResAvailable) {
@@ -204,7 +197,7 @@ export function StockGraph({
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground" />
           </div>
         ) : chartData ? (
-          <MainChart cd={chartSeries} rangeDays={rangeDays} intraday={isIntraday} />
+          <MainChart cd={chartSeries} rangeDays={rangeDays} intraday={isIntraday} subDaily={subDaily} />
         ) : (
           <p>Loading chart data...</p>
         )}

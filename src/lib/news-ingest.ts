@@ -3,6 +3,7 @@ import "server-only";
 import { revalidateTag } from "next/cache";
 import {
   hasLangflowIngest,
+  hasUpstash,
   LANGFLOW_API_KEY,
   LANGFLOW_BASE_URL,
   LANGFLOW_INGEST_FLOW_ID,
@@ -11,12 +12,57 @@ import {
 } from "@/lib/config";
 import { rateLimit } from "@/lib/rate-limit";
 
-export async function ingestTickerNews(symbol: string): Promise<boolean> {
+// A SUCCESSFUL ingest keeps the ticker quiet for 6h (avoids duplicate rows and
+// Gemini spam). Failed attempts only block retries for 10 minutes, so a
+// transient Langflow outage doesn't freeze refreshes for 6 hours.
+const SUCCESS_QUIET_S = 6 * 60 * 60;
+const ATTEMPT_QUIET_S = 10 * 60;
+
+const successMemory = new Map<string, number>();
+
+async function hadRecentSuccess(symbol: string): Promise<boolean> {
+  if (hasUpstash) {
+    try {
+      const { Redis } = await import("@upstash/redis");
+      const hit = await Redis.fromEnv().get(`news-ingest-success:${symbol}`);
+      if (hit !== null && hit !== undefined) return true;
+    } catch (error) {
+      console.error("Ingest success lookup failed, using memory:", error);
+    }
+  }
+  const t = successMemory.get(symbol);
+  return t !== undefined && Date.now() - t < SUCCESS_QUIET_S * 1000;
+}
+
+async function markIngestSuccess(symbol: string): Promise<void> {
+  successMemory.set(symbol, Date.now());
+  if (hasUpstash) {
+    try {
+      const { Redis } = await import("@upstash/redis");
+      await Redis.fromEnv().set(`news-ingest-success:${symbol}`, 1, {
+        ex: SUCCESS_QUIET_S,
+      });
+    } catch (error) {
+      console.error("Ingest success marker write failed:", error);
+    }
+  }
+}
+
+export async function claimIngestSlot(symbol: string): Promise<boolean> {
+  if (await hadRecentSuccess(symbol)) return false;
+  const slot = await rateLimit("news-ingest", symbol, 1, ATTEMPT_QUIET_S);
+  return slot.success;
+}
+
+export async function ingestTickerNews(
+  symbol: string,
+  opts?: { skipRateLimit?: boolean }
+): Promise<boolean> {
   if (!hasLangflowIngest) return false;
 
-  // Max 1 ingestion per ticker per 6h to avoid duplicate rows and Gemini spam.
-  const slot = await rateLimit("news-ingest", symbol, 1, 6 * 60 * 60);
-  if (!slot.success) return false;
+  // Callers that already claimed the slot (scheduleNewsIngestion) skip this so
+  // the claim isn't double-counted against the limit.
+  if (!opts?.skipRateLimit && !(await claimIngestSlot(symbol))) return false;
 
   const query = `${symbol} stock latest news`;
   const apiUrl = `${LANGFLOW_BASE_URL}/api/v1/run/${LANGFLOW_INGEST_FLOW_ID}`;
@@ -50,6 +96,7 @@ export async function ingestTickerNews(symbol: string): Promise<boolean> {
     }
 
     revalidateTag("news");
+    await markIngestSuccess(symbol);
     return true;
   } catch (error) {
     console.error(`News ingestion failed for ${symbol}:`, error);

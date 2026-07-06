@@ -130,7 +130,12 @@ export const getMarketMapYearAgoCached = unstable_cache(
 export const getCandlesCached = unstable_cache(
   async (ticker: string) => {
     const to = new Date();
-    const from = new Date(to.getTime() - 5 * 365 * 24 * 60 * 60 * 1000);
+    // Polygon's free tier only entitles ~2 years of daily history; requesting 5
+    // years returns a 403 NOT_AUTHORIZED for the whole call, which used to slip
+    // through as "no data" and fall back to mock. Clamp to ~2y so the request
+    // stays inside the free window (also a smaller payload / one fewer failure
+    // mode).
+    const from = new Date(to.getTime() - 2 * 365 * 24 * 60 * 60 * 1000);
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
     const response = await fetch(
@@ -142,10 +147,21 @@ export const getCandlesCached = unstable_cache(
         headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
       }
     );
+    // A non-ok response (429 rate limit / 403 entitlement) has no `results`, so
+    // silently returning null here would cache the failure for the full
+    // revalidate window and pin the chart to mock. Throw instead: unstable_cache
+    // does NOT memoize a rejection, so the caller's try/catch falls back to mock
+    // for just this render and the next request retries live.
+    if (!response.ok) {
+      console.error(
+        `[polygon] candles fetch failed for ${ticker}: ${response.status} ${response.statusText}`
+      );
+      throw new Error(`polygon candles failed: ${response.status}`);
+    }
     const stock_data = await response.json();
 
     const results = stock_data.results as
-      | { t: number; c: number; o: number }[]
+      | { t: number; c: number; o: number; v?: number }[]
       | undefined;
     if (!results || results.length < 2) return null;
 
@@ -160,6 +176,10 @@ export const getCandlesCached = unstable_cache(
       price_change: (last.c as number) - (prev.c as number),
       percent_change:
         (((last.c as number) - (prev.c as number)) / (prev.c as number)) * 100,
+      // Latest daily volume comes free with these bars — reuse it for the
+      // popularity card instead of spending a second Polygon request on
+      // getLatestVolumeCached. Shares are whole, so round for display.
+      latest_volume: typeof last.v === "number" ? Math.round(last.v) : null,
     };
   },
   ["polygon-candles"],
@@ -194,6 +214,39 @@ export const getPolygonNewsCached = unstable_cache(
   { revalidate: 600, tags: ["news"] }
 );
 
+// Wider news pull used only to build the popularity trend: the standard news
+// fetch caps at 12 (headline list), but Polygon allows up to 1000 with a date
+// filter, so we can bucket a real 90-day positive/negative series instead of
+// mocking one. Cached hourly since it drives a trend, not a live headline feed.
+export const getPopularityNewsCached = unstable_cache(
+  async (ticker: string): Promise<News[]> => {
+    const from = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    const url =
+      `https://api.polygon.io/v2/reference/news?ticker=${ticker}` +
+      `&published_utc.gte=${from}&order=desc&sort=published_utc&limit=1000`;
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
+    });
+    // Throw (don't `return []`) on a transient failure so unstable_cache doesn't
+    // pin an empty news trend for the full hour on a single 429. The caller
+    // catches it and keeps the popularity card on its other source / mock.
+    if (!response.ok) {
+      console.error(
+        `[polygon] popularity news fetch failed for ${ticker}: ${response.status} ${response.statusText}`
+      );
+      throw new Error(`polygon popularity news failed: ${response.status}`);
+    }
+    const data = await response.json();
+    const results = (data.results ?? []) as PolygonNewsResult[];
+    return mapPolygonNews(ticker, results);
+  },
+  ["polygon-popularity-news"],
+  { revalidate: 3600, tags: ["news"] }
+);
+
 export const getIntradayCached = unstable_cache(
   async (ticker: string): Promise<{ date: string; value: number }[] | null> => {
     const to = new Date();
@@ -209,6 +262,12 @@ export const getIntradayCached = unstable_cache(
         headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
       }
     );
+    if (!response.ok) {
+      console.error(
+        `[polygon] intraday (1m) fetch failed for ${ticker}: ${response.status} ${response.statusText}`
+      );
+      throw new Error(`polygon intraday failed: ${response.status}`);
+    }
     const data = await response.json();
     const results = data.results as { t: number; c: number }[] | undefined;
     if (!results || results.length < 2) return null;
@@ -244,6 +303,12 @@ export const getWeekCached = unstable_cache(
         headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
       }
     );
+    if (!response.ok) {
+      console.error(
+        `[polygon] week (15m) fetch failed for ${ticker}: ${response.status} ${response.statusText}`
+      );
+      throw new Error(`polygon week failed: ${response.status}`);
+    }
     const data = await response.json();
     const results = data.results as { t: number; c: number }[] | undefined;
     if (!results || results.length < 2) return null;
@@ -261,6 +326,12 @@ export const getWeekCached = unstable_cache(
   { revalidate: 300, tags: ["candles"] }
 );
 
+// "Fine" powers the 1M/3M ranges at 15-minute resolution so those mid ranges
+// render as a dense, Google-Finance-style line rather than a sparse one. ~92
+// days of 15m bars is only ~2.5k rows — a single request that stays far under
+// Polygon's 50k-result cap and inside the free tier's 2-year aggregate window.
+// (A full year at this resolution would risk the cap, so the window is capped to
+// a quarter.) It's still one on-demand cached call, just a bigger response.
 export const getFineCached = unstable_cache(
   async (ticker: string): Promise<{ date: string; value: number }[] | null> => {
     const to = new Date();
@@ -268,7 +339,7 @@ export const getFineCached = unstable_cache(
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
     const response = await fetch(
-      `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/hour/${fmt(
+      `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/15/minute/${fmt(
         from
       )}/${fmt(to)}?adjusted=true&sort=asc&limit=50000`,
       {
@@ -276,6 +347,12 @@ export const getFineCached = unstable_cache(
         headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
       }
     );
+    if (!response.ok) {
+      console.error(
+        `[polygon] fine (15m) fetch failed for ${ticker}: ${response.status} ${response.statusText}`
+      );
+      throw new Error(`polygon fine failed: ${response.status}`);
+    }
     const data = await response.json();
     const results = data.results as { t: number; c: number }[] | undefined;
     if (!results || results.length < 2) return null;
@@ -289,7 +366,7 @@ export const getFineCached = unstable_cache(
       value: c.c,
     }));
   },
-  ["polygon-fine-1h"],
+  ["polygon-fine-15m"],
   { revalidate: 300, tags: ["candles"] }
 );
 
@@ -327,7 +404,9 @@ export const getRelatedTickersCached = unstable_cache(
         headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
       }
     );
-    if (!response.ok) return [];
+    if (!response.ok) {
+      throw new Error(`polygon related companies failed: ${response.status}`);
+    }
     const data = await response.json();
     const rows = (data.results ?? []) as { ticker?: string }[];
     return rows.map((x) => x.ticker ?? "").filter(Boolean);
@@ -336,8 +415,6 @@ export const getRelatedTickersCached = unstable_cache(
   { revalidate: 86_400, tags: ["fundamentals"] }
 );
 
-// Cached per query for a day; throws on non-OK so failures stay out of cache.
-// COMPANY_TICKER_TYPES prioritizes real companies over ETFs/leveraged products.
 const COMPANY_TICKER_TYPES = new Set([
   "CS",
   "ADRC",
@@ -350,7 +427,6 @@ const COMPANY_TICKER_TYPES = new Set([
 
 type PolygonTickerHit = { ticker: string; name?: string; type?: string };
 
-// Lower = better: exact match > company type > prefix match > shorter ticker.
 function searchRelevance(hit: PolygonTickerHit, q: string): number {
   const tk = hit.ticker.toUpperCase();
   const name = (hit.name ?? "").toUpperCase();
@@ -367,8 +443,7 @@ function searchRelevance(hit: PolygonTickerHit, q: string): number {
 }
 
 export const searchTickersCached = unstable_cache(
-  async (query: string): Promise<SearchResult[]> => {
-    // Fetch wide, then rank locally — Polygon's default order buries exact matches.
+  async (query: string): Promise<SearchResult[]> => { // Fetch wide, then rank locally — Polygon's default order buries exact matches.
     const response = await fetch(
       `https://api.polygon.io/v3/reference/tickers?search=${encodeURIComponent(
         query

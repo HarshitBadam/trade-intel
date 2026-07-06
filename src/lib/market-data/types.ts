@@ -86,6 +86,23 @@ export type NewsSummary = {
   updatedAt?: string;
 };
 
+export type PopularitySeriesPoint = {
+  date: string;
+  positive: number;
+  negative: number;
+};
+
+// Social/popularity payload for the details flip card. `status` is "live" when
+// every value is backed by a real source (Polygon volume + Polygon/Astra news)
+// and "sample" when we fell back to the deterministic mock (open demo mode).
+export type PopularityData = {
+  popularityRate: number;
+  /** Latest daily trading volume; 0 when no real volume source is available. */
+  searchVolume: number;
+  series: PopularitySeriesPoint[];
+  status: "live" | "sample";
+};
+
 export type TickerDetail = {
   ticker: string;
   name: string;

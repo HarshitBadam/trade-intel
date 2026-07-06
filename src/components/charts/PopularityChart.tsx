@@ -3,7 +3,6 @@
 import * as React from "react"
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
 
-import { generateMockPopularity } from "@/data/fallbacks"
 import { innerGridLines } from "@/components/charts/grid"
 import {
   Card,
@@ -33,24 +32,17 @@ const chartConfig = {
 } satisfies ChartConfig
 
 export function PopularityChart({
-  ticker = "AAPL",
+  series,
   rangeDays = 90,
 }: {
-  ticker?: string
+  series: { date: string; positive: number; negative: number }[]
   rangeDays?: number
 }) {
-  // Deterministic per-ticker series so each stock shows distinct (illustrative)
-  // social sentiment instead of one shared hardcoded dataset.
-  const chartData = React.useMemo(
-    () => generateMockPopularity(ticker).series,
-    [ticker]
-  )
-
   const filteredData = React.useMemo(() => {
-    if (rangeDays === Infinity) return chartData
+    if (rangeDays === Infinity) return series
     const cutoff = Date.now() - rangeDays * 24 * 60 * 60 * 1000
-    return chartData.filter((item) => new Date(item.date).getTime() >= cutoff)
-  }, [chartData, rangeDays])
+    return series.filter((item) => new Date(item.date).getTime() >= cutoff)
+  }, [series, rangeDays])
 
   return (
     <Card className="border-0 shadow-none bg-transparent rounded-lg">

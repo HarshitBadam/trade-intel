@@ -16,6 +16,8 @@ export type StockData = {
   sentimentPercentage: number;
   positiveSentimentPercentage: number;
   negativeSentimentPercentage: number;
+  popularitySeries: { date: string; positive: number; negative: number }[];
+  popularityStatus: "live" | "sample";
   chartData: { date: string; value: number }[];
   intradayData?: { date: string; value: number }[];
   weekData?: { date: string; value: number }[];
