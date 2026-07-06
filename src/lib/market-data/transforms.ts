@@ -17,6 +17,7 @@ import type {
   Movers,
   NewsSummary,
   Candidate,
+  PopularitySeriesPoint,
 } from "./types";
 
 export function sanitizeTicker(input: string): string {
@@ -153,6 +154,115 @@ export function latestNewsTimestamp(news: News[]): string | undefined {
     if (!Number.isNaN(t)) latest = Math.max(latest, t);
   }
   return latest > 0 ? new Date(latest).toISOString() : undefined;
+}
+
+export const NEWS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function isNewsStale(
+  updatedAt: string | undefined,
+  now: number = Date.now()
+): boolean {
+  if (!updatedAt) return true;
+  const t = Date.parse(updatedAt);
+  if (Number.isNaN(t)) return true;
+  return now - t > NEWS_TTL_MS;
+}
+
+// Popularity trend spans ~90 days, bucketed daily to match the granularity of
+// the price chart. Daily is the finest resolution the data supports, since news
+// `publication_date` is date-only (no intraday timestamp).
+export const POPULARITY_WINDOW_DAYS = 90;
+const POPULARITY_BUCKET_DAYS = 1;
+
+function articleTime(n: News): number {
+  const raw = n.metadata.publication_date || n.metadata.ingested_at;
+  const t = raw ? Date.parse(raw) : NaN;
+  return Number.isNaN(t) ? NaN : t;
+}
+
+// Keep only the articles inside the popularity trend's window so the sentiment
+// gauge + mentions count the SAME population as the popularity score/chart
+// (which use buildPopularitySeries/computePopularityScore) instead of the full
+// all-time Astra set. Same publication_date || ingested_at rule via articleTime.
+export function windowNews(
+  news: News[],
+  windowDays = POPULARITY_WINDOW_DAYS,
+  now: number = Date.now()
+): News[] {
+  const start = now - windowDays * 24 * 60 * 60 * 1000;
+  return news.filter((n) => {
+    const t = articleTime(n);
+    return !Number.isNaN(t) && t >= start && t <= now;
+  });
+}
+
+// De-duplicate articles that appear in both Astra and Polygon (same story),
+// preferring a real URL as the identity, then the doc id, then the title.
+export function dedupeNews(news: News[]): News[] {
+  const seen = new Set<string>();
+  const out: News[] = [];
+  for (const n of news) {
+    const url = n.metadata.url && n.metadata.url !== "#" ? n.metadata.url : "";
+    const key = url || n._id || n.metadata.title;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(n);
+  }
+  return out;
+}
+
+// Bucket real news into a continuous positive/negative weekly series. Empty
+// buckets are pre-seeded so the area chart stays continuous across quiet weeks.
+export function buildPopularitySeries(
+  news: News[],
+  windowDays = POPULARITY_WINDOW_DAYS,
+  bucketDays = POPULARITY_BUCKET_DAYS
+): PopularitySeriesPoint[] {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const start = now - windowDays * dayMs;
+  const bucketMs = bucketDays * dayMs;
+  const bucketCount = Math.ceil(windowDays / bucketDays);
+
+  const buckets: PopularitySeriesPoint[] = Array.from(
+    { length: bucketCount },
+    (_, i) => ({
+      date: new Date(start + i * bucketMs).toISOString().slice(0, 10),
+      positive: 0,
+      negative: 0,
+    })
+  );
+
+  for (const n of news) {
+    const t = articleTime(n);
+    if (Number.isNaN(t) || t < start || t > now) continue;
+    const idx = Math.min(bucketCount - 1, Math.floor((t - start) / bucketMs));
+    if (n.metadata.sentiment === "Positive") buckets[idx].positive += 1;
+    else if (n.metadata.sentiment === "Negative") buckets[idx].negative += 1;
+  }
+  return buckets;
+}
+
+// Real 0-100 popularity score: blends how positive coverage is (net sentiment)
+// with how much coverage there is (attention). The attention term saturates so
+// a few articles already register without volume dominating the score.
+export function computePopularityScore(news: News[]): number {
+  const now = Date.now();
+  const start = now - POPULARITY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  let positive = 0;
+  let negative = 0;
+  let total = 0;
+  for (const n of news) {
+    const t = articleTime(n);
+    if (Number.isNaN(t) || t < start) continue;
+    total += 1;
+    if (n.metadata.sentiment === "Positive") positive += 1;
+    else if (n.metadata.sentiment === "Negative") negative += 1;
+  }
+  const posNeg = positive + negative;
+  const sentimentScore = posNeg > 0 ? (positive / posNeg) * 100 : 50;
+  const attentionScore = (1 - Math.exp(-total / 12)) * 100;
+  return Math.round(0.6 * sentimentScore + 0.4 * attentionScore);
 }
 
 export function mockMovers(): Mover[] {

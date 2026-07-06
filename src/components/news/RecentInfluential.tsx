@@ -25,7 +25,7 @@ export type News = {
   };
 };
 
-export type NewsStatus = "fresh" | "analyzing" | "live" | "sample";
+export type NewsStatus = "fresh" | "analyzing" | "live" | "sample" | "stale";
 
 interface RecentInfluentialProps {
   news?: News[];
@@ -64,9 +64,14 @@ function StatusBadge({
       dot: "bg-green-500",
       text: "text-green-700 dark:text-green-400",
     },
+    stale: {
+      label: `Outdated analysis${updatedAt ? ` · ${timeAgo(updatedAt)}` : ""}`,
+      dot: "bg-amber-500",
+      text: "text-amber-700 dark:text-amber-400",
+    },
     analyzing: {
       label: "Analyzing latest news",
-      dot: "bg-yellow-500 animate-pulse",
+      dot: "bg-yellow-500",
       text: "text-yellow-700 dark:text-yellow-400",
     },
     live: {
@@ -156,7 +161,18 @@ export function RecentInfluential({
   return (
     <div ref={panelRef} className="w-full rounded-lg p-6 glass-card shadow-md flex flex-col h-full">
       <div className="pb-8">
-        <h2 className="text-xl font-bold mb-6">Sentiment Score Gauge</h2>
+        {/* While the background analysis runs, the visible numbers are real but
+            provisional. A quiet "Updating..." on the gauge tells users the
+            values may change; it disappears once the analysis settles, so the
+            stable state carries no extra chrome. */}
+        <div className="flex items-center justify-between mb-6 gap-3">
+          <h2 className="text-xl font-bold">Sentiment Score Gauge</h2>
+          {status === "analyzing" && (
+            <span className="text-xs font-medium text-muted-foreground">
+              Updating...
+            </span>
+          )}
+        </div>
         <div className="flex justify-center items-center gap-4 pb-3">
           <div className="flex pr-3">
             <div className="text-sm">Positive</div>

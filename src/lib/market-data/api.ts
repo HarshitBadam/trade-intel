@@ -163,7 +163,14 @@ export async function getRelatedStocksData(
   if (!symbol || !hasPolygon) return [];
 
   try {
-    const relatedTickers = await getRelatedTickersCached(symbol);
+    // Isolated so a transient failure (now thrown, no longer cached) still
+    // falls through to curated peers instead of aborting the whole request.
+    let relatedTickers: string[] = [];
+    try {
+      relatedTickers = await getRelatedTickersCached(symbol);
+    } catch (error) {
+      console.error("Related companies lookup failed, using peers:", error);
+    }
     let peerTickers = Array.from(new Set(relatedTickers.map(sanitizeTicker)))
       .filter((t) => t && t !== symbol)
       .slice(0, 8);

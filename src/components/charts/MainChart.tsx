@@ -47,10 +47,12 @@ export default function MainChart({
   cd,
   rangeDays = 365,
   intraday = false,
+  subDaily = false,
 }: {
   cd: IncomingPoint[];
   rangeDays?: number;
   intraday?: boolean;
+  subDaily?: boolean;
 }) {
   const [activeChart] = React.useState<"desktop" | "mobile">("desktop");
   const { hoveredTimestamp } = useChart();
@@ -168,7 +170,9 @@ export default function MainChart({
                     const ts = payload?.[0]?.payload?.date ?? _value;
                     const date = new Date(ts);
                     if (Number.isNaN(date.getTime())) return "";
-                    if (intraday) {
+                    // Sub-daily bars (1D/1W/1M/3M) need the time so adjacent
+                    // 15-min points on the same day aren't labelled identically.
+                    if (subDaily) {
                       return date.toLocaleString("en-US", {
                         month: "short",
                         day: "numeric",

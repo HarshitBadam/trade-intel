@@ -81,7 +81,8 @@ export default function DetailsView({
 
     let cancelled = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
-    const MAX_RETRIES = 3;
+
+    const MAX_RETRIES = 6;
     let attempts = 0;
 
     const poll = () => {
@@ -90,9 +91,24 @@ export default function DetailsView({
         const stillAnalyzing = data.newsStatus === "analyzing";
         const giveUp = stillAnalyzing && attempts >= MAX_RETRIES;
         if (giveUp) {
+          // Mirrors the server's `isNewsStale` rule (NEWS_TTL_MS = 7 days).
+          // Replicated inline to avoid pulling the server data layer into the
+          // client bundle. If the analysis we have is older than the TTL and
+          // the background refresh never landed, label it "stale" — never
+          // "fresh" — so we don't present week-plus-old data as up to date.
+          const NEWS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+          const isStale =
+            !!data.newsUpdatedAt &&
+            Date.now() - Date.parse(data.newsUpdatedAt) > NEWS_TTL_MS;
           data = {
             ...data,
-            newsStatus: data.news.length > 0 ? "live" : "sample",
+            newsStatus: data.newsUpdatedAt
+              ? isStale
+                ? "stale"
+                : "fresh"
+              : data.news.length > 0
+                ? "live"
+                : "sample",
           };
         }
         setStockData(data);
@@ -160,13 +176,29 @@ export default function DetailsView({
     if (!el) return;
 
     let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const MAX_ATTEMPTS = 3;
+
+    const load = (attempt = 0) => {
+      fetchRelatedStocks(ticker)
+        .then((r) => {
+          if (!cancelled) setRelated(r);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          if (attempt < MAX_ATTEMPTS) {
+            retry = setTimeout(() => load(attempt + 1), 1000 * 2 ** attempt);
+          } else {
+            setRelated([]);
+          }
+        });
+    };
+
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && !cancelled) {
           observer.disconnect();
-          fetchRelatedStocks(ticker).then((r) => {
-            if (!cancelled) setRelated(r);
-          });
+          load();
         }
       },
       { rootMargin: "200px" },
@@ -175,6 +207,7 @@ export default function DetailsView({
 
     return () => {
       cancelled = true;
+      if (retry) clearTimeout(retry);
       observer.disconnect();
     };
   }, [ticker]);
@@ -207,11 +240,12 @@ export default function DetailsView({
                     back={
                       <PopularityGraph
                         companyName={stockData.companyName}
-                        ticker={stockData.id}
                         popularityRate={stockData.popularityRate}
                         mentions={stockData.mentions}
                         searchVolume={stockData.searchVolume}
                         sentimentPercentage={stockData.sentimentPercentage}
+                        series={stockData.popularitySeries}
+                        status={stockData.popularityStatus}
                       />
                     }
                   />

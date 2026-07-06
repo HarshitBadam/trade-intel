@@ -68,15 +68,16 @@ export function generateMockFine(ticker: string, days = 95) {
   const rand = seededRandom(hashTicker(ticker) ^ 0x77ee);
 
   const points: { date: string; value: number }[] = [];
-  const stepHours = 1;
-  const steps = Math.round((days * 24) / stepHours);
-  const stepMs = stepHours * 60 * 60 * 1000;
+  const stepMs = 15 * 60 * 1000;
+  const steps = Math.round((days * 24 * 60) / 15);
   const now = Date.now();
   // Start below the anchor so the series ends near the current price
   let price = anchor * (0.9 + rand() * 0.06);
 
   for (let i = steps; i >= 0; i--) {
-    price = Math.max(1, price + price * (rand() - 0.49) * 0.006);
+    // Smaller per-step move than the old hourly mock so 4x the points keep a
+    // comparable overall drift instead of swinging wildly.
+    price = Math.max(1, price + price * (rand() - 0.49) * 0.0035);
     points.push({
       date: new Date(now - i * stepMs).toISOString(),
       value: Number(price.toFixed(2)),
@@ -91,7 +92,7 @@ export function generateMockIntraday(ticker: string) {
   const rand = seededRandom(hashTicker(ticker) ^ 0x1d1d);
 
   const points: { date: string; value: number }[] = [];
-  const steps = 390; // 6.5 trading hours @ 1-min bars
+  const steps = 390;
   const stepMs = 60 * 1000;
   const now = Date.now();
   let price = anchor * (0.99 + rand() * 0.02);

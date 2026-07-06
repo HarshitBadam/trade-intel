@@ -4,11 +4,12 @@ import { PopularityChart } from "./PopularityChart"
 
 interface PopularityGraphProps {
   companyName: string;
-  ticker?: string;
   popularityRate: number;
   mentions: number;
   searchVolume: number;
   sentimentPercentage: number;
+  series: { date: string; positive: number; negative: number }[];
+  status: "live" | "sample";
 }
 
 // Social/popularity history only spans ~3 months of data, so wider windows are
@@ -26,11 +27,12 @@ const POPULARITY_SPAN_DAYS = 90;
 
 export function PopularityGraph({
   companyName,
-  ticker,
   popularityRate,
   mentions,
   searchVolume,
-  sentimentPercentage
+  sentimentPercentage,
+  series,
+  status
 }: PopularityGraphProps) {
   const [rangeDays, setRangeDays] = React.useState<number>(90);
 
@@ -41,20 +43,27 @@ export function PopularityGraph({
         <div className="stock-text-description-left p-8">
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold">{companyName}</h2>
-            <span
-              className="text-[10px] uppercase tracking-wide font-medium text-muted-foreground border border-border rounded-full px-2 py-0.5"
-              title="Social sentiment is illustrative sample data, not a live feed."
-            >
-              Illustrative
-            </span>
+            {/* Only disclaim when the data really is the deterministic mock
+                (open demo mode). With a live provider every value below is
+                real, so the badge is dropped. */}
+            {status === "sample" && (
+              <span
+                className="text-[10px] uppercase tracking-wide font-medium text-muted-foreground border border-border rounded-full px-2 py-0.5"
+                title="Social sentiment is illustrative sample data, not a live feed."
+              >
+                Illustrative
+              </span>
+            )}
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold">{popularityRate}</span>
             <span className="text-sm text-muted-foreground">popularity score</span>
           </div>
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mt-2">
-            <div className="text-muted-foreground text-sm">Mentions: {mentions.toLocaleString()} today</div>
-            <div className="text-muted-foreground text-sm">Search Volume: {searchVolume.toLocaleString()}</div>
+            <div className="text-muted-foreground text-sm">Mentions: {mentions.toLocaleString()}</div>
+            {searchVolume > 0 && (
+              <div className="text-muted-foreground text-sm">Volume: {searchVolume.toLocaleString()}</div>
+            )}
             <div className="text-muted-foreground text-sm">{sentimentPercentage}% Positive Sentiment</div>
           </div>
 
@@ -91,7 +100,7 @@ export function PopularityGraph({
         </div>
       </div>
 
-      <PopularityChart ticker={ticker ?? companyName} rangeDays={rangeDays} />
+      <PopularityChart series={series} rangeDays={rangeDays} />
     </div>
   )
 } 
