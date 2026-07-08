@@ -28,6 +28,7 @@ import {
 import { polygonFetch, type PolygonPriority } from "./polygon";
 import {
   getAlpacaBars,
+  getAlpacaBarsLive,
   getAlpacaMultiBars,
   getAlpacaSnapshots,
   type AlpacaTimeframe,
@@ -91,14 +92,20 @@ async function fetchBarsChain(
   fromMs: number,
   toMs: number,
   polygonUrl: string,
-  priority?: PolygonPriority
+  priority?: PolygonPriority,
+  liveTail = false
 ): Promise<BarPoint[]> {
   let alpacaFailed = false;
   if (hasAlpaca) {
     try {
-      const bars = mapAlpacaBars(
-        await getAlpacaBars(ticker, alpacaTimeframe, isoTime(fromMs), isoTime(toMs))
-      );
+      // Sub-daily series (1D/fine) pass liveTail so the SIP base gets a live
+      // IEX tail up to ~now; daily series keep the plain SIP fetch (a ~16-min
+      // gap is invisible on a multi-year chart, and its headline price is made
+      // real-time separately in getCandlesCached).
+      const raw = liveTail
+        ? await getAlpacaBarsLive(ticker, alpacaTimeframe, isoTime(fromMs), isoTime(toMs))
+        : await getAlpacaBars(ticker, alpacaTimeframe, isoTime(fromMs), isoTime(toMs));
+      const bars = mapAlpacaBars(raw);
       if (bars.length >= 2 || !hasPolygon) return bars;
     } catch (error) {
       alpacaFailed = true;
@@ -347,7 +354,7 @@ export const getCandlesCached = unstable_cache(
 
     const last = bars[bars.length - 1];
     const prev = bars[bars.length - 2];
-    return {
+    const result = {
       chart_data: bars,
       stock_price: last.value,
       price_change: last.value - prev.value,
@@ -355,6 +362,29 @@ export const getCandlesCached = unstable_cache(
       latest_volume:
         typeof last.volume === "number" ? Math.round(last.volume) : null,
     };
+
+    // The daily bars are SIP, so the headline price lags ~16 min during market
+    // hours (unlike the sub-daily charts, daily bars aren't worth tail-filling
+    // — a 16-min gap is invisible on a multi-year line). Instead, best-effort
+    // override just the scalar price fields with the real-time IEX snapshot,
+    // refreshed each 5-min cache window. chart_data/latest_volume stay
+    // SIP-derived (full-market volume stays accurate); the snapshot's change is
+    // measured vs the previous daily close, matching the day-change semantics.
+    if (hasAlpaca) {
+      try {
+        const snaps = await getAlpacaSnapshots([ticker]);
+        const quote = mapAlpacaSnapshotQuote(ticker, snaps[ticker]);
+        if (quote && quote.price > 0) {
+          result.stock_price = quote.price;
+          result.price_change = quote.change;
+          result.percent_change = quote.percentChange;
+        }
+      } catch (error) {
+        console.error(`[alpaca] headline snapshot failed for ${ticker}:`, error);
+      }
+    }
+
+    return result;
   },
   ["candles"],
   { revalidate: 300, tags: ["candles"] }
@@ -406,7 +436,7 @@ export const getIntradayCached = unstable_cache(
       new Date(from)
     )}/${fmtDay(new Date(to))}?adjusted=true&sort=asc&limit=50000`;
 
-    const bars = await fetchBarsChain(ticker, "1Min", from, to, polygonUrl, "high");
+    const bars = await fetchBarsChain(ticker, "1Min", from, to, polygonUrl, "high", true);
     if (bars.length < 2) return null;
 
     const lastDay = bars[bars.length - 1].date.slice(0, 10);
@@ -428,7 +458,7 @@ export const getFineCached = unstable_cache(
       new Date(from)
     )}/${fmtDay(new Date(to))}?adjusted=true&sort=asc&limit=50000`;
 
-    const bars = await fetchBarsChain(ticker, "15Min", from, to, polygonUrl, "high");
+    const bars = await fetchBarsChain(ticker, "15Min", from, to, polygonUrl, "high", true);
     if (bars.length < 2) return null;
 
     const latest = Date.parse(bars[bars.length - 1].date);

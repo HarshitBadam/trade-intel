@@ -285,9 +285,18 @@ export async function getDetailsData(ticker: string): Promise<StockData> {
     );
   }
 
-  // Resolve candles first so the latest daily volume can seed the popularity
-  // card without a second Polygon round-trip.
-  const stock_data = await getStockCandles(symbol);
+  // Fetch candles and both news sources in parallel — the news calls do not
+  // depend on the candles, so there is no reason to serialize them. The
+  // latest daily volume from the candles still seeds the popularity card
+  // without a second Polygon round-trip. Each news source is fetched exactly
+  // once and feeds BOTH the sentiment panel and the popularity card from the
+  // same arrays — one Polygon news request per ticker per cache window, and
+  // the two views can never disagree.
+  const [stock_data, astraNews, polygonNews] = await Promise.all([
+    getStockCandles(symbol),
+    fetchAstraNews(symbol),
+    fetchPolygonNews(symbol),
+  ]);
   const priceStatus: StockData["priceStatus"] = !hasPrices
     ? "sample"
     : stock_data
@@ -297,14 +306,6 @@ export async function getDetailsData(ticker: string): Promise<StockData> {
     stock_data && typeof stock_data.latest_volume === "number"
       ? stock_data.latest_volume
       : null;
-
-  // Fetch each news source exactly once and derive BOTH the sentiment panel
-  // and the popularity card from the same arrays — one Polygon news request
-  // per ticker per cache window, and the two views can never disagree.
-  const [astraNews, polygonNews] = await Promise.all([
-    fetchAstraNews(symbol),
-    fetchPolygonNews(symbol),
-  ]);
   const news = await buildNewsSummary(symbol, astraNews, polygonNews);
   const popularity = buildPopularityData(
     symbol,
