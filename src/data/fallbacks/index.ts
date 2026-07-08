@@ -18,6 +18,7 @@ export {
 export {
   CURATED_PEERS,
   getCuratedPeers,
+  getGroupPeers,
   getRelatedStocks,
 } from "./related";
 

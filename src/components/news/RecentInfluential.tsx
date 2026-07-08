@@ -25,7 +25,13 @@ export type News = {
   };
 };
 
-export type NewsStatus = "fresh" | "analyzing" | "live" | "sample" | "stale";
+export type NewsStatus =
+  | "fresh"
+  | "analyzing"
+  | "live"
+  | "sample"
+  | "stale"
+  | "unavailable";
 
 interface RecentInfluentialProps {
   news?: News[];
@@ -81,6 +87,11 @@ function StatusBadge({
     },
     sample: {
       label: "Sample data",
+      dot: "bg-gray-400",
+      text: "text-gray-500 dark:text-gray-400",
+    },
+    unavailable: {
+      label: "Headlines unavailable",
       dot: "bg-gray-400",
       text: "text-gray-500 dark:text-gray-400",
     },
@@ -201,7 +212,7 @@ export function RecentInfluential({
         <Bar segments={sentimentBreakdown} height="h-8" />
       </div>
 
-      {(news.length > 0 || status === "analyzing") && (
+      {(news.length > 0 || status === "analyzing" || status === "unavailable") && (
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex items-center justify-between mb-6 gap-3">
             <h2 className="text-xl font-bold">Recent Influential</h2>
@@ -220,6 +231,15 @@ export function RecentInfluential({
                     alone signals background enrichment — no stuck skeleton. */}
                 {status === "analyzing" && news.length === 0 && (
                   <NewsCardSkeleton />
+                )}
+                {/* Honest empty state: live providers are configured but the
+                    headline fetch didn't succeed. The client re-polls, so no
+                    fabricated "sample" articles are ever shown here. */}
+                {status === "unavailable" && news.length === 0 && (
+                  <p className="py-4 text-sm text-muted-foreground">
+                    Live headlines are temporarily unavailable. This usually
+                    resolves within a minute — we&apos;ll keep checking.
+                  </p>
                 )}
                 {news.map((news) => (
                   <NewsCard

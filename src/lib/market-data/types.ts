@@ -16,15 +16,26 @@ export type SearchResult = {
   name: string;
 };
 
+// A single chart bar. `value` is the close (what the price line reads, so
+// MainChart is untouched). `volume` (shares) and `trades` (count) ride along
+// from the provider aggregates and power the dense popularity/activity chart —
+// zero extra API calls, since they come free with the same bars.
+export type BarPoint = {
+  date: string;
+  value: number;
+  volume?: number;
+  trades?: number;
+};
+
 export type Quote = {
   ticker: string;
   stockPrice: number;
   priceChange: number;
   percentChange: number;
-  chartData: { date: string; value: number }[];
-  intradayData: { date: string; value: number }[];
-  weekData: { date: string; value: number }[];
-  fineData: { date: string; value: number }[];
+  chartData: BarPoint[];
+  intradayData: BarPoint[];
+  weekData: BarPoint[];
+  fineData: BarPoint[];
 };
 
 export type Headline = {
@@ -90,6 +101,30 @@ export type PopularitySeriesPoint = {
   date: string;
   positive: number;
   negative: number;
+};
+
+// One point on the dense market-activity chart (the redesigned popularity view).
+// `activity` is the per-bar trade count (preferred) or volume; `sentiment` is the
+// prevailing, forward-filled net news sentiment as of that bar (-1..1), used to
+// TINT the area.
+export type ActivityPoint = {
+  date: number;
+  activity: number;
+  sentiment: number;
+};
+
+// A day on which news broke, placed as a sentiment-colored marker on the chart.
+export type ActivityMarker = {
+  date: number;
+  activity: number;
+  sentiment: number;
+};
+
+export type ActivitySeries = {
+  points: ActivityPoint[];
+  markers: ActivityMarker[];
+  /** Whether `activity` is a trade count ("trades") or share volume ("volume"). */
+  metric: "trades" | "volume";
 };
 
 // Social/popularity payload for the details flip card. `status` is "live" when

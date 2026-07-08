@@ -10,10 +10,24 @@ import {
   generateMockNews,
   generateMockPopularity,
 } from "@/data/fallbacks";
-import { hasAstra, hasPolygon, hasLangflowIngest } from "@/lib/config";
+import {
+  hasAstra,
+  hasAlpaca,
+  hasFinnhub,
+  hasPolygon,
+  hasLangflowIngest,
+} from "@/lib/config";
 import { claimIngestSlot, ingestTickerNews } from "@/lib/news-ingest";
 import type { News } from "@/components/news/RecentInfluential";
-import type { NewsSummary, PopularityData } from "./types";
+import type { NewsSummary, PopularityData, BarPoint } from "./types";
+
+// Any provider that yields real price bars. Alpaca is preferred; Polygon
+// aggregates remain the fallback so the app behaves exactly as before until
+// Alpaca keys are added.
+const hasPrices = hasAlpaca || hasPolygon;
+// Any live source at all — used to decide whether the popularity card is real
+// data ("live") or the deterministic demo mock ("sample"/"Illustrative").
+const hasAnyLive = hasAlpaca || hasPolygon || hasFinnhub || hasAstra;
 import {
   sanitizeTicker,
   summarizeNews,
@@ -28,117 +42,147 @@ import {
 import {
   getCandlesCached,
   getIntradayCached,
-  getWeekCached,
   getFineCached,
   getNewsCached,
-  getPolygonNewsCached,
-  getPopularityNewsCached,
+  getTickerNewsCached,
   getGroupedDailyCached,
   getMarketMapCached,
   getMarketMapYearAgoCached,
   getTickerDetailCached,
 } from "./cache";
 
-export async function getStockCandles(ticker: string) {
-  if (hasPolygon) {
-    try {
-      const cached = await getCandlesCached(ticker);
-      if (cached) return cached;
-    } catch (error) {
-      console.error("Polygon candles fetch failed, using fallback:", error);
-    }
+export type CandleData = {
+  chart_data: BarPoint[];
+  stock_price: number;
+  price_change: number;
+  percent_change: number;
+  latest_volume?: number | null;
+};
+
+// Live mode returns null on failure — the page then renders an honest
+// "price unavailable" placeholder (and re-polls) instead of a mock chart
+// masquerading as a real one. Mock candles exist only for the demo build.
+export async function getStockCandles(ticker: string): Promise<CandleData | null> {
+  if (!hasPrices) return generateMockStockData(ticker);
+  try {
+    return await getCandlesCached(ticker);
+  } catch (error) {
+    console.error("Candles fetch failed:", error);
+    return null;
   }
-  return generateMockStockData(ticker);
 }
 
-export async function getIntraday(ticker: string): Promise<{ date: string; value: number }[]> {
-  if (hasPolygon) {
-    try {
-      const cached = await getIntradayCached(ticker);
-      if (cached && cached.length >= 2) return cached;
-    } catch (error) {
-      console.error("Polygon intraday fetch failed, using fallback:", error);
-    }
+// In live mode a failed range fetch returns [] — the chart then keeps showing
+// the REAL daily series for that range instead of swapping in a fake hi-res
+// one. Mock series exist only for the zero-provider demo mode, where the whole
+// product is explicitly illustrative.
+export async function getIntraday(ticker: string): Promise<BarPoint[]> {
+  if (!hasPrices) return generateMockIntraday(ticker);
+  try {
+    const cached = await getIntradayCached(ticker);
+    if (cached && cached.length >= 2) return cached;
+  } catch (error) {
+    console.error("Intraday fetch failed:", error);
   }
-  return generateMockIntraday(ticker);
+  return [];
 }
 
-export async function getWeek(ticker: string): Promise<{ date: string; value: number }[]> {
-  if (hasPolygon) {
-    try {
-      const cached = await getWeekCached(ticker);
-      if (cached && cached.length >= 2) return cached;
-    } catch (error) {
-      console.error("Polygon 15m fetch failed, using fallback:", error);
-    }
-  }
-  return generateMockWeek(ticker);
+// The 1W series is a pure slice of the fine (15-min, ~96-day) series — same
+// resolution, same source — so it costs zero extra requests. Volume/trades ride
+// along on each BarPoint so the popularity activity chart works at this range.
+const WEEK_SLICE_DAYS = 8;
+
+export function sliceRecentDays(series: BarPoint[], days: number): BarPoint[] {
+  if (series.length < 2) return series;
+  const latest = Date.parse(series[series.length - 1].date);
+  const cutoff = latest - days * 24 * 60 * 60 * 1000;
+  const recent = series.filter((p) => Date.parse(p.date) >= cutoff);
+  return recent.length >= 2 ? recent : series;
 }
 
-export async function getFine(ticker: string): Promise<{ date: string; value: number }[]> {
-  if (hasPolygon) {
-    try {
-      const cached = await getFineCached(ticker);
-      if (cached && cached.length >= 2) return cached;
-    } catch (error) {
-      console.error("Polygon fine (15m) fetch failed, using fallback:", error);
-    }
-  }
-  return generateMockFine(ticker);
+export function weekFromFine(fine: BarPoint[]): BarPoint[] {
+  return fine.length >= 2 ? sliceRecentDays(fine, WEEK_SLICE_DAYS) : [];
 }
 
-export async function getNews(ticker: string): Promise<NewsSummary> {
-  let analyzing = false;
+export async function getWeek(ticker: string): Promise<BarPoint[]> {
+  if (!hasPrices) return generateMockWeek(ticker);
+  return weekFromFine(await getFine(ticker));
+}
 
-  if (hasAstra) {
-    try {
-      const news = await getNewsCached(ticker);
-      if (news.length > 0) {
-        // Freshness is about the newest article overall, so derive updatedAt /
-        // staleness from the FULL all-time set BEFORE windowing — a ticker whose
-        // latest story is (say) 17 days old must still report that timestamp and
-        // stale badge even though the gauge below only counts the last 90 days.
-        const updatedAt = latestNewsTimestamp(news);
-        const stale = isNewsStale(updatedAt);
-        // Align the gauge (positive/negative %) and Mentions with the popularity
-        // score/chart by summarizing only the last POPULARITY_WINDOW_DAYS, so the
-        // two stop measuring different time populations of the same ticker.
-        const recent = windowNews(news);
-        // Past the 7-day TTL: keep serving the existing analysis but kick off a
-        // background re-ingest and mark it "analyzing" so the client polls the
-        // refreshed version in (stale-while-revalidate). If ingestion isn't
-        // configured or the ticker is in an ingest cooldown (6h after success,
-        // 10min after a failed attempt), no job runs — so we honestly label the
-        // data "stale" rather than pretending it's "fresh".
-        if (stale) {
-          const refreshing = await scheduleNewsIngestion(ticker);
-          return summarizeNews(
-            recent,
-            refreshing ? "analyzing" : "stale",
-            updatedAt
-          );
-        }
-        return summarizeNews(recent, "fresh", updatedAt);
-      }
-      analyzing = await scheduleNewsIngestion(ticker);
-    } catch (error) {
-      console.error("Astra DB news fetch failed, trying Polygon:", error);
-    }
+export async function getFine(ticker: string): Promise<BarPoint[]> {
+  if (!hasPrices) return generateMockFine(ticker);
+  try {
+    const cached = await getFineCached(ticker);
+    if (cached && cached.length >= 2) return cached;
+  } catch (error) {
+    console.error("Fine (15m) fetch failed:", error);
   }
-  if (hasPolygon) {
-    try {
-      const news = await getPolygonNewsCached(ticker);
-      if (news.length > 0) {
-        return summarizeNews(news, analyzing ? "analyzing" : "live");
-      }
-    } catch (error) {
-      console.error("Polygon news fetch failed, using fallback:", error);
-    }
+  return [];
+}
+
+// The headline panel shows only the newest items; the gauge/mentions still
+// count the full 90-day population so they agree with the popularity card.
+const HEADLINE_LIMIT = 12;
+
+async function fetchAstraNews(ticker: string): Promise<News[]> {
+  if (!hasAstra) return [];
+  try {
+    return await getNewsCached(ticker);
+  } catch (error) {
+    console.error("Astra DB news fetch failed:", error);
+    return [];
   }
-  return summarizeNews(
-    generateMockNews(ticker),
-    analyzing ? "analyzing" : "sample"
-  );
+}
+
+async function fetchPolygonNews(ticker: string): Promise<News[]> {
+  if (!hasPolygon) return [];
+  try {
+    return await getTickerNewsCached(ticker);
+  } catch (error) {
+    console.error("Polygon news fetch failed:", error);
+    return [];
+  }
+}
+
+async function buildNewsSummary(
+  ticker: string,
+  astraNews: News[],
+  polygonNews: News[]
+): Promise<NewsSummary> {
+  if (astraNews.length > 0) {
+    // Freshness is about the newest article overall, so derive updatedAt /
+    // staleness from the FULL all-time set BEFORE windowing — a ticker whose
+    // latest story is (say) 17 days old must still report that timestamp and
+    // stale badge even though the gauge below only counts the last 90 days.
+    const updatedAt = latestNewsTimestamp(astraNews);
+    const stale = isNewsStale(updatedAt);
+    const recent = windowNews(astraNews);
+    // Past the 7-day TTL: keep serving the existing analysis but kick off a
+    // background re-ingest and mark it "analyzing" so the client polls for the
+    // refreshed version (stale-while-revalidate). If ingestion isn't configured
+    // or the ticker is in an ingest cooldown (6h after success, 10min after a
+    // failed attempt), no job runs — so we honestly label the data "stale".
+    if (stale) {
+      const refreshing = await scheduleNewsIngestion(ticker);
+      return summarizeNews(recent, refreshing ? "analyzing" : "stale", updatedAt);
+    }
+    return summarizeNews(recent, "fresh", updatedAt);
+  }
+
+  const analyzing = hasAstra ? await scheduleNewsIngestion(ticker) : false;
+
+  if (polygonNews.length > 0) {
+    const summary = summarizeNews(polygonNews, analyzing ? "analyzing" : "live");
+    return { ...summary, news: summary.news.slice(0, HEADLINE_LIMIT) };
+  }
+
+  // Mock headlines exist ONLY for the zero-provider demo build. In live mode a
+  // total news failure is reported honestly as "unavailable" (empty panel with
+  // a retry note) — an end user must never be shown fabricated headlines.
+  if (!hasPolygon && !hasAstra) {
+    return summarizeNews(generateMockNews(ticker), "sample");
+  }
+  return summarizeNews([], analyzing ? "analyzing" : "unavailable");
 }
 
 export async function scheduleNewsIngestion(ticker: string): Promise<boolean> {
@@ -152,52 +196,22 @@ export async function scheduleNewsIngestion(ticker: string): Promise<boolean> {
   return true;
 }
 
-// Builds the popularity/social card entirely from real sources when available:
-// the trend from dated, sentiment-tagged news (Astra's accumulated docs unioned
-// with a wide Polygon pull) and the volume stat from Polygon daily aggregates.
-// The latest daily volume is passed in (derived from the candles the caller
-// already fetched) rather than fetched here, so the popularity view adds no
-// extra Polygon request. Falls back to the deterministic mock (status "sample")
-// only in open demo mode where no provider is configured — which is exactly
-// when the "Illustrative" badge should still show.
-export async function getPopularity(
+// Builds the popularity/social card from the SAME news arrays the sentiment
+// panel uses (fetched once by getDetailsData): the trend from dated,
+// sentiment-tagged news (Astra unioned with the 90-day Polygon pull) and the
+// volume stat from the candles the caller already fetched — zero extra Polygon
+// requests. Falls back to the deterministic mock (status "sample" → the
+// "Illustrative" badge) only in the zero-provider demo build.
+function buildPopularityData(
   ticker: string,
+  astraNews: News[],
+  polygonNews: News[],
   latestVolume?: number | null
-): Promise<PopularityData> {
-  const articles: News[] = [];
-  let live = false;
-
-  if (hasAstra) {
-    try {
-      const astraNews = await getNewsCached(ticker);
-      if (astraNews.length > 0) {
-        articles.push(...astraNews);
-        live = true;
-      }
-    } catch (error) {
-      console.error("Astra popularity news fetch failed:", error);
-    }
-  }
-
-  if (hasPolygon) {
-    try {
-      const polygonNews = await getPopularityNewsCached(ticker);
-      if (polygonNews.length > 0) {
-        articles.push(...polygonNews);
-        live = true;
-      }
-    } catch (error) {
-      console.error("Polygon popularity news fetch failed:", error);
-    }
-  }
-
-  let searchVolume = 0;
-  if (typeof latestVolume === "number" && latestVolume > 0) {
-    searchVolume = latestVolume;
-    live = true;
-  }
-
-  if (!live) {
+): PopularityData {
+  // "sample" (the "Illustrative" badge) only in the true zero-provider demo
+  // build. With ANY live source the gauge/score/mentions are real news-derived
+  // numbers and the activity chart is backed by real bars.
+  if (!hasAnyLive) {
     const mock = generateMockPopularity(ticker);
     return {
       popularityRate: mock.popularityRate,
@@ -207,7 +221,9 @@ export async function getPopularity(
     };
   }
 
-  const deduped = dedupeNews(articles);
+  const searchVolume =
+    typeof latestVolume === "number" && latestVolume > 0 ? latestVolume : 0;
+  const deduped = dedupeNews([...astraNews, ...polygonNews]);
   return {
     popularityRate: computePopularityScore(deduped),
     searchVolume,
@@ -218,7 +234,8 @@ export async function getPopularity(
 
 export function buildStockData(
   symbol: string,
-  stock_data: ReturnType<typeof generateMockStockData>,
+  stock_data: CandleData | null,
+  priceStatus: StockData["priceStatus"],
   intradayData: { date: string; value: number }[] | undefined,
   weekData: { date: string; value: number }[] | undefined,
   fineData: { date: string; value: number }[] | undefined,
@@ -232,9 +249,10 @@ export function buildStockData(
   return {
     id: symbol,
     companyName: symbol,
-    stockPrice: stock_data.stock_price,
-    priceChange: stock_data.price_change,
-    percentChange: stock_data.percent_change,
+    stockPrice: stock_data?.stock_price,
+    priceChange: stock_data?.price_change ?? 0,
+    percentChange: stock_data?.percent_change ?? 0,
+    priceStatus,
     popularityRate: pop.popularityRate,
     mentions: news.mentions,
     searchVolume: pop.searchVolume,
@@ -243,7 +261,7 @@ export function buildStockData(
     negativeSentimentPercentage: news.negativeSentiment,
     popularitySeries: pop.series,
     popularityStatus: pop.status,
-    chartData: stock_data.chart_data,
+    chartData: stock_data?.chart_data ?? [],
     intradayData,
     weekData,
     fineData,
@@ -259,6 +277,7 @@ export async function getDetailsData(ticker: string): Promise<StockData> {
     return buildStockData(
       "N/A",
       generateMockStockData("N/A"),
+      "sample",
       undefined,
       undefined,
       undefined,
@@ -267,24 +286,37 @@ export async function getDetailsData(ticker: string): Promise<StockData> {
   }
 
   // Resolve candles first so the latest daily volume can seed the popularity
-  // card without a second Polygon round-trip. Fetching it before (rather than
-  // alongside) news also staggers the Polygon calls, easing the free tier's
-  // ~5 req/min ceiling.
+  // card without a second Polygon round-trip.
   const stock_data = await getStockCandles(symbol);
+  const priceStatus: StockData["priceStatus"] = !hasPrices
+    ? "sample"
+    : stock_data
+      ? "live"
+      : "unavailable";
   const latestVolume: number | null =
-    "latest_volume" in stock_data &&
-    typeof stock_data.latest_volume === "number"
+    stock_data && typeof stock_data.latest_volume === "number"
       ? stock_data.latest_volume
       : null;
 
-  const [news, popularity] = await Promise.all([
-    getNews(symbol),
-    getPopularity(symbol, latestVolume),
+  // Fetch each news source exactly once and derive BOTH the sentiment panel
+  // and the popularity card from the same arrays — one Polygon news request
+  // per ticker per cache window, and the two views can never disagree.
+  const [astraNews, polygonNews] = await Promise.all([
+    fetchAstraNews(symbol),
+    fetchPolygonNews(symbol),
   ]);
+  const news = await buildNewsSummary(symbol, astraNews, polygonNews);
+  const popularity = buildPopularityData(
+    symbol,
+    astraNews,
+    polygonNews,
+    latestVolume
+  );
 
   return buildStockData(
     symbol,
     stock_data,
+    priceStatus,
     undefined,
     undefined,
     undefined,
@@ -296,14 +328,14 @@ export async function getDetailsData(ticker: string): Promise<StockData> {
 export async function getChartRangeData(
   ticker: string,
   kind: "daily" | "intraday" | "week" | "fine"
-): Promise<{ date: string; value: number }[]> {
+): Promise<BarPoint[]> {
   const symbol = sanitizeTicker(ticker);
   if (!symbol) return [];
 
   switch (kind) {
     case "daily": {
       const data = await getStockCandles(symbol);
-      return data.chart_data;
+      return data?.chart_data ?? [];
     }
     case "intraday":
       return getIntraday(symbol);
@@ -316,7 +348,7 @@ export async function getChartRangeData(
 
 // Best-effort cache warming for cron — pure reads only, no ingestion side effects.
 export async function warmMarketCaches(): Promise<void> {
-  if (!hasPolygon) return;
+  if (!hasPrices) return;
   await Promise.allSettled([
     getGroupedDailyCached(),
     getMarketMapCached(),
@@ -328,8 +360,12 @@ export async function warmTicker(ticker: string): Promise<void> {
   const symbol = sanitizeTicker(ticker);
   if (!symbol) return;
   const tasks: Promise<unknown>[] = [];
-  if (hasPolygon) {
-    tasks.push(getStockCandles(symbol), getTickerDetailCached(symbol));
+  if (hasPrices) {
+    tasks.push(getStockCandles(symbol));
+  }
+  // Profile is served by Finnhub (preferred) or Polygon.
+  if (hasFinnhub || hasPolygon) {
+    tasks.push(getTickerDetailCached(symbol));
   }
   // Warm the Astra READ cache only (no ingestion side effect).
   if (hasAstra) {
