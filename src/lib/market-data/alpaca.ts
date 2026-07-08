@@ -95,11 +95,50 @@ function barsQuery(
   return params.toString();
 }
 
-// Historical bars for ONE symbol. Follows `next_page_token` so a long/fine
-// window returns complete data; capped at a few pages so a pathological token
-// loop can't hang a render. Prefers SIP (full-market volume) and downgrades to
-// IEX on a 403 (no SIP entitlement). Throws on any other non-OK status so the
-// caller's cache doesn't pin the failure and can fall back to Polygon.
+// Pages a SINGLE given feed to completion for one symbol. Follows
+// `next_page_token` so a long/fine window returns complete data; capped at 6
+// pages so a pathological token loop can't hang a render. Returns the collected
+// bars plus a `forbidden` flag (set on a 403) so the caller can decide whether
+// to downgrade to another feed — this keeps the feed-selection policy out of
+// the paging loop, letting both the SIP→IEX downgrade chain and the live IEX
+// tail reuse the exact same paging logic.
+async function fetchBarsForFeed(
+  symbol: string,
+  timeframe: AlpacaTimeframe,
+  startISO: string,
+  endISO: string,
+  feed: string,
+  limitPerPage = 10_000
+): Promise<{ bars: AlpacaBar[]; forbidden: boolean }> {
+  const out: AlpacaBar[] = [];
+  let pageToken: string | undefined;
+  let pages = 0;
+  do {
+    const qs = barsQuery(timeframe, startISO, endISO, limitPerPage, feed, pageToken);
+    const res = await alpacaFetch(
+      `/v2/stocks/${encodeURIComponent(symbol)}/bars?${qs}`
+    );
+    if (!res.ok) {
+      // A 403 means "not entitled to this feed" — surface it so the caller can
+      // fall back to another feed. Any other status is a real failure and
+      // throws so the caller's cache doesn't pin it (can fall back to Polygon).
+      if (res.status === 403) return { bars: out, forbidden: true };
+      throw new Error(`alpaca bars failed for ${symbol}: ${res.status}`);
+    }
+    const data = (await res.json()) as {
+      bars?: AlpacaBar[];
+      next_page_token?: string | null;
+    };
+    if (Array.isArray(data.bars)) out.push(...data.bars);
+    pageToken = data.next_page_token ?? undefined;
+  } while (pageToken && ++pages < 6);
+  return { bars: out, forbidden: false };
+}
+
+// Historical bars for ONE symbol. Prefers SIP (full-market volume) and
+// downgrades to IEX on a 403 (no SIP entitlement). Throws on any other non-OK
+// status so the caller's cache doesn't pin the failure and can fall back to
+// Polygon.
 export async function getAlpacaBars(
   symbol: string,
   timeframe: AlpacaTimeframe,
@@ -109,33 +148,81 @@ export async function getAlpacaBars(
 ): Promise<AlpacaBar[]> {
   const chain = barsFeedChain();
   for (let f = 0; f < chain.length; f++) {
-    const feed = chain[f];
-    const out: AlpacaBar[] = [];
-    let pageToken: string | undefined;
-    let pages = 0;
-    let downgrade = false;
-    do {
-      const qs = barsQuery(timeframe, startISO, endISO, limitPerPage, feed, pageToken);
-      const res = await alpacaFetch(
-        `/v2/stocks/${encodeURIComponent(symbol)}/bars?${qs}`
-      );
-      if (!res.ok) {
-        if (res.status === 403 && f < chain.length - 1) {
-          downgrade = true;
-          break;
-        }
-        throw new Error(`alpaca bars failed for ${symbol}: ${res.status}`);
-      }
-      const data = (await res.json()) as {
-        bars?: AlpacaBar[];
-        next_page_token?: string | null;
-      };
-      if (Array.isArray(data.bars)) out.push(...data.bars);
-      pageToken = data.next_page_token ?? undefined;
-    } while (pageToken && ++pages < 6);
-    if (!downgrade) return out;
+    const { bars, forbidden } = await fetchBarsForFeed(
+      symbol,
+      timeframe,
+      startISO,
+      endISO,
+      chain[f],
+      limitPerPage
+    );
+    if (forbidden) {
+      // Downgrade to the next feed in the chain; if this was the last feed,
+      // there's nothing left to try, so surface the 403 as a failure.
+      if (f < chain.length - 1) continue;
+      throw new Error(`alpaca bars failed for ${symbol}: 403`);
+    }
+    return bars;
   }
   return [];
+}
+
+// Like getAlpacaBars, but stitches a live IEX tail onto the SIP base so a
+// sub-daily series reaches ~now instead of stopping ~16 min back. SIP history
+// is free only for windows ending >=15 min ago (clampEnd forces the end back),
+// which leaves a visible hole at the right edge of the 1D/fine chart during an
+// active session. IEX has no such clamp, so we fill ONLY those trailing minutes
+// SIP withholds — SIP stays the accurate base for volume/history. Best-effort:
+// a failed tail never breaks the series, it just returns the SIP base.
+export async function getAlpacaBarsLive(
+  symbol: string,
+  timeframe: AlpacaTimeframe,
+  startISO: string,
+  endISO: string,
+  limitPerPage = 10_000
+): Promise<AlpacaBar[]> {
+  const base = await getAlpacaBars(symbol, timeframe, startISO, endISO, limitPerPage);
+
+  // Only SIP is clamped. If the configured feed is already IEX the base is
+  // real-time, and with no base bars there's no gap to reason about.
+  if (ALPACA_HISTORICAL_FEED !== "sip" || base.length === 0) return base;
+
+  const lastMs = Date.parse(base[base.length - 1].t);
+  if (!Number.isFinite(lastMs)) return base;
+
+  // Only bridge a genuine live SIP-clamp gap: last bar 5 min–3 h behind now.
+  // Fresher than 5 min means SIP is effectively live already (nothing to add);
+  // older than 3 h means the market is closed, so IEX would return nothing
+  // useful — either way a tail request would just be wasted.
+  const age = Date.now() - lastMs;
+  if (age < 5 * 60 * 1000 || age > 3 * 60 * 60 * 1000) return base;
+
+  try {
+    // Fetch the IEX tail starting just after the last SIP bar through the same
+    // end (IEX isn't clamped, so it returns right up to ~now).
+    const { bars: tail } = await fetchBarsForFeed(
+      symbol,
+      timeframe,
+      new Date(lastMs + 1).toISOString(),
+      endISO,
+      "iex",
+      limitPerPage
+    );
+    // Append only strictly-newer bars (dedupe against the base). NOTE: these
+    // final bars carry IEX (~2.5% of volume) rather than SIP full-market
+    // volume — acceptable because it's just the last few live minutes, and far
+    // better than a visible ~16-minute hole at the right edge of the chart.
+    const merged = base.slice();
+    for (const b of tail) {
+      if (Date.parse(b.t) > lastMs) merged.push(b);
+    }
+    return merged;
+  } catch (error) {
+    // Best-effort enhancement: never fail the whole series because the live
+    // tail couldn't be fetched — return the accurate SIP base unchanged.
+    console.error(`[alpaca] live tail failed for ${symbol}:`, error);
+    return base;
+  }
 }
 
 // Multi-symbol bars. The endpoint sorts by symbol first, then timestamp, so a
