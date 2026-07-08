@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import type { StockData } from "./page";
 import {
   searchFallbackTickers,
@@ -21,6 +22,8 @@ import {
   getChartRangeData,
   getHomeTickerData,
   searchTickersCached,
+  warmChartable,
+  getChartableTickersFast,
   mockQuote,
   mockHeadline,
   mockNewsSummary,
@@ -55,9 +58,22 @@ function mergeSearchResults(
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(r);
-    if (out.length >= 8) break;
+    if (out.length >= 10) break;
   }
   return out;
+}
+
+// Speculatively starts the background chartability check (see
+// checkSearchChartable/getChartableTickersFast) for a search result BEFORE
+// returning it. Runs inside `after()`, i.e. after this response is already on
+// its way to the client — so the ~790ms Alpaca round-trip overlaps with that
+// network hop and the client's own follow-up request, instead of only
+// starting once that follow-up arrives.
+function warmChartableOnReturn(results: SearchResult[]): SearchResult[] {
+  if (results.length > 0) {
+    after(() => warmChartable(results.map((r) => r.ticker)));
+  }
+  return results;
 }
 
 export async function searchStocks(query: string): Promise<SearchResult[]> {
@@ -70,19 +86,44 @@ export async function searchStocks(query: string): Promise<SearchResult[]> {
   // searchTickersCached caches each query for a day; on a 429/transient error it
   // throws (failure isn't cached) and we keep the local results.
   const local = searchFallbackTickers(cleaned);
-  if (local.length >= 3 || !hasSearchProvider) return local;
+  if (local.length >= 3 || !hasSearchProvider) return warmChartableOnReturn(local);
 
   const access = await guard("search", { limit: 60, windowSec: 60 });
   if (access.ok) {
     try {
       const live = await searchTickersCached(cleaned);
-      if (live.length) return mergeSearchResults(local, live);
+      if (live.length) return warmChartableOnReturn(mergeSearchResults(local, live));
     } catch {
       // rate-limited (429) or transient error → keep the local index
     }
   }
 
-  return local;
+  return warmChartableOnReturn(local);
+}
+
+// Second, background pass for the search dropdown: verifies which of the
+// results already shown can actually be charted, so the UI can quietly mark
+// the rare dead end unavailable (see getChartableTickers) instead of gating
+// the whole dropdown on this ~3x-slower-than-search round-trip. Fails open on
+// a rate limit — an occasional missed check just means a stale entry lingers,
+// which beats hiding valid results.
+export async function checkSearchChartable(tickers: string[]): Promise<string[]> {
+  const clean = tickers.map(sanitizeTicker).filter(Boolean);
+  if (clean.length === 0) return [];
+
+  // Guard (an Upstash round-trip, ~60-270ms measured) and the chartability
+  // fetch (an Alpaca round-trip, ~790ms measured — likely already warming
+  // since searchStocks, see warmChartableOnReturn) run IN PARALLEL rather than
+  // one gating the other. This is safe specifically because it's a
+  // best-effort background check, not a gate on a scarce/paid budget: Alpaca's
+  // 180/min budget comfortably absorbs an occasional over-limit user's check,
+  // unlike Polygon's precious 5/min. There's no correctness reason to pay the
+  // guard's latency before starting the (already slower) Alpaca one.
+  const [access, chartable] = await Promise.all([
+    guard("search", { limit: 60, windowSec: 60 }),
+    getChartableTickersFast(clean),
+  ]);
+  return access.ok ? chartable : clean;
 }
 
 export async function fetchDetails(ticker: string): Promise<StockData> {

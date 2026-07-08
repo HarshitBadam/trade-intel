@@ -198,6 +198,13 @@ export async function getRelatedStocksData(
   if (!symbol || !hasPrices) return [];
 
   try {
+    // The subject's own profile doesn't depend on the peer list, so kick it off
+    // now and let it resolve alongside peer discovery and the quote fetch below
+    // instead of waiting for its own serial round-trip later.
+    const currentDetailPromise = getTickerDetailCached(symbol).catch(
+      () => null as TickerDetail | null
+    );
+
     // Isolated so a transient failure (now thrown, no longer cached) still
     // falls through to the curated sources instead of aborting the request.
     let relatedTickers: string[] = [];
@@ -243,7 +250,7 @@ export async function getRelatedStocksData(
       getYearAgoQuotesForCached(finalKey).catch(
         () => ({}) as Record<string, number>
       ),
-      getTickerDetailCached(symbol).catch(() => null as TickerDetail | null),
+      currentDetailPromise,
       Promise.all(
         peerTickers.map((t) =>
           getTickerDetailCached(t).catch(() => null as TickerDetail | null)

@@ -166,18 +166,25 @@ const getSessionVolumesForCached = unstable_cache(
   { revalidate: 300, tags: ["movers"] }
 );
 
-// Overlay full-market SIP session volume onto snapshot quotes, in place.
-async function overlaySessionVolumes(
-  quotes: Record<string, LiveQuote>
-): Promise<Record<string, LiveQuote>> {
-  const syms = Object.keys(quotes);
-  if (syms.length === 0) return quotes;
-  const vols = await getSessionVolumesForCached(syms.slice().sort().join(","));
-  for (const s of syms) {
+// Merge full-market SIP session volume onto snapshot quotes, in place. The
+// volumes are fetched in PARALLEL with the snapshot by the caller (both take the
+// same symbol set), so this is a pure, synchronous overlay — no extra round-trip
+// sits on the critical path of the market map or related-stock cards.
+function applySessionVolumes(
+  quotes: Record<string, LiveQuote>,
+  vols: Record<string, number>
+): Record<string, LiveQuote> {
+  for (const s of Object.keys(quotes)) {
     const v = vols[s];
     if (typeof v === "number" && v > 0) quotes[s].volume = v;
   }
   return quotes;
+}
+
+// Sorted, comma-joined symbol key for the session-volume cache — stable across
+// callers so identical symbol sets share a cache entry.
+function volumeKey(symbols: string[]): string {
+  return [...new Set(symbols.map((s) => s.toUpperCase()))].sort().join(",");
 }
 
 // Home movers: Alpaca multi-symbol snapshot over the known movers → Polygon
@@ -245,13 +252,16 @@ export const getMarketMapCached = unstable_cache(
   async (): Promise<Record<string, LiveQuote>> => {
     if (hasAlpaca) {
       try {
-        const snaps = await getAlpacaSnapshots(KNOWN_UNIVERSE);
+        const [snaps, vols] = await Promise.all([
+          getAlpacaSnapshots(KNOWN_UNIVERSE),
+          getSessionVolumesForCached(volumeKey(KNOWN_UNIVERSE)),
+        ]);
         const map: Record<string, LiveQuote> = {};
         for (const sym of Object.keys(snaps)) {
           const q = mapAlpacaSnapshotQuote(sym, snaps[sym]);
           if (q) map[sym] = q;
         }
-        if (Object.keys(map).length > 0) return overlaySessionVolumes(map);
+        if (Object.keys(map).length > 0) return applySessionVolumes(map, vols);
       } catch (error) {
         console.error("[alpaca] market map snapshot failed, trying Polygon:", error);
       }
@@ -485,13 +495,16 @@ export const getQuotesForCached = unstable_cache(
     if (symbols.length === 0) return {};
     if (hasAlpaca) {
       try {
-        const snaps = await getAlpacaSnapshots(symbols);
+        const [snaps, vols] = await Promise.all([
+          getAlpacaSnapshots(symbols),
+          getSessionVolumesForCached(volumeKey(symbols)),
+        ]);
         const map: Record<string, LiveQuote> = {};
         for (const sym of symbols) {
           const q = mapAlpacaSnapshotQuote(sym, snaps[sym]);
           if (q) map[sym] = q;
         }
-        if (Object.keys(map).length > 0) return overlaySessionVolumes(map);
+        if (Object.keys(map).length > 0) return applySessionVolumes(map, vols);
       } catch (error) {
         console.error("[alpaca] targeted quotes failed, trying Polygon:", error);
       }
@@ -709,57 +722,167 @@ function finnhubSearchRelevance(hit: FinnhubHitLite, q: string): number {
   return score;
 }
 
-// Symbol search: Finnhub /search (rich, 60/min) → Polygon reference/tickers.
-// Both are ranked locally so exact/prefix matches surface first. Callers hit
-// this only when the local static index is thin, so it's rare.
+// Below this count of USABLE (post-filter) Finnhub hits, we treat the result
+// as "thin" and also query Polygon to fill it out. Finnhub's /search is a
+// GLOBAL endpoint — for a broad/generic term (e.g. "tech", "green", "auto")
+// most of its raw hits are foreign-exchange-suffixed tickers (e.g. "005930.KS")
+// that finnhubSearchToLite deliberately strips (they aren't chartable here).
+// Polygon's endpoint is already scoped to `market=stocks` (US-listed, no
+// suffix), so it doesn't suffer that loss — it's the richer source for exactly
+// the queries where Finnhub comes back thin, so it's worth the extra call.
+const FINNHUB_RICH_ENOUGH = 6;
+
+async function polygonSearchLite(query: string, q: string): Promise<SearchResult[]> {
+  // Fetch wide, then rank locally — Polygon's default order buries exact matches.
+  const response = await polygonFetch(
+    `https://api.polygon.io/v3/reference/tickers?search=${encodeURIComponent(
+      query
+    )}&market=stocks&active=true&limit=30`
+  );
+  if (!response.ok) {
+    throw new Error(`polygon ticker search failed: ${response.status}`);
+  }
+  const data = await response.json();
+  if (data.status === "ERROR") {
+    throw new Error(data.error ?? "polygon ticker search error");
+  }
+  const results = (data.results ?? []) as PolygonTickerHit[];
+  return results
+    .slice()
+    .sort((a, b) => polygonSearchRelevance(a, q) - polygonSearchRelevance(b, q))
+    .map((s) => ({ ticker: s.ticker, name: s.name ?? s.ticker }));
+}
+
+function mergeByTicker(
+  primary: SearchResult[],
+  extra: SearchResult[]
+): SearchResult[] {
+  const out = primary.slice();
+  const seen = new Set(out.map((s) => s.ticker.toUpperCase()));
+  for (const s of extra) {
+    if (seen.has(s.ticker.toUpperCase())) continue;
+    seen.add(s.ticker.toUpperCase());
+    out.push(s);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
+// Symbol search: Finnhub /search (rich for exact names/tickers, 60/min),
+// supplemented by Polygon reference/tickers when Finnhub comes back thin (see
+// FINNHUB_RICH_ENOUGH above) or fails outright. Both are ranked locally so
+// exact/prefix matches surface first. Callers hit this only when the local
+// static index is thin, so it's rare.
 export const searchTickersCached = unstable_cache(
   async (query: string): Promise<SearchResult[]> => {
     const q = query.toUpperCase();
+    let finnhubOut: SearchResult[] = [];
+    let finnhubFailed = false;
     if (hasFinnhub) {
       try {
         const hits = finnhubSearchToLite(await finnhubSearch(query));
-        const ranked = hits
+        finnhubOut = hits
           .slice()
           .sort((a, b) => finnhubSearchRelevance(a, q) - finnhubSearchRelevance(b, q))
-          .slice(0, 20);
-        const filtered = hasAlpaca
-          ? await keepAlpacaChartable(ranked)
-          : ranked;
-        const out = filtered
-          .slice(0, 8)
           .map((s) => ({ ticker: s.ticker, name: s.name || s.ticker }));
-        if (out.length > 0) return out;
+        if (finnhubOut.length >= FINNHUB_RICH_ENOUGH) {
+          return finnhubOut.slice(0, 10);
+        }
       } catch (error) {
         console.error(`[finnhub] search failed for "${query}":`, error);
+        finnhubFailed = true;
         if (!hasPolygon) throw error;
       }
     }
     if (hasPolygon) {
-      // Fetch wide, then rank locally — Polygon's default order buries exact matches.
-      const response = await polygonFetch(
-        `https://api.polygon.io/v3/reference/tickers?search=${encodeURIComponent(
-          query
-        )}&market=stocks&active=true&limit=30`
-      );
-      if (!response.ok) {
-        throw new Error(`polygon ticker search failed: ${response.status}`);
+      try {
+        const polygonOut = await polygonSearchLite(query, q);
+        // Finnhub's own matches rank first (sharper name/ticker relevance);
+        // Polygon fills in the rest so a thin Finnhub result still comes back
+        // as rich as before the provider split.
+        return mergeByTicker(finnhubOut, polygonOut);
+      } catch (error) {
+        // Finnhub already gave SOMETHING and Polygon just failed/rate-limited
+        // — better to return the partial Finnhub list than nothing.
+        if (finnhubOut.length > 0) return finnhubOut.slice(0, 10);
+        throw error;
       }
-      const data = await response.json();
-      if (data.status === "ERROR") {
-        throw new Error(data.error ?? "polygon ticker search error");
-      }
-      const results = (data.results ?? []) as PolygonTickerHit[];
-      return results
-        .slice()
-        .sort((a, b) => polygonSearchRelevance(a, q) - polygonSearchRelevance(b, q))
-        .slice(0, 8)
-        .map((s) => ({ ticker: s.ticker, name: s.name ?? s.ticker }));
     }
-    return [];
+    if (finnhubFailed) throw new Error(`search failed for "${query}"`);
+    return finnhubOut.slice(0, 10);
   },
   ["ticker-search"],
   { revalidate: 86_400, tags: ["search"] }
 );
+
+// Background, NON-blocking chartability check for search results: verifies
+// which tickers Alpaca can actually chart via one batched snapshot call. This
+// is deliberately kept OFF the main search path — measured, a single snapshot
+// round-trip runs ~3x slower than the Finnhub search call itself, so gating
+// every keystroke on it would undo the latency fix. Instead callers show
+// results immediately and quietly drop the (rare, ~2.7% of results) unchartable
+// ones a moment later. Alpaca's high budget (180/min, see limiter.ts) makes
+// this affordable as a background call even though it wouldn't be as a
+// blocking one. Fails OPEN: if Alpaca is unset or the check itself fails, every
+// ticker is treated as chartable rather than hiding results we can't verify.
+export async function getChartableTickers(tickers: string[]): Promise<string[]> {
+  if (!hasAlpaca || tickers.length === 0) return tickers;
+  try {
+    const snaps = await getAlpacaSnapshots(tickers);
+    return tickers.filter((t) => !!snaps[t]?.dailyBar);
+  } catch (error) {
+    console.error("[alpaca] search chartability check failed, skipping filter:", error);
+    return tickers;
+  }
+}
+
+// Short-lived, in-memory warm cache for the check above. searchStocks()
+// speculatively kicks this off via Next's `after()` the moment its own
+// results are ready — BEFORE its response is sent — so the Alpaca round-trip
+// (~790ms measured) runs concurrently with that response reaching the client
+// and the client's own follow-up request, instead of only starting once that
+// follow-up arrives. checkSearchChartable() then reuses whatever's already
+// in flight rather than firing a second, redundant Alpaca call. Same
+// per-instance-only caveat as the in-memory rate limiter (rate-limit.ts):
+// best-effort, not a correctness requirement — a cold instance just falls
+// back to a fresh (still correct, just not pre-warmed) fetch.
+const chartableWarm = new Map<string, { promise: Promise<string[]>; ts: number }>();
+const CHARTABLE_WARM_TTL_MS = 20_000;
+
+function chartableKey(tickers: string[]): string {
+  return [...new Set(tickers.map((t) => t.toUpperCase()))].sort().join(",");
+}
+
+function sweepChartableWarm(now: number) {
+  for (const [key, entry] of chartableWarm) {
+    if (now - entry.ts > CHARTABLE_WARM_TTL_MS) chartableWarm.delete(key);
+  }
+}
+
+// Fire-and-forget: starts (or reuses an in-flight) chartability check for this
+// exact ticker set without awaiting it. Intended to run inside `after()`.
+export function warmChartable(tickers: string[]): void {
+  if (!hasAlpaca || tickers.length === 0) return;
+  const now = Date.now();
+  sweepChartableWarm(now);
+  const key = chartableKey(tickers);
+  if (chartableWarm.has(key)) return;
+  chartableWarm.set(key, { promise: getChartableTickers(tickers), ts: now });
+}
+
+// Reuses a still-fresh warm entry for this exact ticker set if one exists,
+// otherwise fetches fresh — either way, correctness is identical to calling
+// getChartableTickers directly; only the timing differs.
+export async function getChartableTickersFast(
+  tickers: string[]
+): Promise<string[]> {
+  if (!hasAlpaca || tickers.length === 0) return tickers;
+  const now = Date.now();
+  const key = chartableKey(tickers);
+  const entry = chartableWarm.get(key);
+  if (entry && now - entry.ts < CHARTABLE_WARM_TTL_MS) return entry.promise;
+  return getChartableTickers(tickers);
+}
 
 // Normalize Finnhub search hits to US-primary equity candidates: drop empty and
 // exchange-suffixed foreign symbols (e.g. "AAPL.MX") so the picks stay clean.
@@ -776,28 +899,4 @@ function finnhubSearchToLite(
     out.push({ ticker, name: h.description ?? "", type: h.type ?? "" });
   }
   return out;
-}
-
-// Finnhub's universe is global and includes OTC/pink-sheet names that look
-// like plain US tickers (no dot suffix) but aren't on Alpaca's exchange
-// coverage — a chart-provider mismatch that would otherwise surface as
-// "Chart data temporarily unavailable" right after a successful search.
-// One batched snapshot call cross-checks every candidate against the SAME
-// provider that renders the chart, so "searchable" and "chartable" are
-// identical sets by construction. Never throws: a lookup failure just skips
-// the extra filter and returns the candidates unfiltered.
-async function keepAlpacaChartable<T extends { ticker: string }>(
-  candidates: T[]
-): Promise<T[]> {
-  if (candidates.length === 0) return candidates;
-  try {
-    const snaps = await getAlpacaSnapshots(candidates.map((c) => c.ticker));
-    const chartable = candidates.filter((c) => !!snaps[c.ticker]?.dailyBar);
-    // If Alpaca returned nothing usable (e.g. transient outage) keep the
-    // original list rather than making search look empty.
-    return chartable.length > 0 ? chartable : candidates;
-  } catch (error) {
-    console.error("[alpaca] search chartability check failed, skipping filter:", error);
-    return candidates;
-  }
 }

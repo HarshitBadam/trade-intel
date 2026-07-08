@@ -222,5 +222,5 @@ export function searchFallbackTickers(query: string) {
   })
     .filter((x) => x.score >= 0)
     .sort((a, b) => a.score - b.score);
-  return ranked.slice(0, 6).map((x) => x.t);
+  return ranked.slice(0, 8).map((x) => x.t);
 }

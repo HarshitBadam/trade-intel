@@ -3,7 +3,7 @@
 import { Search } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { searchStocks } from "@/app/details/[id]/actions";
+import { searchStocks, checkSearchChartable } from "@/app/details/[id]/actions";
 import type { SearchResult } from "@/lib/market-data/types";
 
 const NAME_NOISE_WORDS = new Set([
@@ -42,12 +42,20 @@ export function SearchBar() {
   const [showResults, setShowResults] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  // Populated a moment after results land, once the background chartability
+  // check (see below) comes back. Entries in here fade to a disabled state
+  // IN PLACE rather than being removed from the list — removing them would
+  // reflow/shift every row below and could yank an item out from under a
+  // user who's mid-click. This way nothing moves; the rare (~2.7%) dead
+  // ticker just stops being clickable a second later.
+  const [unavailable, setUnavailable] = useState<Set<string>>(new Set());
   const searchRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   useEffect(() => {
     if (searchQuery.trim().length === 0) {
       setSearchResults([]);
+      setUnavailable(new Set());
       setIsLoading(false);
       return;
     }
@@ -55,16 +63,38 @@ export function SearchBar() {
     let cancelled = false;
     const fetchSearchResults = async () => {
       setIsLoading(true);
+      setUnavailable(new Set());
       try {
         const results = await searchStocks(searchQuery);
-        if (!cancelled) setSearchResults(results);
+        if (cancelled) return;
+        setSearchResults(results);
+        setIsLoading(false);
+
+        // Non-blocking follow-up: verify which results are actually chartable
+        // and mark the rare (~2.7%) dead end unavailable a moment later,
+        // instead of holding up the whole dropdown for a check that's ~3x
+        // slower than the search itself. Never re-triggers "Searching…", and
+        // never removes a row (see the `unavailable` state comment above).
+        if (results.length > 0) {
+          checkSearchChartable(results.map((r) => r.ticker))
+            .then((chartable) => {
+              if (cancelled) return;
+              const ok = new Set(chartable.map((t) => t.toUpperCase()));
+              const bad = results
+                .map((r) => r.ticker.toUpperCase())
+                .filter((t) => !ok.has(t));
+              if (bad.length > 0) setUnavailable(new Set(bad));
+            })
+            .catch(() => {
+              // Best-effort only — leave everything clickable if the check fails.
+            });
+        }
       } catch (error) {
         if (!cancelled) {
           console.error("Error searching stocks:", error);
           setSearchResults([]);
+          setIsLoading(false);
         }
-      } finally {
-        if (!cancelled) setIsLoading(false);
       }
     };
 
@@ -86,6 +116,7 @@ export function SearchBar() {
   }, []);
 
   const handleStockClick = (ticker: string) => {
+    if (unavailable.has(ticker.toUpperCase())) return;
     setShowResults(false);
     setSearchQuery("");
     router.push(`/details/${ticker}`);
@@ -120,27 +151,37 @@ export function SearchBar() {
               Searching…
             </div>
           ) : searchResults.length > 0 ? (
-            searchResults.map((stock) => (
-              <button
-                key={stock.ticker}
-                type="button"
-                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent focus:bg-accent focus:outline-none"
-                onClick={() => handleStockClick(stock.ticker)}
-              >
-                <span
-                  aria-hidden="true"
-                  className="flex size-8 shrink-0 select-none items-center justify-center rounded-md text-[11px] font-medium tracking-wide bg-muted text-muted-foreground"
+            searchResults.map((stock) => {
+              const isUnavailable = unavailable.has(stock.ticker.toUpperCase());
+              return (
+                <button
+                  key={stock.ticker}
+                  type="button"
+                  disabled={isUnavailable}
+                  aria-disabled={isUnavailable}
+                  title={isUnavailable ? "Chart data isn't available for this ticker" : undefined}
+                  className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-[opacity,background-color] duration-300 focus:outline-none ${
+                    isUnavailable
+                      ? "opacity-40 cursor-not-allowed"
+                      : "cursor-pointer hover:bg-accent focus:bg-accent"
+                  }`}
+                  onClick={() => handleStockClick(stock.ticker)}
                 >
-                  {stockInitials(stock.name, stock.ticker)}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                  {stock.name}
-                </span>
-                <span className="shrink-0 font-mono text-[11px] font-medium tracking-widest text-muted-foreground/80">
-                  {stock.ticker}
-                </span>
-              </button>
-            ))
+                  <span
+                    aria-hidden="true"
+                    className="flex size-8 shrink-0 select-none items-center justify-center rounded-md text-[11px] font-medium tracking-wide bg-muted text-muted-foreground"
+                  >
+                    {stockInitials(stock.name, stock.ticker)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                    {stock.name}
+                  </span>
+                  <span className="shrink-0 font-mono text-[11px] font-medium tracking-widest text-muted-foreground/80">
+                    {stock.ticker}
+                  </span>
+                </button>
+              );
+            })
           ) : (
             <div className="px-3 py-6 text-center text-sm text-muted-foreground">
               No stocks found
