@@ -65,7 +65,8 @@ export function StockGraph({
 }) {
   const [rangeDays, setRangeDays] = useState<number>(365);
 
-  const priceLabel = `$${(stockPrice ?? 0).toFixed(2)}`;
+  // A missing price renders as a dash, not a fabricated $0.00.
+  const priceLabel = stockPrice > 0 ? `$${stockPrice.toFixed(2)}` : "—";
 
   const dailyPoints = useMemo(() => normalize(chartData), [chartData]);
   const intradayPoints = useMemo(() => normalize(intradayData), [intradayData]);
@@ -138,9 +139,11 @@ export function StockGraph({
           <h2 className="text-2xl font-bold">{companyName}</h2>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold">{priceLabel}</span>
-            <span className={isUp ? "text-green-600 dark:text-green-400 text-sm" : "text-red-500 dark:text-red-400 text-sm"}>
-              {changeLabel}
-            </span>
+            {activePoints.length >= 2 && (
+              <span className={isUp ? "text-green-600 dark:text-green-400 text-sm" : "text-red-500 dark:text-red-400 text-sm"}>
+                {changeLabel}
+              </span>
+            )}
           </div>
 
           <div className="flex gap-1 mt-3">
@@ -196,10 +199,14 @@ export function StockGraph({
           <div className="flex items-center justify-center py-24">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground" />
           </div>
-        ) : chartData ? (
+        ) : activePoints.length >= 2 ? (
           <MainChart cd={chartSeries} rangeDays={rangeDays} intraday={isIntraday} subDaily={subDaily} />
         ) : (
-          <p>Loading chart data...</p>
+          // Honest empty state — never a fake series. The details view keeps
+          // polling in the background while this is shown.
+          <p className="py-24 text-center text-sm">
+            Chart data is temporarily unavailable. Retrying automatically…
+          </p>
         )}
       </div>
     </div>

@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { News } from "@/components/news/RecentInfluential";
 import { fetchDetails, fetchRelatedStocks, fetchChartRange } from "./actions";
-import type { RelatedCard } from "@/lib/market-data/types";
+import type { RelatedCard, BarPoint } from "@/lib/market-data/types";
 import type { StockData } from "./page";
 
 function ChartCardSkeleton() {
@@ -64,6 +64,39 @@ function SentimentPanelSkeleton() {
   );
 }
 
+// A refresh may itself fail transiently ("unavailable"); never let it regress
+// data that is already on screen — keep the good values and only adopt the
+// parts of the fresh payload that are real.
+function mergeDetails(prev: StockData, fresh: StockData): StockData {
+  return {
+    ...fresh,
+    ...(fresh.priceStatus === "unavailable" && prev.priceStatus === "live"
+      ? {
+          stockPrice: prev.stockPrice,
+          priceChange: prev.priceChange,
+          percentChange: prev.percentChange,
+          chartData: prev.chartData,
+          priceStatus: prev.priceStatus,
+        }
+      : {}),
+    ...(fresh.newsStatus === "unavailable" && prev.news.length > 0
+      ? {
+          news: prev.news,
+          newsStatus: prev.newsStatus,
+          newsUpdatedAt: prev.newsUpdatedAt,
+          mentions: prev.mentions,
+          sentimentPercentage: prev.sentimentPercentage,
+          positiveSentimentPercentage: prev.positiveSentimentPercentage,
+          negativeSentimentPercentage: prev.negativeSentimentPercentage,
+          popularityRate: prev.popularityRate,
+          popularitySeries: prev.popularitySeries,
+          popularityStatus: prev.popularityStatus,
+          searchVolume: prev.searchVolume,
+        }
+      : {}),
+  };
+}
+
 export default function DetailsView({
   initial,
   ticker,
@@ -75,9 +108,20 @@ export default function DetailsView({
 
   const [stockData, setStockData] = useState<StockData>(initial);
   const [news, setNews] = useState<News[]>(initial.news);
+  const stockDataRef = useRef(stockData);
+  useEffect(() => {
+    stockDataRef.current = stockData;
+  }, [stockData]);
 
   useEffect(() => {
-    if (initial.newsStatus !== "analyzing") return;
+    // "analyzing": an AI ingest is running in the background. "unavailable":
+    // a live fetch failed transiently (e.g. the Polygon budget was spent) —
+    // both resolve on their own, so both are worth re-polling.
+    const transient =
+      initial.newsStatus === "analyzing" ||
+      initial.newsStatus === "unavailable" ||
+      initial.priceStatus === "unavailable";
+    if (!transient) return;
 
     let cancelled = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -88,14 +132,19 @@ export default function DetailsView({
     const poll = () => {
       fetchDetails(ticker).then((data) => {
         if (cancelled || !data) return;
-        const stillAnalyzing = data.newsStatus === "analyzing";
-        const giveUp = stillAnalyzing && attempts >= MAX_RETRIES;
-        if (giveUp) {
+        const stillPending =
+          data.newsStatus === "analyzing" ||
+          data.newsStatus === "unavailable" ||
+          data.priceStatus === "unavailable";
+        const giveUp = stillPending && attempts >= MAX_RETRIES;
+        if (giveUp && data.newsStatus === "analyzing") {
           // Mirrors the server's `isNewsStale` rule (NEWS_TTL_MS = 7 days).
           // Replicated inline to avoid pulling the server data layer into the
           // client bundle. If the analysis we have is older than the TTL and
           // the background refresh never landed, label it "stale" — never
           // "fresh" — so we don't present week-plus-old data as up to date.
+          // With nothing at all to show, settle on the honest "unavailable"
+          // (never "sample": no fabricated headlines for end users).
           const NEWS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
           const isStale =
             !!data.newsUpdatedAt &&
@@ -108,12 +157,13 @@ export default function DetailsView({
                 : "fresh"
               : data.news.length > 0
                 ? "live"
-                : "sample",
+                : "unavailable",
           };
         }
-        setStockData(data);
-        setNews(data.news);
-        if (stillAnalyzing && !giveUp) {
+        const merged = mergeDetails(stockDataRef.current, data);
+        setStockData(merged);
+        setNews(merged.news);
+        if (stillPending && !giveUp) {
           attempts += 1;
           retry = setTimeout(poll, 30_000);
         }
@@ -125,29 +175,37 @@ export default function DetailsView({
       cancelled = true;
       if (retry) clearTimeout(retry);
     };
-  }, [initial.newsStatus, ticker]);
+  }, [initial.newsStatus, initial.priceStatus, ticker]);
 
-  const [intradayData, setIntradayData] = useState<
-    { date: string; value: number }[] | undefined
-  >(initial.intradayData);
-  const [weekData, setWeekData] = useState<
-    { date: string; value: number }[] | undefined
-  >(initial.weekData);
-  const [fineData, setFineData] = useState<
-    { date: string; value: number }[] | undefined
-  >(initial.fineData);
+  const [intradayData, setIntradayData] = useState<BarPoint[] | undefined>(
+    initial.intradayData,
+  );
+  const [weekData, setWeekData] = useState<BarPoint[] | undefined>(
+    initial.weekData,
+  );
+  const [fineData, setFineData] = useState<BarPoint[] | undefined>(
+    initial.fineData,
+  );
   const [loadingRange, setLoadingRange] = useState(false);
   const fetchedRanges = useRef(new Set<string>());
   const loadingCount = useRef(0);
 
   const handleRequestRange = useCallback(
     async (kind: "intraday" | "week" | "fine") => {
+      // Both FlipCard faces (price + popularity) share this one handler, so the
+      // dedup below is load-bearing: mark the range as in-flight BEFORE the
+      // await so a click on the second face never re-fetches a resolution the
+      // first face already requested. One fetch per resolution feeds both charts.
       if (fetchedRanges.current.has(kind)) return;
       fetchedRanges.current.add(kind);
       loadingCount.current++;
       setLoadingRange(true);
       try {
         const data = await fetchChartRange(ticker, kind);
+        // An empty series means the fetch was rate-limited/failed (the chart
+        // falls back to the daily view). Un-mark the range so a later click
+        // retries instead of being stuck on the fallback until a reload.
+        if (data.length < 2) fetchedRanges.current.delete(kind);
         switch (kind) {
           case "intraday":
             setIntradayData(data);
@@ -159,6 +217,8 @@ export default function DetailsView({
             setFineData(data);
             break;
         }
+      } catch {
+        fetchedRanges.current.delete(kind);
       } finally {
         loadingCount.current--;
         if (loadingCount.current === 0) setLoadingRange(false);
@@ -244,8 +304,14 @@ export default function DetailsView({
                         mentions={stockData.mentions}
                         searchVolume={stockData.searchVolume}
                         sentimentPercentage={stockData.sentimentPercentage}
-                        series={stockData.popularitySeries}
                         status={stockData.popularityStatus}
+                        chartData={stockData.chartData}
+                        intradayData={intradayData}
+                        weekData={weekData}
+                        fineData={fineData}
+                        news={news}
+                        onRequestRange={handleRequestRange}
+                        loadingRange={loadingRange}
                       />
                     }
                   />

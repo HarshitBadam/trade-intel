@@ -20,12 +20,24 @@ export function seededRandom(seed: number) {
   };
 }
 
+// Bar type carried by every mock series: `value` is the close, `volume`/`trades`
+// feed the popularity activity chart (kept on a SEPARATE PRNG stream so the
+// existing mock price series is unchanged). See `BarPoint` in market-data/types.
+type MockBar = { date: string; value: number; volume: number; trades: number };
+
+// Plausible trade count from a share volume (avg trade size varies a bit).
+function tradesFrom(volume: number, rand: () => number): number {
+  return Math.max(1, Math.round(volume / (150 + rand() * 350)));
+}
+
 export function generateMockCandles(ticker: string, days = 5 * 365) {
   const rand = seededRandom(hashTicker(ticker));
+  const volRand = seededRandom(hashTicker(ticker) ^ 0x0107ff);
   const basePrice = 40 + rand() * 460;
   const drift = (rand() - 0.45) * 0.002;
+  const baseVol = 500_000 + Math.floor(volRand() * 25_000_000);
 
-  const candles: { date: string; value: number }[] = [];
+  const candles: MockBar[] = [];
   let price = basePrice;
   const now = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
@@ -33,9 +45,12 @@ export function generateMockCandles(ticker: string, days = 5 * 365) {
   for (let i = days; i >= 0; i--) {
     const change = price * (drift + (rand() - 0.5) * 0.03);
     price = Math.max(1, price + change);
+    const volume = Math.round(baseVol * (0.5 + volRand()));
     candles.push({
       date: new Date(now - i * dayMs).toISOString(),
       value: Number(price.toFixed(2)),
+      volume,
+      trades: tradesFrom(volume, volRand),
     });
   }
   return candles;
@@ -45,18 +60,24 @@ export function generateMockWeek(ticker: string, days = 7) {
   const daily = generateMockCandles(ticker);
   const anchor = daily[daily.length - 1].value;
   const rand = seededRandom(hashTicker(ticker) ^ 0x55aa);
+  const volRand = seededRandom(hashTicker(ticker) ^ 0x55aa ^ 0x0107ff);
 
-  const points: { date: string; value: number }[] = [];
+  const points: MockBar[] = [];
   const stepMs = 15 * 60 * 1000;
   const steps = Math.round((days * 24 * 60) / 15);
   const now = Date.now();
   let price = anchor * (0.97 + rand() * 0.02);
+  // ~26 fifteen-minute bars per trading day.
+  const perBar = (daily[daily.length - 1].volume ?? 1_000_000) / 26;
 
   for (let i = steps; i >= 0; i--) {
     price = Math.max(1, price + price * (rand() - 0.49) * 0.004);
+    const volume = Math.max(1, Math.round(perBar * (0.4 + volRand() * 1.2)));
     points.push({
       date: new Date(now - i * stepMs).toISOString(),
       value: Number(price.toFixed(2)),
+      volume,
+      trades: tradesFrom(volume, volRand),
     });
   }
   return points;
@@ -66,21 +87,26 @@ export function generateMockFine(ticker: string, days = 95) {
   const daily = generateMockCandles(ticker);
   const anchor = daily[daily.length - 1].value;
   const rand = seededRandom(hashTicker(ticker) ^ 0x77ee);
+  const volRand = seededRandom(hashTicker(ticker) ^ 0x77ee ^ 0x0107ff);
 
-  const points: { date: string; value: number }[] = [];
+  const points: MockBar[] = [];
   const stepMs = 15 * 60 * 1000;
   const steps = Math.round((days * 24 * 60) / 15);
   const now = Date.now();
   // Start below the anchor so the series ends near the current price
   let price = anchor * (0.9 + rand() * 0.06);
+  const perBar = (daily[daily.length - 1].volume ?? 1_000_000) / 26;
 
   for (let i = steps; i >= 0; i--) {
     // Smaller per-step move than the old hourly mock so 4x the points keep a
     // comparable overall drift instead of swinging wildly.
     price = Math.max(1, price + price * (rand() - 0.49) * 0.0035);
+    const volume = Math.max(1, Math.round(perBar * (0.4 + volRand() * 1.2)));
     points.push({
       date: new Date(now - i * stepMs).toISOString(),
       value: Number(price.toFixed(2)),
+      volume,
+      trades: tradesFrom(volume, volRand),
     });
   }
   return points;
@@ -90,18 +116,24 @@ export function generateMockIntraday(ticker: string) {
   const daily = generateMockCandles(ticker);
   const anchor = daily[daily.length - 1].value;
   const rand = seededRandom(hashTicker(ticker) ^ 0x1d1d);
+  const volRand = seededRandom(hashTicker(ticker) ^ 0x1d1d ^ 0x0107ff);
 
-  const points: { date: string; value: number }[] = [];
+  const points: MockBar[] = [];
   const steps = 390;
   const stepMs = 60 * 1000;
   const now = Date.now();
   let price = anchor * (0.99 + rand() * 0.02);
+  // 390 one-minute bars per regular trading session.
+  const perBar = (daily[daily.length - 1].volume ?? 1_000_000) / 390;
 
   for (let i = steps; i >= 0; i--) {
     price = Math.max(1, price + price * (rand() - 0.5) * 0.0018);
+    const volume = Math.max(1, Math.round(perBar * (0.3 + volRand() * 1.4)));
     points.push({
       date: new Date(now - i * stepMs).toISOString(),
       value: Number(price.toFixed(2)),
+      volume,
+      trades: tradesFrom(volume, volRand),
     });
   }
   return points;
@@ -109,13 +141,14 @@ export function generateMockIntraday(ticker: string) {
 
 export function generateMockStockData(ticker: string) {
   const chartData = generateMockCandles(ticker);
-  const last = chartData[chartData.length - 1].value;
+  const last = chartData[chartData.length - 1];
   const prev = chartData[chartData.length - 2].value;
   return {
     chart_data: chartData,
-    stock_price: last,
-    price_change: Number((last - prev).toFixed(2)),
-    percent_change: Number((((last - prev) / prev) * 100).toFixed(2)),
+    stock_price: last.value,
+    price_change: Number((last.value - prev).toFixed(2)),
+    percent_change: Number((((last.value - prev) / prev) * 100).toFixed(2)),
+    latest_volume: last.volume,
   };
 }
 

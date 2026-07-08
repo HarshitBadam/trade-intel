@@ -1,6 +1,9 @@
 "use client"
 import * as React from "react"
 import { PopularityChart } from "./PopularityChart"
+import { RANGES, rangeToKind, DAY_MS } from "./ranges"
+import type { BarPoint } from "@/lib/market-data/types"
+import type { News } from "@/components/news/RecentInfluential"
 
 interface PopularityGraphProps {
   companyName: string;
@@ -8,22 +11,18 @@ interface PopularityGraphProps {
   mentions: number;
   searchVolume: number;
   sentimentPercentage: number;
-  series: { date: string; positive: number; negative: number }[];
   status: "live" | "sample";
+  // The SAME lazily-loaded price bars the price view uses (now carrying
+  // volume/trades). The activity chart is derived from these — zero extra API
+  // calls — and the range buttons drive the SAME onRequestRange fetch.
+  chartData: BarPoint[];
+  intradayData?: BarPoint[];
+  weekData?: BarPoint[];
+  fineData?: BarPoint[];
+  news: News[];
+  onRequestRange?: (kind: "intraday" | "week" | "fine") => void;
+  loadingRange?: boolean;
 }
-
-// Social/popularity history only spans ~3 months of data, so wider windows are
-// disabled — keeping the selector visually consistent with the price view.
-const RANGES: { label: string; days: number }[] = [
-  { label: "1W", days: 7 },
-  { label: "1M", days: 30 },
-  { label: "3M", days: 90 },
-  { label: "6M", days: 180 },
-  { label: "1Y", days: 365 },
-  { label: "All", days: Infinity },
-];
-
-const POPULARITY_SPAN_DAYS = 90;
 
 export function PopularityGraph({
   companyName,
@@ -31,25 +30,61 @@ export function PopularityGraph({
   mentions,
   searchVolume,
   sentimentPercentage,
-  series,
-  status
+  status,
+  chartData,
+  intradayData,
+  weekData,
+  fineData,
+  news,
+  onRequestRange,
+  loadingRange,
 }: PopularityGraphProps) {
-  const [rangeDays, setRangeDays] = React.useState<number>(90);
+  // Default to 1Y like the price view — the daily bars are already loaded, so
+  // the activity chart is populated immediately on flip (no fetch needed).
+  const [rangeDays, setRangeDays] = React.useState<number>(365);
+
+  const has1D = (intradayData?.length ?? 0) >= 2;
+  const hasWeek = (weekData?.length ?? 0) >= 2;
+  const hasFine = (fineData?.length ?? 0) >= 2;
+
+  const isIntraday = rangeDays === 1;
+  const isWeek = rangeDays === 7 && hasWeek;
+  const isFine = (rangeDays === 30 || rangeDays === 90) && hasFine;
+
+  const activeBars: BarPoint[] = isIntraday
+    ? intradayData ?? []
+    : isWeek
+      ? weekData ?? []
+      : isFine
+        ? fineData ?? []
+        : chartData;
+
+  // 1D (1-min), 1W/1M/3M (15-min) carry sub-daily bars, so their axis/tooltips
+  // want a time component; daily+ ranges (6M/1Y/All) don't.
+  const subDaily = isIntraday || isWeek || isFine;
+
+  const spanDays = React.useMemo(() => {
+    if (chartData.length < 2) return 0;
+    const first = Date.parse(chartData[0].date);
+    const last = Date.parse(chartData[chartData.length - 1].date);
+    return Number.isNaN(first) || Number.isNaN(last) ? 0 : (last - first) / DAY_MS;
+  }, [chartData]);
+
+  const showIntradayLoading =
+    !!loadingRange && isIntraday && !has1D && !!onRequestRange;
 
   return (
     <div className="w-full h-full shadow-md bg-accent/10 glass-card rounded-lg flex flex-col">
-
       <div className="flex justify-between">
         <div className="stock-text-description-left p-8">
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold">{companyName}</h2>
-            {/* Only disclaim when the data really is the deterministic mock
-                (open demo mode). With a live provider every value below is
-                real, so the badge is dropped. */}
+            {/* Only disclaim in the true zero-provider demo build. With any live
+                source the numbers below and the activity chart are real. */}
             {status === "sample" && (
               <span
                 className="text-[10px] uppercase tracking-wide font-medium text-muted-foreground border border-border rounded-full px-2 py-0.5"
-                title="Social sentiment is illustrative sample data, not a live feed."
+                title="Illustrative sample data, not a live feed."
               >
                 Illustrative
               </span>
@@ -69,7 +104,18 @@ export function PopularityGraph({
 
           <div className="flex gap-1 mt-3">
             {RANGES.map((r) => {
-              const disabled = r.days !== Infinity && r.days > POPULARITY_SPAN_DAYS + 1;
+              const kind = rangeToKind(r.days);
+              const hiResAvailable =
+                r.days === 1 ? has1D : r.days === 7 ? hasWeek : hasFine;
+
+              const disabled = (() => {
+                // A lazily-fetchable range is always clickable (it triggers the
+                // fetch); otherwise gate on how much daily history we have.
+                if (kind && onRequestRange) return false;
+                if (r.days === 1) return !has1D;
+                return r.days !== Infinity && r.days > spanDays + 1;
+              })();
+
               const active = rangeDays === r.days;
               return (
                 <button
@@ -80,6 +126,9 @@ export function PopularityGraph({
                     // Don't let a range change bubble up and flip the card.
                     e.stopPropagation();
                     setRangeDays(r.days);
+                    if (onRequestRange && kind && !hiResAvailable) {
+                      onRequestRange(kind);
+                    }
                   }}
                   className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
                     active
@@ -100,7 +149,22 @@ export function PopularityGraph({
         </div>
       </div>
 
-      <PopularityChart series={series} rangeDays={rangeDays} />
+      {showIntradayLoading ? (
+        <div className="flex items-center justify-center py-24">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground" />
+        </div>
+      ) : activeBars.length >= 2 ? (
+        <PopularityChart
+          bars={activeBars}
+          news={news}
+          rangeDays={rangeDays}
+          subDaily={subDaily}
+        />
+      ) : (
+        <p className="py-24 text-center text-sm text-muted-foreground">
+          Activity data is temporarily unavailable. Retrying automatically…
+        </p>
+      )}
     </div>
   )
-} 
+}

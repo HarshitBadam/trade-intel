@@ -92,7 +92,15 @@ export async function ingestTickerNews(
     }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
-      throw new Error(`ingest flow responded with ${response.status}`);
+      // Include the flow's response body in the error. Without it, an upstream
+      // credential failure (e.g. a revoked Gemini key surfacing as a 401 inside
+      // the flow, returned to us as a 500) is indistinguishable from any other
+      // failure — which makes a broken ingest effectively undiagnosable.
+      const detail = await response.text().catch(() => "");
+      throw new Error(
+        `ingest flow responded with ${response.status}` +
+          (detail ? `: ${detail.slice(0, 800)}` : "")
+      );
     }
 
     revalidateTag("news");

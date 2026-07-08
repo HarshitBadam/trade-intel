@@ -8,7 +8,7 @@ import {
   generateMockWeek,
   generateMockFine,
 } from "@/data/fallbacks";
-import { hasPolygon } from "@/lib/config";
+import { hasAlpaca, hasFinnhub, hasPolygon } from "@/lib/config";
 import { guard } from "@/lib/guard";
 import {
   buildStockData,
@@ -36,30 +36,53 @@ import type {
   LiveQuote,
   RelatedCard,
   SearchResult,
+  BarPoint,
 } from "@/lib/market-data/types";
+
+// A live price provider (Alpaca preferred, Polygon fallback).
+const hasPrices = hasAlpaca || hasPolygon;
+// A provider that can enrich symbol search (Finnhub preferred, Polygon fallback).
+const hasSearchProvider = hasFinnhub || hasPolygon;
+
+function mergeSearchResults(
+  local: SearchResult[],
+  live: SearchResult[]
+): SearchResult[] {
+  const out: SearchResult[] = [];
+  const seen = new Set<string>();
+  for (const r of [...local, ...live]) {
+    const key = r.ticker.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
 
 export async function searchStocks(query: string): Promise<SearchResult[]> {
   const cleaned = (query ?? "").toString().slice(0, 64).trim();
   if (!cleaned) return [];
 
-  // Polygon's live search is the richest source, but its free tier allows only
-  // ~5 req/min shared with every other call. searchTickersCached caches each
-  // query for a day, so a given search hits the API at most once; on a 429 it
-  // throws (failure isn't cached) and we drop to the local index below — which
-  // is why common names still resolve instead of showing "No stocks found".
-  if (hasPolygon) {
-    const access = await guard("search", { limit: 60, windowSec: 60 });
-    if (access.ok) {
-      try {
-        const live = await searchTickersCached(cleaned);
-        if (live.length) return live;
-      } catch {
-        // rate-limited (429) or transient error → fall through to local index
-      }
+  // Local static index FIRST: it covers the common names instantly with zero
+  // API spend. Only reach for a provider when the local index is thin — then
+  // Finnhub (preferred, 60/min) or Polygon (fallback) enriches the long tail.
+  // searchTickersCached caches each query for a day; on a 429/transient error it
+  // throws (failure isn't cached) and we keep the local results.
+  const local = searchFallbackTickers(cleaned);
+  if (local.length >= 3 || !hasSearchProvider) return local;
+
+  const access = await guard("search", { limit: 60, windowSec: 60 });
+  if (access.ok) {
+    try {
+      const live = await searchTickersCached(cleaned);
+      if (live.length) return mergeSearchResults(local, live);
+    } catch {
+      // rate-limited (429) or transient error → keep the local index
     }
   }
 
-  return searchFallbackTickers(cleaned);
+  return local;
 }
 
 export async function fetchDetails(ticker: string): Promise<StockData> {
@@ -68,6 +91,7 @@ export async function fetchDetails(ticker: string): Promise<StockData> {
     return buildStockData(
       "N/A",
       generateMockStockData("N/A"),
+      "sample",
       generateMockIntraday("N/A"),
       generateMockWeek("N/A"),
       generateMockFine("N/A"),
@@ -75,15 +99,19 @@ export async function fetchDetails(ticker: string): Promise<StockData> {
     );
   }
 
+  // A per-user rate-limited poll must NOT silently degrade to mock data — the
+  // page already has real data on screen; report "unavailable" so the client
+  // keeps what it has and retries later.
   const access = await guard("details", { limit: 30, windowSec: 60 });
   if (!access.ok) {
     return buildStockData(
       symbol,
-      generateMockStockData(symbol),
-      generateMockIntraday(symbol),
-      generateMockWeek(symbol),
-      generateMockFine(symbol),
-      mockNewsSummary(symbol)
+      null,
+      "unavailable",
+      undefined,
+      undefined,
+      undefined,
+      { mentions: 0, positiveSentiment: 0, negativeSentiment: 0, news: [], status: "unavailable" }
     );
   }
 
@@ -136,12 +164,15 @@ export async function fetchRelatedStocks(
 export async function fetchChartRange(
   ticker: string,
   kind: "daily" | "intraday" | "week" | "fine"
-): Promise<{ date: string; value: number }[]> {
+): Promise<BarPoint[]> {
   const symbol = sanitizeTicker(ticker);
   if (!symbol) return [];
 
   const access = await guard("details", { limit: 30, windowSec: 60 });
   if (!access.ok) {
+    // Live mode: an empty series makes the chart keep the real daily view for
+    // that range — never a fabricated hi-res series. Mocks are demo-only.
+    if (hasPrices) return [];
     switch (kind) {
       case "daily":
         return generateMockStockData(symbol).chart_data;
