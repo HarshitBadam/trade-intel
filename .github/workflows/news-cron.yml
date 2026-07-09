@@ -1,0 +1,39 @@
+name: News + analysis cron
+
+# The REAL cadence for the background lane (redesign §9). GH Actions cron is
+# best-effort and can be delayed several minutes under load — that is fine here:
+# the request path only ever reads the store, so a late run just means slightly
+# staler news, never a broken page. The Vercel cron on this same endpoint is a
+# once-a-day backstop.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+# Don't let a slow run (up to ~5 min) stack on top of the next tick. We drop the
+# newer run rather than cancel the in-flight one, which could otherwise leave a
+# batch half-loaded.
+concurrency:
+  group: news-cron
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Hit /api/cron/news
+        env:
+          CRON_URL: ${{ secrets.CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "${CRON_URL}" ] || [ -z "${CRON_SECRET}" ]; then
+            echo "CRON_URL / CRON_SECRET secret not set — skipping cron run."
+            exit 0
+          fi
+          # --max-time 280 stays under the endpoint's 300s maxDuration. Print the
+          # response body: it's the run summary JSON, which makes this Actions log
+          # the de-facto cron dashboard.
+          curl -fsS --max-time 280 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${CRON_URL}"

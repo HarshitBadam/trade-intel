@@ -32,6 +32,10 @@ export const ASTRA_DB_APPLICATION_TOKEN = process.env.ASTRA_DB_APPLICATION_TOKEN
 export const ASTRA_DB_API_ENDPOINT = process.env.ASTRA_DB_API_ENDPOINT;
 export const ASTRA_DB_NEWS_COLLECTION =
   process.env.ASTRA_DB_NEWS_COLLECTION ?? "prototype_db_v2";
+// Per-ticker analysis docs live in their own non-vector collection (Astra's
+// free tier caps collections, so this stays a single small one; see news-store).
+export const ASTRA_DB_ANALYSIS_COLLECTION =
+  process.env.ASTRA_DB_ANALYSIS_COLLECTION ?? "stock_analysis";
 const rawAstra = Boolean(
   ASTRA_DB_APPLICATION_TOKEN && ASTRA_DB_API_ENDPOINT
 );
@@ -46,14 +50,33 @@ const rawLangflow = Boolean(
 export const LANGFLOW_CHAT_PROMPT_ID =
   process.env.LANGFLOW_CHAT_PROMPT_ID ?? "StockSageRagPrompt-FwmYE";
 
+// Task 6: the chat flow's LLM node is now the dedicated Groq model component
+// (llama-3.3-70b-versatile), replacing the old Google-only LanguageModel node.
+// The app injects StockSage's system_message here via Langflow tweaks, so this
+// id must match the node in stocksage-chat.json.
 export const LANGFLOW_CHAT_LLM_ID =
-  process.env.LANGFLOW_CHAT_LLM_ID ?? "LanguageModelComponent-0ZJmW";
+  process.env.LANGFLOW_CHAT_LLM_ID ?? "GroqModel-chat1";
 
-export const LANGFLOW_INGEST_FLOW_ID = process.env.LANGFLOW_INGEST_FLOW_ID;
-export const LANGFLOW_INGEST_TAVILY_ID =
-  process.env.LANGFLOW_INGEST_TAVILY_ID ?? "TavilySearchComponent-LyDPQ";
-export const LANGFLOW_INGEST_STRUCTURED_ID =
-  process.env.LANGFLOW_INGEST_STRUCTURED_ID ?? "StructuredOutput-oUGso";
+// Stateless deep-analysis flow (stocksage-analysis.json): articles-in → labels
+// JSON out. Separate id from the chat flow; reuses LANGFLOW_BASE_URL +
+// LANGFLOW_API_KEY. When set, the analysis lane runs Langflow-first with a
+// direct-Groq fallback (D7/D10). Leave empty to keep analysis on direct Groq.
+export const LANGFLOW_ANALYZE_FLOW_ID = process.env.LANGFLOW_ANALYZE_FLOW_ID;
+const rawLangflowAnalyze = Boolean(
+  LANGFLOW_BASE_URL && LANGFLOW_API_KEY && LANGFLOW_ANALYZE_FLOW_ID
+);
+
+// Groq — the deep-analysis + StockSage chat LLM (redesign §6). One account, two
+// MODELS so the lanes get independent per-model daily buckets (D9: Groq limits
+// are per-org/per-model, so a second key would NOT isolate them). 8B has the
+// roomy 14,400 RPD bucket for batch analysis; 70B (1,000 RPD) is reserved for
+// interactive chat where a human reads the answer.
+export const GROQ_API_KEY = process.env.GROQ_API_KEY;
+export const GROQ_ANALYSIS_MODEL =
+  process.env.GROQ_ANALYSIS_MODEL ?? "llama-3.1-8b-instant";
+export const GROQ_CHAT_MODEL =
+  process.env.GROQ_CHAT_MODEL ?? "llama-3.3-70b-versatile";
+const rawGroq = Boolean(GROQ_API_KEY);
 
 export const hasAuthSecret = Boolean(
   process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET
@@ -74,10 +97,9 @@ export const hasPolygon = rawPolygon && liveAllowed;
 export const hasAlpaca = rawAlpaca && liveAllowed;
 export const hasFinnhub = rawFinnhub && liveAllowed;
 export const hasAstra = rawAstra && liveAllowed;
+export const hasGroq = rawGroq && liveAllowed;
 export const hasLangflow = rawLangflow && liveAllowed;
-export const hasLangflowIngest =
-  Boolean(LANGFLOW_BASE_URL && LANGFLOW_INGEST_FLOW_ID && LANGFLOW_API_KEY) &&
-  liveAllowed;
+export const hasLangflowAnalyze = rawLangflowAnalyze && liveAllowed;
 
 if (
   isProd &&

@@ -1,5 +1,6 @@
 import { getDetailsData } from "@/lib/market-data";
 import DetailsView from "./DetailsView";
+import { triggerPriorityAnalysis } from "./priority";
 import type { News, NewsStatus } from "@/components/news/RecentInfluential";
 import type { BarPoint } from "@/lib/market-data/types";
 
@@ -48,6 +49,6 @@ export default async function Page({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const initial = await getDetailsData(id);
+  const initial = await getDetailsData(id, triggerPriorityAnalysis);
   return <DetailsView initial={initial} ticker={id} key={id} />;
 }

@@ -221,18 +221,6 @@ export function latestNewsTimestamp(news: News[]): string | undefined {
   return latest > 0 ? new Date(latest).toISOString() : undefined;
 }
 
-export const NEWS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-export function isNewsStale(
-  updatedAt: string | undefined,
-  now: number = Date.now()
-): boolean {
-  if (!updatedAt) return true;
-  const t = Date.parse(updatedAt);
-  if (Number.isNaN(t)) return true;
-  return now - t > NEWS_TTL_MS;
-}
-
 // Popularity trend spans ~90 days, bucketed daily to match the granularity of
 // the price chart. Daily is the finest resolution the data supports, since news
 // `publication_date` is date-only (no intraday timestamp).

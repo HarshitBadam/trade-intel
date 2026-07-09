@@ -1,134 +1,208 @@
 # StockSage — Langflow Flows
 
-StockSage's AI lives in two [Langflow](https://www.langflow.org/) flows (v1.10).
-The Next.js app never talks to an LLM directly — it calls these flows over HTTP,
-so the AI is swappable, inspectable, and hosted independently.
+StockSage's AI runs through two [Langflow](https://www.langflow.org/) flows
+(v1.10), **both backed by Groq**. Langflow is the visible orchestration layer —
+the project's thesis — but the Space can go down, so every Langflow call in the
+app has a **direct-Groq fallback** using the same models and prompts, gated by a
+circuit breaker. One rule everywhere: **Langflow-first, Groq-direct-fallback.**
 
 ```
                 ┌──────────────────────── Vercel (Next.js) ────────────────────────┐
-                │  visit /details/NVDA                 chat: "sentiment on NVDA?"    │
+                │  deep analysis (cron / priority)         chat: "sentiment on NVDA?"│
                 └─────────┬───────────────────────────────────────┬─────────────────┘
-                          │ POST /run/<ingest_id> (tweaks)         │ POST /run/<chat_id>
+                          │ POST /run/<analyze_id>                 │ POST /run/<chat_id>
+                          │  (fallback: Groq 8B direct)            │  (fallback: Groq 70B direct)
                           ▼                                        ▼
         ┌──────────────────────────────┐          ┌──────────────────────────────┐
-        │  stocksage-ingestion.json     │          │  stocksage-chat.json          │
-        │  (writes news → Astra)        │          │  (reads news ← Astra, RAG)    │
+        │  stocksage-analysis.json      │          │  stocksage-chat.json          │
+        │  STATELESS: articles → labels │          │  RAG chat (reads Astra news)  │
+        │  Groq llama-3.1-8b-instant    │          │  Groq llama-3.3-70b-versatile │
         └───────────────┬──────────────┘          └───────────────┬──────────────┘
-                        write                                     read
-                          └──────────────▶  Astra DB  ◀──────────────┘
-                                       (prototype_db_v2,
-                                        gemini-embedding-001)
+                    labels JSON                                   read
+                          ▼                                        ▼
+                Next.js writes to Astra  ◀───────────────────  Astra DB
+                (single writer, D19)                          (prototype_db_v2)
 ```
 
-Both flows share the **same Astra collection** (`prototype_db_v2`) and the **same
-embedding model** (`gemini-embedding-001`) — that's what makes retrieval meaningful:
-the chat flow searches exactly the vectors the ingestion flow wrote.
+Both LLM lanes use **one Groq account, two models** so each lane gets its own
+per-model daily bucket: 8B (roomy 14,400 RPD) for batch analysis, 70B (1,000
+RPD) for interactive chat. The API key is referenced as a Langflow **global
+variable** (`GROQ_API_KEY`) — never embedded in these files.
 
 ---
 
-## 1. `stocksage-ingestion.json` — News ETL
+## Why analysis is stateless
 
-Pulls fresh web news for a ticker, has Gemini structure it, and writes one
-embeddable document per article into Astra.
+`stocksage-analysis.json` is a **pure function**: article payload in → labels
+JSON out. It does **no** Astra writes and **no** Tavily search (D19). Next.js is
+the **single writer** to the store — it reads the stored articles, sends them to
+the flow, validates the returned labels, and writes them back itself. Keeping the
+flow write-free means the analysis lane has exactly one source of truth for the
+store and the flow can be swapped or fall back to direct Groq with identical
+results.
 
-```mermaid
-flowchart LR
-    A[Tavily Search<br/>topic=news] --> B[Tavily News Cleaner<br/>custom]
-    B --> C[Structured Output<br/>Gemini 2.5-flash-lite]
-    C --> D[News Expander<br/>custom]
-    D --> E[(Astra DB<br/>prototype_db_v2)]
+### Analysis flow contract
+
+| | |
+|---|---|
+| **Input** (`input_value`) | The compact article payload the app builds: `Ticker: <SYM>`, `Article count: <N>`, `Articles (JSON): [...]`. The flow's Prompt node prepends the shared analysis instructions to it. |
+| **Output** | A single JSON object (labels), extracted from the ChatOutput text and parsed with the app's fence-stripping parser. |
+
+Output shape (abbreviated):
+
+```json
+{
+  "articles": [
+    { "article_id": "abc123", "sentiment": "Positive", "importance": "High",
+      "key_observations": "Beat on revenue and raised guidance." }
+  ],
+  "verdict": {
+    "overall_sentiment": "Positive", "sentiment_score": 0.6, "confidence": "High",
+    "summary": "Two catalysts point up ...",
+    "key_drivers": [ { "text": "Guidance raise", "sentiment": "Positive", "article_ids": ["abc123"] } ],
+    "risks": ["Valuation stretched"]
+  }
+}
 ```
+
+The **single source of truth** for the instruction text is
+`src/lib/stocksage/analysis-prompt.ts`; it is embedded verbatim in the flow's
+Prompt node (before the `{payload}` variable). If they ever drift, re-bake with
+`node scripts/sync-system-prompt.mjs` (see below).
+
+Flow nodes: `ChatInput-anlz1` → `AnalysisPrompt-anlz1` (Prompt Template) →
+`GroqModel-anlz1` (Groq, 8B, temp 0.2, `max_tokens` 2400) → `ChatOutput-anlz1`.
+`max_tokens` is deliberately bounded: Groq's free tier counts the completion
+reservation against the 6,000 TPM preflight, so `prompt + 2,400 < 6,000`.
+
+---
+
+## `stocksage-chat.json` — RAG chat
+
+Answers questions grounded in ingested Astra news, a **live Tavily web search**,
+and the app's real-time market grounding — all Groq-backed now.
 
 | Node | Type | Role |
 |------|------|------|
-| `TavilySearchComponent-wBPu4` | Tavily Search | Recent (7-day) financial news for the query. **ID is stable** — the app overrides `query` per ticker. |
-| `TavilyNewsCleaner-clean` | custom | DataFrame → clean `TITLE/URL/CONTENT` blocks split by `---`; de-dupes by URL. |
-| `StructuredOutput-5fgb3` | Structured Output | Gemini extracts a row per article (10 fields). **ID is stable** — the app overrides `system_prompt` per ticker. |
-| `NewsExpander-expand` | custom | Flattens rows → Astra docs. Stamps `ingested_at`, **normalises `sentiment`/`importance` to capitalised enums**, guarantees non-empty `page_content`. |
-| `AstraDB-ingest` | Astra DB | Embeds + upserts into `prototype_db_v2`. |
-
-**Per-ticker reuse:** one flow serves every ticker. The app sends Langflow
-`tweaks` that repoint `…wBPu4.query` and `…5fgb3.system_prompt` at the requested
-symbol (see `src/lib/news-ingest.ts`).
-
-**Free-tier aware:** uses `gemini-2.5-flash-lite`; the app dedupes ingestion to
-once / 6h / ticker and a daily cron pre-warms a curated list — all to stay under
-Gemini's ~20 req/day free quota.
-
-## 2. `stocksage-chat.json` — RAG chat
-
-Answers questions grounded in the ingested news **and** live market figures.
-
-```mermaid
-flowchart LR
-    A[Chat Input<br/>user message] --> B[(Astra DB<br/>Vector Search, k=8)]
-    A --> W[Tavily Search<br/>live web, topic=general]
-    A --> C[RAG Prompt Builder<br/>custom]
-    B --> C
-    W --> C
-    C --> D[Language Model<br/>Gemini 2.5-flash]
-    D --> E[Chat Output]
-    F([app tweaks:<br/>live_data · history · focus_tickers]) -.-> C
-```
-
-| Node | Type | Role |
-|------|------|------|
-| `ChatInput-k6AeC` | Chat Input | The user message. Drives both the vector search and the live web search. |
+| `ChatInput-k6AeC` | Chat Input | The user message. Drives the vector search, the web search, and the prompt. |
 | `AstraDB-WBI01` | Astra DB | Vector search over `prototype_db_v2`, top 8, with reranking. |
-| `TavilySearchComponent-LyDPQ` | Tavily Search | **Live web search on the question** (topic=general, 5 results). `general` (not `news`) is deliberate: conversational questions about non-US or lightly-covered names return near-zero relevant hits under the `news` topic, so a broad web search gives far better coverage of *any* entity — new listings, private companies, indices, foreign ADRs — not just tickers already in Astra. |
-| `StockSageRagPrompt-FwmYE` | custom | Builds one grounded prompt from the question, **live web results**, retrieved news, and the app-supplied grounding (below). Keeps a news item when it matches a `focus_tickers` entry **or mentions a subject from the question**, so a relevant cross-tagged story still surfaces; orders by importance/recency. |
-| `LanguageModelComponent-0ZJmW` | Language Model | Gemini 2.5-flash. A strict "sharp analyst" system message forces quantitative, decisive, source-cited answers, treats the supplied web/live/news context as current truth, and bans hedging/boilerplate. |
+| `TavilySearchComponent-LyDPQ` | Tavily Search | **Live web search per message** (topic=general, 5 results). |
+| `StockSageRagPrompt-FwmYE` | custom | Builds one grounded prompt from the question, web results, retrieved news, and the app-supplied grounding (`live_data` / `history` / `focus_tickers`). |
+| `GroqModel-chat1` | **Groq** | **llama-3.3-70b-versatile** (was the Google-only Language Model node). The app injects StockSage's `system_message` via tweaks. |
 | `ChatOutput-HXFDh` | Chat Output | Returns the reply. |
 
-**Why live web search in chat?** The Astra store only holds news for tickers that
-have been ingested, so a pure vector RAG can only speak to the warmed set. The
-Tavily node gives every answer fresh, broad web coverage of whatever was asked,
-while Astra adds depth on warmed names and the app supplies exact live figures.
-This is the flow doing **live web RAG + vector RAG + real-time grounding** in one
-pass — the centrepiece of the project.
+Edges: `ChatInput→AstraDB`, `ChatInput→Prompt`, `AstraDB→Prompt`,
+`ChatInput→Tavily`, `Tavily→Prompt`, `Prompt→Groq`, `Groq→ChatOutput`. Only the
+last two changed in Task 6 (LLM node swap); Astra / Tavily / Prompt wiring is
+untouched.
 
-**Grounding via tweaks (the key design point).** The Next.js app does NOT stuff
-live numbers and history into the search query (that pollutes retrieval).
-Instead it sends the clean message as `input_value` and injects three fields
-into the RAG Prompt Builder via Langflow `tweaks` (see `src/app/actions.ts`):
+**Grounding via tweaks (unchanged).** The app sends the clean message as
+`input_value` and injects three fields into the RAG Prompt Builder via `tweaks`:
 
 | Tweak field | What the app sends |
 |-------------|--------------------|
-| `live_data` | Real price / % change / volume for tickers mentioned in the turn. |
-| `history` | The last few conversation turns, so follow-ups keep their subject. |
-| `focus_tickers` | Tickers in scope, so retrieved news is filtered on-subject. |
+| `live_data` | Real price / % change for tickers mentioned in the turn. |
+| `history` | The last few conversation turns. |
+| `focus_tickers` | Tickers in scope, to keep retrieved news on-subject. |
 
-**Why no agent / tools?** Chained tool-agents made Gemini throw
-`400 "single turn requests must end with a user role"`. Retrieval is a plain
-vector search stitched into a single user prompt — deterministic and robust.
-
-> **After editing these flows, re-import them into your hosted Langflow** for the
-> changes to take effect (the app talks to the *hosted* flow, not this file).
-> The RAG Prompt Builder's `live_data` / `history` / `focus_tickers` inputs and
-> the analyst system message ship inside the JSON, so a fresh import is all the
-> hosted instance needs. If your Langflow assigns a new flow id on import, update
-> `LANGFLOW_FLOW_ID`; the node IDs above are preserved by import and are what
-> `config.ts` / the tweaks target.
+It also tweaks the Groq node's `system_message` with StockSage's system prompt
+(the Groq component derives `system_message` from `LCModelComponent`, so the
+tweak path is unchanged from the old node).
 
 ---
 
-## Importing into hosted Langflow
+## The breaker + fallback story
 
-1. **Global variable** (Settings → Global Variables, type *Credential*):
-   `GOOGLE_API_KEY` = your Gemini key. Used by the chat LLM, the extractor, and
-   Astra's embeddings.
-2. **Import** both JSON files (Projects → Import).
-3. Open each flow and set secrets that import blank by design:
-   - Astra DB node → **Astra DB Application Token**; confirm DB/collection shows
-     `prototype_db_v2` (re-select after the token is set if the dropdown is empty).
-   - Tavily Search node → **Tavily API Key**. **Both flows** now use Tavily: the
-     ingestion flow to fetch news, and the chat flow for live web search. Set the
-     same key on each (or promote it to a *Credential* global variable and select
-     it on both nodes).
-4. **Playground test:** run ingestion (expect ~6 AAPL rows in Astra), then ask
-   the chat *"How is Tesla vs SpaceX doing?"* — it should pull fresh web context
-   and answer with specifics, then a follow-up *"vs IXIC?"* should resolve the
-   prior subject and name the Nasdaq Composite.
-5. Copy each flow's id from its URL (`…/flow/<ID>`) into the app env:
-   - `LANGFLOW_INGEST_FLOW_ID` ← ingestion flow
+Every Langflow call is wrapped by the `"langflow"` circuit breaker
+(`src/lib/breaker.ts`) and has a direct-Groq fallback (`src/lib/groq.ts`):
+
+- **Analysis** (`src/lib/market-data/analysis.ts`): if `LANGFLOW_ANALYZE_FLOW_ID`
+  is set **and** the breaker is closed, run the flow and parse its text; on any
+  failure record a breaker failure and fall through to a direct
+  `groqChatJSON` on the 8B model (its own `"groq"` breaker unchanged).
+- **Chat** (`src/lib/stocksage/chat.ts`): if the breaker is closed, run the chat
+  flow; on failure (or when the breaker is open) answer with a direct
+  `groqChatText` on the 70B model, using StockSage's system prompt **plus the
+  same grounding block** the flow would have received. A canned market snapshot
+  is the last resort if Groq is also down.
+- `warmStockSage()` does **not** ping the Space while the breaker is open.
+
+The transport itself lives in one place: `src/lib/langflow.ts`
+(`runLangflowFlow`).
+
+---
+
+## Known trade-offs
+
+- **Tavily-per-chat-message.** The chat flow fires a Tavily web search on *every*
+  message. It gives broad, fresh coverage of any entity, but it adds latency and
+  a Tavily dependency to each turn — a fragile spot. The wiring is intentionally
+  left intact; if Tavily rate-limits, the flow can error and the Groq fallback
+  takes over.
+- **New store rows lack vector embeddings.** Next.js now writes analysis rows
+  directly (single-writer), and those rows are not embedded the way the retired
+  ingestion flow embedded them. So the chat flow's vector RAG recall skews toward
+  the older, embedded rows. The app's grounding block (`live_data` / `history` /
+  `focus_tickers`) compensates by injecting the exact current figures regardless
+  of what retrieval returns.
+
+---
+
+## `stocksage-ingestion.json` — RETIRED (historical)
+
+This is the **retired** Tavily→Gemini→Astra news ETL flow. Its app-side callers
+were deleted in Task 5 — Next.js now loads news itself (Polygon/Alpaca) and
+writes the store directly. The file is kept for historical reference only; **do
+not import or wire it into the app.**
+
+---
+
+## Space setup (do this after a restart)
+
+The Space is import-blocked while it is in the 503 "space in error" state. Once
+it restarts:
+
+1. **Restart the Space** and confirm it serves (`/health` returns OK).
+2. **Global variable** (Settings → Global Variables, type *Credential*):
+   `GROQ_API_KEY` = your Groq key. Both Groq nodes reference it via
+   `load_from_db`. Keep `GOOGLE_API_KEY` too — Astra embeddings still use Gemini.
+3. **Import `stocksage-analysis.json`** (Projects → Import).
+4. **Replace / re-import `stocksage-chat.json`** (the LLM node changed to Groq).
+5. Open each flow and set secrets that import blank by design. Langflow strips
+   EVERY credential field on import — including the Groq nodes' global-variable
+   reference — so after importing:
+   - Groq node (BOTH flows) → set **API Key** to the `GROQ_API_KEY` global
+     variable (pick it from the field's globe/variable selector; don't paste
+     the raw key — pasting stores it in the flow data itself).
+   - Astra DB node → **Astra DB Application Token**; confirm the collection shows
+     `prototype_db_v2`.
+   - Tavily Search node (chat flow) → **Tavily API Key**.
+6. **Playground test:** run the analysis flow with a small article payload
+   (expect labels JSON out); ask the chat *"How is Tesla doing?"* (expect a
+   grounded, Groq-generated answer).
+7. Copy each flow's id from its URL (`…/flow/<ID>`) into the app env:
    - `LANGFLOW_FLOW_ID` ← chat flow
+   - `LANGFLOW_ANALYZE_FLOW_ID` ← analysis flow
+   If Langflow assigned new node-id suffixes on import, the app resolves the
+   chat prompt/LLM ids by prefix automatically; only set
+   `LANGFLOW_CHAT_LLM_ID` / `LANGFLOW_CHAT_PROMPT_ID` to pin them if
+   auto-resolution can't reach the flow.
+
+## Re-syncing prompts
+
+The app owns both canonical prompts. To re-bake them into these JSONs after an
+edit, run:
+
+```bash
+node scripts/sync-system-prompt.mjs
+```
+
+It writes StockSage's system prompt into the chat flow's Groq `system_message`
+and the analysis instructions into the analysis flow's Prompt template.
+
+One hard rule it enforces: the analysis instructions must contain **no curly
+braces**. Langflow's Prompt component parses every `{...}` in the template as a
+variable, so a brace in the instruction prose breaks the flow at build time
+with `Error building Component Analysis Prompt` (this bit us once — the
+instructions used to say `{ text, sentiment, article_ids }`). Describe JSON
+shapes in words; only `{payload}` may exist in the template.

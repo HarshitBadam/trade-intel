@@ -50,7 +50,6 @@ export function StockGraph({
   hasShuffle,
   onRequestRange,
   loadingRange,
-  gaveUp,
 }: {
   companyName: string;
   stockPrice: number;
@@ -63,11 +62,6 @@ export function StockGraph({
   hasShuffle: boolean;
   onRequestRange?: (kind: "intraday" | "week" | "fine") => void;
   loadingRange?: boolean;
-  /** True once the background price poll has exhausted its retries and still
-   * has nothing — the message below stops claiming to retry and instead
-   * offers a way out, since we can't tell "delisted" apart from "provider
-   * hiccup" and shouldn't guess. */
-  gaveUp?: boolean;
 }) {
   const [rangeDays, setRangeDays] = useState<number>(365);
 
@@ -207,10 +201,12 @@ export function StockGraph({
           </div>
         ) : activePoints.length >= 2 ? (
           <MainChart cd={chartSeries} rangeDays={rangeDays} intraday={isIntraday} subDaily={subDaily} />
-        ) : gaveUp ? (
-          // Retries are exhausted. We can't tell a provider hiccup apart from a
-          // delisted/unsupported ticker, so we don't guess — just hand off to a
-          // web search instead of claiming to keep retrying forever.
+        ) : (
+          // Honest empty state — never a fake series. Price is served fresh from
+          // SSR and is no longer re-polled (redesign D24), so this is a settled
+          // dead end: we can't tell a provider hiccup apart from a
+          // delisted/unsupported ticker, so we don't guess — we hand off to a
+          // web search rather than claim to keep retrying.
           <div className="py-24 text-center text-sm space-y-2">
             <p>Chart data isn&apos;t available for {companyName}.</p>
             <a
@@ -222,12 +218,6 @@ export function StockGraph({
               Search for it online →
             </a>
           </div>
-        ) : (
-          // Honest empty state — never a fake series. The details view keeps
-          // polling in the background while this is shown.
-          <p className="py-24 text-center text-sm">
-            Chart data is temporarily unavailable. Retrying automatically…
-          </p>
         )}
       </div>
     </div>

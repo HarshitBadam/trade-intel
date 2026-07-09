@@ -16,6 +16,15 @@ export type SearchResult = {
   name: string;
 };
 
+// What searchStocks hands the search UI. `searchUnavailable` is set when the
+// live fallback errored AND the local universe had nothing — so the UI can
+// say "search is temporarily unavailable" instead of the lie "no stocks
+// found". An honestly-empty result (search worked, zero matches) omits it.
+export type SearchResponse = {
+  stocks: SearchResult[];
+  searchUnavailable?: true;
+};
+
 // A single chart bar. `value` is the close (what the price line reads, so
 // MainChart is untouched). `volume` (shares) and `trades` (count) ride along
 // from the provider aggregates and power the dense popularity/activity chart —
@@ -144,6 +153,58 @@ export type TickerDetail = {
   sicCode: string | null;
   sector: string | null;
   marketCap: number | null;
+};
+
+// Who produced the CURRENT per-article sentiment label. "polygon"/"alpaca" are
+// interim provider labels written at load time; "ai" means the deep-analysis
+// pass has relabeled the row. Lets the analysis cron and diagnosis tools tell
+// interim labels from AI ones without guessing.
+export type LabelSource = "polygon" | "ai" | "alpaca";
+
+// An article row as the store writes it: the exact `News` shape the reader
+// already consumes (so legacy Langflow rows and new loader rows read
+// identically) plus the store's own bookkeeping fields. The extras are
+// optional because legacy rows predate them; the loaders always set them.
+export type StoredArticle = News & {
+  metadata: News["metadata"] & {
+    /** Stable content id (see stableArticleId); also the doc `_id`. */
+    article_id?: string;
+    label_source?: LabelSource;
+    /** Polygon insights' free-form reasoning for the sentiment label. */
+    sentiment_reasoning?: string;
+  };
+};
+
+export type AnalysisKeyDriver = {
+  text: string;
+  sentiment: "Positive" | "Negative" | "Neutral";
+  /** `metadata.article_id` values of the articles backing this driver. */
+  article_ids: string[];
+};
+
+// Per-ticker collection-level verdict (redesign §6) stored in the analysis
+// collection, one doc per symbol with `_id` = uppercased ticker. The news
+// loader only ever stamps `news_loaded_at`; the deep-analysis pass owns the
+// rest and writes `analyzed_at` ONLY on success (§11 — staleness is judged
+// from it, never from article dates). Everything but the identity is optional
+// because the doc exists as soon as either writer touches it.
+export type AnalysisDoc = {
+  _id?: string;
+  ticker: string;
+  analyzed_at?: string;
+  model?: string;
+  /** Number of stored articles the verdict was built on. */
+  article_count?: number;
+  overall_sentiment?: "Positive" | "Negative" | "Neutral" | "Mixed";
+  /** Holistic score, -1..1. */
+  sentiment_score?: number;
+  confidence?: "High" | "Medium" | "Low";
+  summary?: string;
+  key_drivers?: AnalysisKeyDriver[];
+  risks?: string[];
+  source_window_days?: number;
+  /** Last successful article load for this ticker (set by the news cron). */
+  news_loaded_at?: string;
 };
 
 export type Candidate = {

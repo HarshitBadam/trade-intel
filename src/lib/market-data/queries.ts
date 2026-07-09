@@ -1,6 +1,5 @@
 import "server-only";
 
-import { after } from "next/server";
 import type { StockData } from "@/app/details/[id]/page";
 import {
   generateMockStockData,
@@ -10,16 +9,11 @@ import {
   generateMockNews,
   generateMockPopularity,
 } from "@/data/fallbacks";
-import {
-  hasAstra,
-  hasAlpaca,
-  hasFinnhub,
-  hasPolygon,
-  hasLangflowIngest,
-} from "@/lib/config";
-import { claimIngestSlot, ingestTickerNews } from "@/lib/news-ingest";
+import { hasAstra, hasAlpaca, hasFinnhub, hasPolygon } from "@/lib/config";
 import type { News } from "@/components/news/RecentInfluential";
-import type { NewsSummary, PopularityData, BarPoint } from "./types";
+import type { NewsSummary, PopularityData, BarPoint, AnalysisDoc, StoredArticle } from "./types";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Any provider that yields real price bars. Alpaca is preferred; Polygon
 // aggregates remain the fallback so the app behaves exactly as before until
@@ -28,28 +22,40 @@ const hasPrices = hasAlpaca || hasPolygon;
 // Any live source at all — used to decide whether the popularity card is real
 // data ("live") or the deterministic demo mock ("sample"/"Illustrative").
 const hasAnyLive = hasAlpaca || hasPolygon || hasFinnhub || hasAstra;
+// A source of headlines for the request path: the Astra store (stored articles)
+// or a live Alpaca cold fetch. With neither, the news panel is the demo mock.
+const hasNewsSource = hasAstra || hasAlpaca;
 import {
   sanitizeTicker,
   summarizeNews,
   mockNewsSummary,
   latestNewsTimestamp,
-  isNewsStale,
   windowNews,
   dedupeNews,
   buildPopularitySeries,
   computePopularityScore,
+  POPULARITY_WINDOW_DAYS,
 } from "./transforms";
+import { ANALYSIS_TTL_DAYS } from "./analysis";
+import { fetchAlpacaNews } from "./news-loaders";
 import {
   getCandlesCached,
   getIntradayCached,
   getFineCached,
-  getNewsCached,
-  getTickerNewsCached,
   getGroupedDailyCached,
   getMarketMapCached,
   getMarketMapYearAgoCached,
   getTickerDetailCached,
+  readStoredArticlesCached,
+  readAnalysisDocCached,
 } from "./cache";
+
+// The background priority lane is fired by the ACTION/PAGE layer (which owns
+// after()/revalidateTag — see src/app/details/[id]/priority.ts). getDetailsData
+// only decides WHETHER to fire it (cold ticker) and reflects the result in the
+// status; the caller supplies this trigger, which returns true when a run was
+// actually dispatched. Left undefined (cron warm-ups, ops scripts) no lane runs.
+export type PriorityTrigger = (ticker: string) => Promise<boolean>;
 
 export type CandleData = {
   chart_data: BarPoint[];
@@ -60,8 +66,8 @@ export type CandleData = {
 };
 
 // Live mode returns null on failure — the page then renders an honest
-// "price unavailable" placeholder (and re-polls) instead of a mock chart
-// masquerading as a real one. Mock candles exist only for the demo build.
+// "price unavailable" placeholder instead of a mock chart masquerading as a
+// real one. Mock candles exist only for the demo build.
 export async function getStockCandles(ticker: string): Promise<CandleData | null> {
   if (!hasPrices) return generateMockStockData(ticker);
   try {
@@ -120,97 +126,90 @@ export async function getFine(ticker: string): Promise<BarPoint[]> {
   return [];
 }
 
-// The headline panel shows only the newest items; the gauge/mentions still
-// count the full 90-day population so they agree with the popularity card.
-const HEADLINE_LIMIT = 12;
-
-async function fetchAstraNews(ticker: string): Promise<News[]> {
+// ─── Store-first news reads (redesign §5/§8) ─────────────────────────────────
+// The request path reads stored articles + the verdict doc THROUGH cache.ts's
+// named unstable_cache wrappers and never calls a provider for news. Both are
+// wrapped so a transient store outage renders an empty/"unavailable" panel
+// rather than throwing the whole page (the zero-provider demo also relies on
+// these short-circuiting to [] / null).
+async function fetchStoredArticles(ticker: string): Promise<StoredArticle[]> {
   if (!hasAstra) return [];
   try {
-    return await getNewsCached(ticker);
+    return await readStoredArticlesCached(ticker);
   } catch (error) {
-    console.error("Astra DB news fetch failed:", error);
+    console.error("Astra stored-article read failed:", error);
     return [];
   }
 }
 
-async function fetchPolygonNews(ticker: string): Promise<News[]> {
-  if (!hasPolygon) return [];
+async function fetchAnalysisDoc(ticker: string): Promise<AnalysisDoc | null> {
+  if (!hasAstra) return null;
   try {
-    return await getTickerNewsCached(ticker);
+    return await readAnalysisDocCached(ticker);
   } catch (error) {
-    console.error("Polygon news fetch failed:", error);
+    console.error("Astra analysis-doc read failed:", error);
+    return null;
+  }
+}
+
+// Pure fetch+map, no writes — safe on the hot path. A cold ticker shows these
+// live Benzinga headlines immediately while the priority lane loads real news.
+async function fetchColdAlpacaNews(ticker: string): Promise<News[]> {
+  try {
+    return await fetchAlpacaNews(ticker);
+  } catch (error) {
+    console.error("Alpaca cold news fetch failed:", error);
     return [];
   }
 }
 
-async function buildNewsSummary(
-  ticker: string,
-  astraNews: News[],
-  polygonNews: News[]
-): Promise<NewsSummary> {
-  if (astraNews.length > 0) {
-    // Freshness is about the newest article overall, so derive updatedAt /
-    // staleness from the FULL all-time set BEFORE windowing — a ticker whose
-    // latest story is (say) 17 days old must still report that timestamp and
-    // stale badge even though the gauge below only counts the last 90 days.
-    const updatedAt = latestNewsTimestamp(astraNews);
-    const stale = isNewsStale(updatedAt);
-    const recent = windowNews(astraNews);
-    // Past the 7-day TTL: keep serving the existing analysis but kick off a
-    // background re-ingest and mark it "analyzing" so the client polls for the
-    // refreshed version (stale-while-revalidate). If ingestion isn't configured
-    // or the ticker is in an ingest cooldown (6h after success, 10min after a
-    // failed attempt), no job runs — so we honestly label the data "stale".
-    if (stale) {
-      const refreshing = await scheduleNewsIngestion(ticker);
-      return summarizeNews(recent, refreshing ? "analyzing" : "stale", updatedAt);
+// ─── The request-path status contract (redesign §5/§11, D6/D14) ──────────────
+// Pure: given a ticker's article rows, its analysis verdict, and whether a
+// priority run was just dispatched, produce the sentiment summary + status the
+// UI renders. The gauge aggregates the SAME per-article labels via summarizeNews
+// (Polygon-interim or AI depending on label_source — D6 by design). Staleness is
+// judged from analyzed_at ONLY (D14), never from article dates.
+export function buildNewsSummary(
+  articles: News[],
+  analysisDoc: AnalysisDoc | null,
+  priorityStarted: boolean,
+  now: number = Date.now()
+): NewsSummary {
+  if (articles.length > 0) {
+    const analyzedAt = analysisDoc?.analyzed_at;
+    // What the recency copy shows: analysis time first, then the last article
+    // load, then (legacy rows only) the newest article timestamp.
+    const updatedAt =
+      analyzedAt ?? analysisDoc?.news_loaded_at ?? latestNewsTimestamp(articles);
+    const recent = windowNews(articles, POPULARITY_WINDOW_DAYS, now);
+    if (analyzedAt) {
+      const analyzedMs = Date.parse(analyzedAt);
+      const fresh =
+        !Number.isNaN(analyzedMs) &&
+        now - analyzedMs <= ANALYSIS_TTL_DAYS * DAY_MS;
+      return summarizeNews(recent, fresh ? "fresh" : "stale", updatedAt);
     }
-    return summarizeNews(recent, "fresh", updatedAt);
+    // Articles present but never deep-analyzed (interim provider/Alpaca labels):
+    // "stale" would be dishonest (nothing was analyzed) and "analyzing" a lie
+    // when nothing is running, so use "live" — the status provider-labeled
+    // headlines already carry.
+    return summarizeNews(recent, "live", updatedAt);
   }
-
-  const analyzing = hasAstra ? await scheduleNewsIngestion(ticker) : false;
-
-  if (polygonNews.length > 0) {
-    const summary = summarizeNews(polygonNews, analyzing ? "analyzing" : "live");
-    return { ...summary, news: summary.news.slice(0, HEADLINE_LIMIT) };
-  }
-
-  // Mock headlines exist ONLY for the zero-provider demo build. In live mode a
-  // total news failure is reported honestly as "unavailable" (empty panel with
-  // a retry note) — an end user must never be shown fabricated headlines.
-  if (!hasPolygon && !hasAstra) {
-    return summarizeNews(generateMockNews(ticker), "sample");
-  }
-  return summarizeNews([], analyzing ? "analyzing" : "unavailable");
+  // No stored articles. "analyzing" ONLY when a priority run is genuinely in
+  // flight; otherwise an honest empty "unavailable" panel (no retry storm).
+  return summarizeNews([], priorityStarted ? "analyzing" : "unavailable");
 }
 
-export async function scheduleNewsIngestion(ticker: string): Promise<boolean> {
-  if (!hasLangflowIngest) return false;
-  // Claim the ingest slot BEFORE reporting "analyzing". Otherwise every visit
-  // within a cooldown claims an analysis is running when the ingest job would
-  // instantly bail on the rate limit, and the UI's "Updating..." promise is
-  // broken.
-  if (!(await claimIngestSlot(ticker))) return false;
-  after(() => ingestTickerNews(ticker, { skipRateLimit: true }));
-  return true;
-}
-
-// Builds the popularity/social card from the SAME news arrays the sentiment
-// panel uses (fetched once by getDetailsData): the trend from dated,
-// sentiment-tagged news (Astra unioned with the 90-day Polygon pull) and the
-// volume stat from the candles the caller already fetched — zero extra Polygon
-// requests. Falls back to the deterministic mock (status "sample" → the
-// "Illustrative" badge) only in the zero-provider demo build.
+// Builds the popularity/social card from the SAME article set the sentiment
+// panel uses (stored rows, or Alpaca cold headlines): the trend from dated,
+// sentiment-tagged news and the volume stat from the candles the caller already
+// fetched — zero extra requests. Falls back to the deterministic mock (status
+// "sample" → the "Illustrative" badge) only in the zero-provider demo build.
 function buildPopularityData(
   ticker: string,
-  astraNews: News[],
-  polygonNews: News[],
+  articles: News[],
   latestVolume?: number | null
 ): PopularityData {
-  // "sample" (the "Illustrative" badge) only in the true zero-provider demo
-  // build. With ANY live source the gauge/score/mentions are real news-derived
-  // numbers and the activity chart is backed by real bars.
   if (!hasAnyLive) {
     const mock = generateMockPopularity(ticker);
     return {
@@ -223,7 +222,7 @@ function buildPopularityData(
 
   const searchVolume =
     typeof latestVolume === "number" && latestVolume > 0 ? latestVolume : 0;
-  const deduped = dedupeNews([...astraNews, ...polygonNews]);
+  const deduped = dedupeNews(articles);
   return {
     popularityRate: computePopularityScore(deduped),
     searchVolume,
@@ -271,7 +270,10 @@ export function buildStockData(
   };
 }
 
-export async function getDetailsData(ticker: string): Promise<StockData> {
+export async function getDetailsData(
+  ticker: string,
+  triggerPriority?: PriorityTrigger
+): Promise<StockData> {
   const symbol = sanitizeTicker(ticker);
   if (!symbol) {
     return buildStockData(
@@ -285,18 +287,15 @@ export async function getDetailsData(ticker: string): Promise<StockData> {
     );
   }
 
-  // Fetch candles and both news sources in parallel — the news calls do not
-  // depend on the candles, so there is no reason to serialize them. The
-  // latest daily volume from the candles still seeds the popularity card
-  // without a second Polygon round-trip. Each news source is fetched exactly
-  // once and feeds BOTH the sentiment panel and the popularity card from the
-  // same arrays — one Polygon news request per ticker per cache window, and
-  // the two views can never disagree.
-  const [stock_data, astraNews, polygonNews] = await Promise.all([
+  // Store-first: candles, the stored article rows, and the verdict doc, all in
+  // parallel. The news reads go through unstable_cache; NO provider news call
+  // happens on this path — the cron owns refresh (D5). Never call Polygon here.
+  const [stock_data, storedArticles, analysisDoc] = await Promise.all([
     getStockCandles(symbol),
-    fetchAstraNews(symbol),
-    fetchPolygonNews(symbol),
+    fetchStoredArticles(symbol),
+    fetchAnalysisDoc(symbol),
   ]);
+
   const priceStatus: StockData["priceStatus"] = !hasPrices
     ? "sample"
     : stock_data
@@ -306,13 +305,30 @@ export async function getDetailsData(ticker: string): Promise<StockData> {
     stock_data && typeof stock_data.latest_volume === "number"
       ? stock_data.latest_volume
       : null;
-  const news = await buildNewsSummary(symbol, astraNews, polygonNews);
-  const popularity = buildPopularityData(
-    symbol,
-    astraNews,
-    polygonNews,
-    latestVolume
-  );
+
+  let news: NewsSummary;
+  let popularityArticles: News[];
+
+  if (!hasNewsSource) {
+    // Zero-provider demo build: keep the deterministic mock (status "sample").
+    news = summarizeNews(generateMockNews(symbol), "sample");
+    popularityArticles = [];
+  } else if (storedArticles.length > 0) {
+    news = buildNewsSummary(storedArticles, analysisDoc, false);
+    popularityArticles = storedArticles;
+  } else {
+    // Cold ticker: show Alpaca headlines immediately (honest neutral gauge) and
+    // fire the priority lane so real news is loaded + analyzed in the
+    // background. The response never blocks on any of that.
+    const alpaca = hasAlpaca ? await fetchColdAlpacaNews(symbol) : [];
+    const priorityStarted = triggerPriority
+      ? await triggerPriority(symbol)
+      : false;
+    news = buildNewsSummary(alpaca, null, priorityStarted);
+    popularityArticles = alpaca;
+  }
+
+  const popularity = buildPopularityData(symbol, popularityArticles, latestVolume);
 
   return buildStockData(
     symbol,
@@ -368,9 +384,10 @@ export async function warmTicker(ticker: string): Promise<void> {
   if (hasFinnhub || hasPolygon) {
     tasks.push(getTickerDetailCached(symbol));
   }
-  // Warm the Astra READ cache only (no ingestion side effect).
+  // Warm the store READ caches the details news panel serves from (no writes).
   if (hasAstra) {
-    tasks.push(getNewsCached(symbol));
+    tasks.push(readStoredArticlesCached(symbol));
+    tasks.push(readAnalysisDocCached(symbol));
   }
   if (tasks.length === 0) return;
   await Promise.allSettled(tasks);

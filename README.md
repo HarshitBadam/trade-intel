@@ -176,14 +176,17 @@ console.log(secret);                  // → AUTH_APPLE_SECRET
 ### Hosting the Langflow flows
 
 The AI runs on two Langflow flows in `langflow/` (full details in `langflow/README.md`):
-`stocksage-ingestion.json` (Tavily → Gemini → Astra news ETL) and
-`stocksage-chat.json` (RAG chat grounded in the ingested news).
+`stocksage-chat.json` (RAG chat grounded in the news store, Groq llama-3.3-70b)
+and `stocksage-analysis.json` (stateless deep-analysis: stored articles in →
+sentiment labels + verdict out, Groq llama-3.1-8b). News loading itself no
+longer runs through Langflow — a background cron (`/api/cron/news`) pulls
+Polygon news into Astra, and every Langflow call has a direct-Groq fallback.
 
 1. Run Langflow (`pip install langflow && langflow run`) or use a hosted instance.
-2. Add a `GOOGLE_API_KEY` global variable, then import both flows and set the
-   Astra token (+ Tavily key for ingestion) inside the nodes.
+2. Add `GROQ_API_KEY` and `GOOGLE_API_KEY` global variables, then import both
+   flows and set the Astra token (+ Tavily key for chat) inside the nodes.
 3. Set `LANGFLOW_BASE_URL` (e.g. `http://localhost:7860`), then `LANGFLOW_FLOW_ID`
-   (chat flow) and `LANGFLOW_INGEST_FLOW_ID` (ingestion flow) plus `LANGFLOW_API_KEY`.
+   (chat flow) and `LANGFLOW_ANALYZE_FLOW_ID` (analysis flow) plus `LANGFLOW_API_KEY`.
 
 ### Astra news document shape
 
@@ -200,7 +203,9 @@ The news pipeline expects a `prototype_db_v2` collection of documents like:
 }
 ```
 
-The ingestion side (news → sentiment tagging → Astra) needs to be rebuilt.
+Rows are written by the background cron (`/api/cron/news`): Polygon articles
+land with interim `insights` sentiment, then the deep-analysis pass relabels
+the same rows and writes a per-ticker verdict doc to `stock_analysis`.
 
 ---
 
