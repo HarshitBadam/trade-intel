@@ -1,20 +1,7 @@
-// Single source of truth for the deep-analysis instruction prompt (Task 6, D10).
-//
-// The SAME text drives both LLM lanes so they stay behaviourally identical:
-//   - direct Groq  → sent as the system message (analysis.ts)
-//   - Langflow     → embedded verbatim in stocksage-analysis.json's Prompt node,
-//                    which prepends it to the article payload before the Groq
-//                    model runs.
-//
-// Kept as a line array (like system-prompt.json) so it is easy to diff and so
-// scripts/sync-system-prompt.mjs can re-bake it into the flow's Prompt template
-// if the two ever drift. The `{payload}` placeholder in the flow template is
-// NOT part of these instructions — the flow appends it after this block.
-//
 // HARD CONSTRAINT: no curly braces anywhere in these lines. Langflow's Prompt
-// node parses `{...}` as template variables, so a brace in the instruction text
-// breaks the flow at build time ("Error building Component Analysis Prompt").
-// The sync script enforces this; describe JSON shapes in words instead.
+// node parses `{...}` as template variables, so a brace in the instruction
+// text breaks the flow ("Error building Component Analysis Prompt").
+// Describe JSON shapes in words instead.
 
 export const ANALYSIS_INSTRUCTION_LINES: string[] = [
   "You are a precise equities news analyst. You are given a stock ticker and a",

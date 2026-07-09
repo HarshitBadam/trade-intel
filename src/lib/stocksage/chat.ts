@@ -19,12 +19,6 @@ import { getChatQuotes } from "@/lib/market-data";
 import type { ChatQuote } from "@/lib/market-data";
 import { STOCKSAGE_SYSTEM } from "@/lib/stocksage/prompt";
 
-// StockSage chat engine (Task 6). Langflow-first (the visible orchestration: RAG
-// over Astra news + a live Tavily web search + the app's grounding), with a REAL
-// direct-Groq fallback on the same 70B model + system prompt so a downed Space
-// still answers. This is the testable core; the "use server" action in
-// app/actions.ts is a thin guard + wrapper around answerChat.
-
 export type ChatTurn = { role: "user" | "ai"; text: string };
 
 export type ChatReply = {
@@ -114,10 +108,6 @@ async function buildGrounding(
   };
 }
 
-// The grounding block for the Groq fallback: the SAME live_data / focus_tickers
-// / history the flow's RAG prompt builder would have received via tweaks (minus
-// the Astra/Tavily context the direct path has no access to). Section headings
-// mirror the flow prompt so the 70B model reads it the same way.
 function buildGroundingBlock(g: ChatGrounding): string {
   const parts: string[] = [];
   if (g.liveData) {
@@ -138,9 +128,6 @@ function buildGroundingBlock(g: ChatGrounding): string {
   return parts.join("\n\n");
 }
 
-// Deterministic snapshot from the live figures we already fetched — the LAST
-// resort when both Langflow AND Groq are unavailable, so the user still gets
-// something concrete instead of an error.
 function fallbackReply(grounding: ChatGrounding): string {
   const { quotes, indices } = grounding;
 
@@ -189,10 +176,9 @@ function demoReply(message: string): string {
   );
 }
 
-// Langflow regenerates node-id suffixes on every import, so the app resolves the
-// prompt + LLM node ids from the live flow by prefix and only falls back to the
-// configured defaults if the flow can't be reached. Task 6: the LLM node is now
-// the Groq component, so the prefix moved from "LanguageModel" to "GroqModel".
+// Langflow regenerates node-id suffixes on every import, so we resolve the
+// prompt + LLM node ids from the live flow by prefix and fall back to
+// configured defaults when the flow can't be reached.
 const fetchChatNodeIds = unstable_cache(
   async (): Promise<{ promptId: string; llmId: string }> => {
     const controller = new AbortController();
@@ -242,9 +228,6 @@ async function resolveChatNodeIds(): Promise<{
   }
 }
 
-// Warm the Langflow Space so the first real message isn't paying cold-start
-// latency. Never pings when the "langflow" breaker is open — a Space we already
-// know is down shouldn't be poked (D13), and the chat will serve via Groq.
 export async function warmStockSage(): Promise<void> {
   if (!hasLangflow || !LANGFLOW_BASE_URL) return;
   if (await isOpen("langflow")) return;
@@ -256,7 +239,7 @@ export async function warmStockSage(): Promise<void> {
       signal: controller.signal,
     }).finally(() => clearTimeout(timeout));
   } catch {
-    // Best-effort warm-up; a failure here is not worth surfacing.
+    // Best-effort warm-up; ignore failures.
   }
 }
 
@@ -279,8 +262,7 @@ export async function answerChat(
 
   const langflowOpen = await isOpen("langflow");
 
-  // Lane 1 — Langflow-first, but skip entirely if the breaker is open so a dead
-  // Space doesn't cost a 55s timeout on every message.
+  // Lane 1 — Langflow; skip when breaker is open to avoid a 55s timeout.
   if (hasLangflow && !langflowOpen) {
     try {
       const text = await runLangflowFlow({
@@ -312,8 +294,8 @@ export async function answerChat(
     console.info("[chat] Langflow breaker open; serving via direct Groq");
   }
 
-  // Lane 2 — real Groq fallback on the SAME 70B model + StockSage system prompt,
-  // grounded with the same live_data/history/focus_tickers the flow would get.
+  // Lane 2 — direct Groq fallback on the same 70B model + StockSage system
+  // prompt, grounded with the same live data the flow would receive.
   if (hasGroq) {
     try {
       const groundingBlock = buildGroundingBlock(grounding);
@@ -333,8 +315,7 @@ export async function answerChat(
     }
   }
 
-  // Lane 3 — last resort. A canned snapshot from the live figures when a real
-  // backend exists but both AI lanes failed; pure demo text otherwise.
+  // Lane 3 — last resort: market snapshot from live figures, or demo text.
   if (hasLangflow || hasGroq) {
     console.info("[chat] served by canned market-snapshot fallback");
     return { text: fallbackReply(grounding), live: false };

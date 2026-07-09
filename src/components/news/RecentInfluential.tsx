@@ -20,7 +20,6 @@ export type News = {
     ticker: string;
     description: string;
     event: string;
-    /** ISO timestamp written by the Langflow Expander; optional for older docs. */
     ingested_at?: string;
   };
 };
@@ -145,8 +144,6 @@ export function RecentInfluential({
     return () => cancelAnimationFrame(raf);
   }, [news, status]);
 
-  // The remaining share is neutral sentiment; including it makes the bar
-  // segments sum to 100 (and silences the Bar validation warning).
   const neutralSentimentPercentage = Math.max(
     0,
     100 - positiveSentimentPercentage - negativeSentimentPercentage
@@ -172,10 +169,6 @@ export function RecentInfluential({
   return (
     <div ref={panelRef} className="w-full rounded-lg p-6 glass-card shadow-md flex flex-col h-full">
       <div className="pb-8">
-        {/* While the background analysis runs, the visible numbers are real but
-            provisional. A quiet "Updating..." on the gauge tells users the
-            values may change; it disappears once the analysis settles, so the
-            stable state carries no extra chrome. */}
         <div className="flex items-center justify-between mb-6 gap-3">
           <h2 className="text-xl font-bold">Sentiment Score Gauge</h2>
           {status === "analyzing" && (
@@ -226,15 +219,9 @@ export function RecentInfluential({
           <div className="flex-1 min-h-0 overflow-y-auto max-h-[26rem] lg:max-h-none">
             <div className="flex relative">
               <div className="flex-1 flex flex-col divide-y divide-border/70 overflow-x-hidden">
-                {/* Only show the placeholder card while there's nothing else to
-                    read. Once live headlines are present, the "Analyzing…" badge
-                    alone signals background enrichment — no stuck skeleton. */}
                 {status === "analyzing" && news.length === 0 && (
                   <NewsCardSkeleton />
                 )}
-                {/* Honest empty state: live providers are configured but the
-                    headline fetch didn't succeed. The client re-polls, so no
-                    fabricated "sample" articles are ever shown here. */}
                 {status === "unavailable" && news.length === 0 && (
                   <p className="py-4 text-sm text-muted-foreground">
                     Live headlines are temporarily unavailable. This usually

@@ -8,7 +8,6 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const root = new URL("../", import.meta.url);
 
-// ── 1) Chat system prompt → chat flow's Groq node ────────────────────────────
 const chatPromptPath = new URL("src/lib/stocksage/system-prompt.json", root);
 const chatFlowPath = new URL("langflow/stocksage-chat.json", root);
 
@@ -18,7 +17,6 @@ const chatSystem = chatLines.join("\n");
 
 const chatFlow = JSON.parse(readFileSync(chatFlowPath, "utf8"));
 const chatNodes = chatFlow?.data?.nodes ?? [];
-// Task 6: the chat LLM node is now the Groq component (was LanguageModel…).
 const llm = chatNodes.find((n) => String(n.id).startsWith("GroqModel"));
 if (!llm) throw new Error("Groq LLM node not found in chat flow");
 const llmTmpl = llm?.data?.node?.template ?? {};
@@ -27,7 +25,6 @@ const chatBefore = llmTmpl.system_message.value;
 llmTmpl.system_message.value = chatSystem;
 writeFileSync(chatFlowPath, JSON.stringify(chatFlow, null, 2) + "\n");
 
-// ── 2) Analysis instructions → analysis flow's Prompt node ───────────────────
 // The instructions live as a TS line array; extract it without importing TS.
 const analysisPromptPath = new URL("src/lib/stocksage/analysis-prompt.ts", root);
 const analysisFlowPath = new URL("langflow/stocksage-analysis.json", root);

@@ -32,8 +32,6 @@ export type StockData = {
    */
   popularitySeries: { date: string; positive: number; negative: number }[];
   popularityStatus: "live" | "sample";
-  // Price bars carry optional volume/trades (close = `value`, so the price chart
-  // is untouched); the popularity/activity chart reuses them.
   chartData: BarPoint[];
   intradayData?: BarPoint[];
   weekData?: BarPoint[];

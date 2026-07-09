@@ -6,8 +6,7 @@
 // The react-server condition is required because the store/engine modules import
 // "server-only", which throws under plain Node resolution. Env is parsed from
 // .env.local manually so it is set BEFORE the modules (which read process.env at
-// import time via src/lib/config.ts) are dynamically imported. Mirrors
-// scripts/load-news.ts.
+// import time via src/lib/config.ts) are dynamically imported.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -36,9 +35,8 @@ function loadEnvLocal(): void {
     ) {
       value = value.slice(1, -1);
     }
-    // Ambient env wins so an inline override (e.g. GROQ_ANALYSIS_MODEL=...) on
-    // the command line takes precedence over .env.local — this is what the D14
-    // failed-run verification relies on.
+    // Ambient env wins so an inline override (e.g. GROQ_ANALYSIS_MODEL=...)
+    // on the command line takes precedence over .env.local.
     if (!(key in process.env)) process.env[key] = value;
   }
 }

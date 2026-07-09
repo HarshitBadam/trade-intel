@@ -4,12 +4,10 @@ import universe from "@/data/universe.json";
 
 export type UniverseEntry = { symbol: string; name: string };
 
-// The committed universe (built by scripts/build-universe.mjs from Alpaca
-// /v2/assets) is ordered seed-block-first, then alphabetically — so plain
-// file order below doubles as a recognizability prior when scores tie.
+// The committed universe is ordered seed-block-first, then alphabetically —
+// so plain file order doubles as a recognizability prior when scores tie.
 const ENTRIES: readonly UniverseEntry[] = universe.tickers;
 
-// Uppercased once per process so the per-keystroke scan allocates nothing.
 const INDEX = ENTRIES.map((entry) => ({
   entry,
   symbol: entry.symbol.toUpperCase(),
@@ -18,12 +16,9 @@ const INDEX = ENTRIES.map((entry) => ({
 
 const SYMBOLS = new Set(INDEX.map((x) => x.symbol));
 
-// Case-insensitive local search over the full universe. Score buckets, best
-// first: exact symbol > symbol prefix > symbol substring > name prefix > name
-// substring — the same ranking the old static index used. Within a bucket,
-// file order (seed block first) breaks ties, so short queries surface the
-// recognizable mega-caps before the alphabetical long tail. A linear scan of
-// ~12k entries is sub-millisecond; no fancier structure is warranted.
+// Score buckets, best first: exact symbol > symbol prefix > symbol substring
+// > name prefix > name substring. Within a bucket, file order (seed block first)
+// breaks ties. A linear scan of ~12k entries is sub-millisecond.
 export function searchUniverse(query: string, limit = 8): UniverseEntry[] {
   const q = query.trim().toUpperCase();
   if (!q) return [];

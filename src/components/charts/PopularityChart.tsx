@@ -22,8 +22,6 @@ import { buildActivitySeries } from "@/lib/market-data/transforms"
 import type { BarPoint } from "@/lib/market-data/types"
 import type { News } from "@/components/news/RecentInfluential"
 
-// Sentiment is encoded as color, matching the gauge's green/red framing. The
-// vars are themed via ChartContainer so light/dark both look right.
 const chartConfig = {
   activity: { label: "Activity" },
   positive: { label: "Positive", theme: { light: "#16a34a", dark: "#22c55e" } },
@@ -31,8 +29,6 @@ const chartConfig = {
   negative: { label: "Negative", theme: { light: "#dc2626", dark: "#f87171" } },
 } satisfies ChartConfig
 
-// A little dead-band around zero keeps the tint from flickering to green/red on
-// a barely-net day; those read as neutral.
 function sentimentColor(sentiment: number): string {
   if (sentiment > 0.15) return "var(--color-positive)"
   if (sentiment < -0.15) return "var(--color-negative)"
@@ -105,8 +101,6 @@ export function PopularityChart({
 }) {
   const gradientId = React.useId().replace(/:/g, "")
 
-  // Filter to the selected range window before building the series (mirrors the
-  // price chart's visibleData), so 1Y shows ~a year of bars, not the full pull.
   const visibleBars = React.useMemo(() => {
     if (bars.length === 0 || rangeDays === Infinity) return bars
     const times = bars.map((b) =>
@@ -133,9 +127,6 @@ export function PopularityChart({
     return max > 0 ? max * 1.15 : 1
   }, [data])
 
-  // Horizontal gradient stops that follow the prevailing sentiment along the
-  // x-axis, downsampled so a 2.5k-bar (15-min) range doesn't emit thousands of
-  // <stop> nodes.
   const stops = React.useMemo(() => {
     if (data.length === 0) return [] as { offset: number; color: string }[]
     const N = Math.min(data.length, 64)

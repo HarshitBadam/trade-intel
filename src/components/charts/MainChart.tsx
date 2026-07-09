@@ -170,8 +170,6 @@ export default function MainChart({
                     const ts = payload?.[0]?.payload?.date ?? _value;
                     const date = new Date(ts);
                     if (Number.isNaN(date.getTime())) return "";
-                    // Sub-daily bars (1D/1W/1M/3M) need the time so adjacent
-                    // 15-min points on the same day aren't labelled identically.
                     if (subDaily) {
                       return date.toLocaleString("en-US", {
                         month: "short",

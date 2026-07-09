@@ -5,26 +5,15 @@ export const isProd = process.env.NODE_ENV === "production";
 export const POLYGON_API_KEY = process.env.POLYGON_API_KEY;
 const rawPolygon = Boolean(POLYGON_API_KEY);
 
-// Alpaca Market Data — the PREFERRED source for all price/volume data (candles,
-// intraday, snapshots). Free tier ~200 req/min, so it never competes with
-// Polygon's 5/min budget (now reserved for news+sentiment).
 export const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
 export const ALPACA_API_SECRET_KEY = process.env.ALPACA_API_SECRET_KEY;
-// Snapshot / "latest" feed. The free plan ONLY permits IEX here (SIP snapshots
-// 403 without Algo Trader Plus), so this stays "iex". Snapshots give real-time
-// price + day change (both accurate on IEX — the last-trade price matches SIP);
-// only their VOLUME is the ~2.5% IEX slice, which we correct via SIP daily bars.
+// Free plan only permits IEX for snapshots (SIP requires Algo Trader Plus).
 export const ALPACA_FEED = process.env.ALPACA_FEED ?? "iex";
-// Historical bars feed. IEX sees only ~2.5% of US volume, so trade counts and
-// share volume came out 10-30x too low. SIP (100% of volume) is FREE on the
-// Basic plan for any window ending >=15 min ago — see alpaca.ts for the clamp.
-// Defaults to "sip"; set to "iex" to force the (undercounted but real-time)
-// single-exchange feed if an account somehow lacks SIP historical access.
+// IEX covers ~2.5% of US volume; SIP (100%) is free on Basic for bars >=15 min old.
+// Set to "iex" only if the account lacks SIP historical access.
 export const ALPACA_HISTORICAL_FEED = process.env.ALPACA_HISTORICAL_FEED ?? "sip";
 const rawAlpaca = Boolean(ALPACA_API_KEY_ID && ALPACA_API_SECRET_KEY);
 
-// Finnhub — the PREFERRED source for non-price metadata (symbol search, company
-// profile, peers). Free tier ~60 req/min.
 export const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY;
 const rawFinnhub = Boolean(FINNHUB_API_KEY);
 
@@ -32,8 +21,6 @@ export const ASTRA_DB_APPLICATION_TOKEN = process.env.ASTRA_DB_APPLICATION_TOKEN
 export const ASTRA_DB_API_ENDPOINT = process.env.ASTRA_DB_API_ENDPOINT;
 export const ASTRA_DB_NEWS_COLLECTION =
   process.env.ASTRA_DB_NEWS_COLLECTION ?? "prototype_db_v2";
-// Per-ticker analysis docs live in their own non-vector collection (Astra's
-// free tier caps collections, so this stays a single small one; see news-store).
 export const ASTRA_DB_ANALYSIS_COLLECTION =
   process.env.ASTRA_DB_ANALYSIS_COLLECTION ?? "stock_analysis";
 const rawAstra = Boolean(
@@ -50,27 +37,16 @@ const rawLangflow = Boolean(
 export const LANGFLOW_CHAT_PROMPT_ID =
   process.env.LANGFLOW_CHAT_PROMPT_ID ?? "StockSageRagPrompt-FwmYE";
 
-// Task 6: the chat flow's LLM node is now the dedicated Groq model component
-// (llama-3.3-70b-versatile), replacing the old Google-only LanguageModel node.
-// The app injects StockSage's system_message here via Langflow tweaks, so this
-// id must match the node in stocksage-chat.json.
 export const LANGFLOW_CHAT_LLM_ID =
   process.env.LANGFLOW_CHAT_LLM_ID ?? "GroqModel-chat1";
 
-// Stateless deep-analysis flow (stocksage-analysis.json): articles-in → labels
-// JSON out. Separate id from the chat flow; reuses LANGFLOW_BASE_URL +
-// LANGFLOW_API_KEY. When set, the analysis lane runs Langflow-first with a
-// direct-Groq fallback (D7/D10). Leave empty to keep analysis on direct Groq.
 export const LANGFLOW_ANALYZE_FLOW_ID = process.env.LANGFLOW_ANALYZE_FLOW_ID;
 const rawLangflowAnalyze = Boolean(
   LANGFLOW_BASE_URL && LANGFLOW_API_KEY && LANGFLOW_ANALYZE_FLOW_ID
 );
 
-// Groq — the deep-analysis + StockSage chat LLM (redesign §6). One account, two
-// MODELS so the lanes get independent per-model daily buckets (D9: Groq limits
-// are per-org/per-model, so a second key would NOT isolate them). 8B has the
-// roomy 14,400 RPD bucket for batch analysis; 70B (1,000 RPD) is reserved for
-// interactive chat where a human reads the answer.
+// Two models share one Groq account so each gets its own per-model daily bucket:
+// 8B (14,400 RPD) for batch analysis; 70B (1,000 RPD) for interactive chat.
 export const GROQ_API_KEY = process.env.GROQ_API_KEY;
 export const GROQ_ANALYSIS_MODEL =
   process.env.GROQ_ANALYSIS_MODEL ?? "llama-3.1-8b-instant";

@@ -40,18 +40,12 @@ import type {
   BarPoint,
 } from "@/lib/market-data/types";
 
-// A live price provider (Alpaca preferred, Polygon fallback).
 const hasPrices = hasAlpaca || hasPolygon;
 
 export async function searchStocks(query: string): Promise<SearchResponse> {
   const cleaned = (query ?? "").toString().slice(0, 64).trim();
   if (!cleaned) return { stocks: [] };
 
-  // Local universe FIRST: ~12.5k committed US-listed names (built from
-  // Alpaca's own asset list, so every hit is chartable by construction)
-  // answer almost every query instantly, with zero API spend and zero keys.
-  // Any local hit ends the search — the live fallback exists only for the
-  // out-of-universe long tail, where Finnhub's fuzzy /search adds reach.
   const local = searchUniverse(cleaned);
   if (local.length > 0 || !hasFinnhub) {
     return { stocks: local.map((e) => ({ ticker: e.symbol, name: e.name })) };
@@ -59,8 +53,6 @@ export async function searchStocks(query: string): Promise<SearchResponse> {
 
   const access = await guard("search", { limit: 60, windowSec: 60 });
   if (!access.ok) {
-    // Over the per-user limit with nothing local to show: report the search
-    // as unavailable rather than pretending the query matched nothing.
     return { stocks: [], searchUnavailable: true };
   }
   try {
@@ -86,9 +78,6 @@ export async function fetchDetails(ticker: string): Promise<StockData> {
     );
   }
 
-  // A per-user rate-limited poll must NOT silently degrade to mock data — the
-  // page already has real data on screen; report "unavailable" so the client
-  // keeps what it has and retries later.
   const access = await guard("details", { limit: 30, windowSec: 60 });
   if (!access.ok) {
     return buildStockData(

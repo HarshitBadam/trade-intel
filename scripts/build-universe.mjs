@@ -37,23 +37,16 @@ const LISTED_EXCHANGES = new Set(["NYSE", "NASDAQ", "AMEX", "ARCA", "BATS"]);
 // CRON_WARMUP_TICKERS (src/data/fallbacks/ticker-lists.ts) plus the obvious
 // Fortune-100 mega-caps and flagship ETFs.
 const SEED_SYMBOLS = [
-  // CRON_WARMUP_TICKERS order preserved
   "AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMZN", "AMD", "ORCL", "CRM",
   "ADBE", "TSLA", "NFLX", "DIS", "NKE", "SBUX", "MCD", "WMT", "COST", "KO",
   "JPM", "BAC", "V", "MA", "JNJ", "LLY", "UNH", "XOM", "CVX", "BA", "CAT",
-  // Remaining mega-cap tech / software
   "GOOG", "AVGO", "INTC", "CSCO", "QCOM", "TXN", "IBM", "NOW", "INTU",
   "UBER", "PYPL", "PLTR",
-  // Consumer / staples / retail
   "PEP", "PG", "HD", "LOW", "TGT", "CL", "PM",
-  // Healthcare
   "ABBV", "MRK", "PFE", "TMO", "ABT", "BMY", "AMGN", "GILD", "CVS",
-  // Financials
   "WFC", "C", "GS", "MS", "AXP", "BLK", "SCHW", "COF",
-  // Telecom / energy / industrial
   "T", "VZ", "TMUS", "COP", "GE", "HON", "UPS", "LMT", "DE", "F", "GM",
   "RTX", "FDX", "MMM", "UNP",
-  // Flagship ETFs
   "SPY", "QQQ", "VOO", "VTI", "IWM", "DIA",
 ];
 

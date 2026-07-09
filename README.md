@@ -62,11 +62,13 @@ before sharing the URL, and live data will light up at the same time.
 
 - `src/app/page.tsx` — dashboard (trending, gainers/losers, news)
 - `src/app/details/[id]/` — per-ticker detail (charts, sentiment, news)
-- `src/components/FloatingWidget.tsx` — StockSage chat
+- `src/app/api/cron/news/` — background news+sentiment ingestion endpoint
+- `src/components/chat/FloatingWidget.tsx` — StockSage chat
 - `src/auth.ts` / `src/auth.config.ts` / `src/middleware.ts` — Auth.js + route gating
 - `src/lib/config.ts` / `guard.ts` / `rate-limit.ts` — config, auth+rate-limit guard
-- `src/data/fallbacks.ts` — deterministic demo-mode data generators
-- `langflow/` — the two Langflow flows (news ingestion + RAG chat) and their README
+- `src/lib/market-data/` — providers (Alpaca/Finnhub/Polygon), cache, transforms, news store
+- `src/data/fallbacks/` — deterministic demo-mode data generators
+- `langflow/` — the two Langflow flows (RAG chat + deep analysis) and their README
 
 ---
 
@@ -211,12 +213,11 @@ the same rows and writes a per-ticker verdict doc to `stock_analysis`.
 
 ## Remaining product work (optional)
 
-1. Rebuild the news ingestion pipeline that populates `prototype_db_v2`.
-2. Finish the stub pages: `/stocks` (watchlist) and `/forecasts`.
-3. The dashboard top cards (gainers/losers/news) are still hardcoded — derive them from
+1. Finish the stub pages: `/stocks` (watchlist) and `/forecasts`.
+2. The dashboard top cards (gainers/losers/news) are still hardcoded — derive them from
    Polygon snapshot endpoints once a key is set.
-4. Tighten the CSP to a nonce-based policy (drop `unsafe-inline`/`unsafe-eval`).
-5. Replace `<img>` tags with `next/image` (minor LCP/lint warnings).
+3. Tighten the CSP to a nonce-based policy (drop `unsafe-inline`/`unsafe-eval`).
+4. Replace `<img>` tags with `next/image` (minor LCP/lint warnings).
 
 ## Notes
 

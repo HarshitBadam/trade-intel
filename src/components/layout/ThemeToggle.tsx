@@ -16,7 +16,7 @@ export function ThemeToggle() {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     const onSystemChange = (e: MediaQueryListEvent) => {
       try {
-        if (localStorage.getItem("theme")) return; // user has an explicit choice
+        if (localStorage.getItem("theme")) return;
       } catch {}
       document.documentElement.classList.toggle("dark", e.matches);
       setIsDark(e.matches);
@@ -29,9 +29,6 @@ export function ThemeToggle() {
     };
   }, []);
 
-  // System-preference UX: if the user's pick matches the OS, clear the saved
-  // override so the app keeps auto-following the system. Only a choice that
-  // diverges from the OS is persisted as an explicit override.
   const toggle = () => {
     const root = document.documentElement;
     const next = !root.classList.contains("dark");

@@ -4,11 +4,6 @@ import { guard } from "@/lib/guard";
 import { answerChat, warmStockSage as warmStockSageCore } from "@/lib/stocksage/chat";
 import type { ChatReply, ChatTurn } from "@/lib/stocksage/chat";
 
-// Thin "use server" surface for the chat widget. All chat logic (grounding,
-// Langflow-first transport, Groq fallback, breaker bookkeeping) lives in the
-// testable core at lib/stocksage/chat.ts; this file only enforces auth + rate
-// limiting and forwards to it.
-
 export type { ChatReply, ChatTurn };
 
 export async function warmStockSage(): Promise<void> {
