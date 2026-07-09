@@ -50,6 +50,7 @@ export function StockGraph({
   hasShuffle,
   onRequestRange,
   loadingRange,
+  gaveUp,
 }: {
   companyName: string;
   stockPrice: number;
@@ -62,6 +63,11 @@ export function StockGraph({
   hasShuffle: boolean;
   onRequestRange?: (kind: "intraday" | "week" | "fine") => void;
   loadingRange?: boolean;
+  /** True once the background price poll has exhausted its retries and still
+   * has nothing — the message below stops claiming to retry and instead
+   * offers a way out, since we can't tell "delisted" apart from "provider
+   * hiccup" and shouldn't guess. */
+  gaveUp?: boolean;
 }) {
   const [rangeDays, setRangeDays] = useState<number>(365);
 
@@ -201,6 +207,21 @@ export function StockGraph({
           </div>
         ) : activePoints.length >= 2 ? (
           <MainChart cd={chartSeries} rangeDays={rangeDays} intraday={isIntraday} subDaily={subDaily} />
+        ) : gaveUp ? (
+          // Retries are exhausted. We can't tell a provider hiccup apart from a
+          // delisted/unsupported ticker, so we don't guess — just hand off to a
+          // web search instead of claiming to keep retrying forever.
+          <div className="py-24 text-center text-sm space-y-2">
+            <p>Chart data isn&apos;t available for {companyName}.</p>
+            <a
+              href={`https://www.google.com/search?q=${encodeURIComponent(`${companyName} stock`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block text-primary underline underline-offset-2 hover:opacity-80"
+            >
+              Search for it online →
+            </a>
+          </div>
         ) : (
           // Honest empty state — never a fake series. The details view keeps
           // polling in the background while this is shown.

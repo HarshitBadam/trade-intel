@@ -53,6 +53,9 @@ export {
   getTickerDetailCached,
   getRelatedTickersCached,
   searchTickersCached,
+  getChartableTickers,
+  warmChartable,
+  getChartableTickersFast,
 } from "./cache";
 
 export {

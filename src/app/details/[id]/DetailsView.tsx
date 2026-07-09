@@ -108,6 +108,10 @@ export default function DetailsView({
 
   const [stockData, setStockData] = useState<StockData>(initial);
   const [news, setNews] = useState<News[]>(initial.news);
+  // Set once the price poll below exhausts its retries while still unavailable
+  // — lets the chart swap its message from "retrying" to an honest dead end
+  // with a way out, instead of claiming to retry forever.
+  const [priceGaveUp, setPriceGaveUp] = useState(false);
   const stockDataRef = useRef(stockData);
   useEffect(() => {
     stockDataRef.current = stockData;
@@ -117,6 +121,7 @@ export default function DetailsView({
     // "analyzing": an AI ingest is running in the background. "unavailable":
     // a live fetch failed transiently (e.g. the Polygon budget was spent) —
     // both resolve on their own, so both are worth re-polling.
+    setPriceGaveUp(false);
     const transient =
       initial.newsStatus === "analyzing" ||
       initial.newsStatus === "unavailable" ||
@@ -166,6 +171,8 @@ export default function DetailsView({
         if (stillPending && !giveUp) {
           attempts += 1;
           retry = setTimeout(poll, 30_000);
+        } else if (giveUp && merged.priceStatus === "unavailable") {
+          setPriceGaveUp(true);
         }
       });
     };
@@ -295,6 +302,7 @@ export default function DetailsView({
                         hasShuffle={true}
                         onRequestRange={handleRequestRange}
                         loadingRange={loadingRange}
+                        gaveUp={priceGaveUp}
                       />
                     }
                     back={
