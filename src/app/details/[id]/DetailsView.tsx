@@ -9,7 +9,7 @@ import { PopularityGraph } from "@/components/charts/PopularityGraph";
 import { FloatingWidget } from "@/components/chat/FloatingWidget";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { News } from "@/components/news/RecentInfluential";
+import type { News, NewsStatus } from "@/components/news/RecentInfluential";
 import { fetchDetails, fetchRelatedStocks, fetchChartRange } from "./actions";
 import type { RelatedCard, BarPoint } from "@/lib/market-data/types";
 import type { StockData } from "./page";
@@ -64,9 +64,10 @@ function SentimentPanelSkeleton() {
   );
 }
 
-// A refresh may itself fail transiently ("unavailable"); never let it regress
-// data that is already on screen — keep the good values and only adopt the
-// parts of the fresh payload that are real.
+// A poll refresh may itself come back "unavailable" transiently; never let it
+// regress data already on screen. This keep-good-data behavior matters most for
+// live PRICE (a spent budget mid-poll must not blank a real chart) and, while a
+// cold ticker is still analyzing, for the interim headlines already shown.
 function mergeDetails(prev: StockData, fresh: StockData): StockData {
   return {
     ...fresh,
@@ -97,6 +98,17 @@ function mergeDetails(prev: StockData, fresh: StockData): StockData {
   };
 }
 
+// The ONE terminal-vs-pending signal (redesign D24). "analyzing" is the only
+// non-terminal news status — it means a first-analysis priority run is genuinely
+// in flight — so it is the only case the slim poll below chases.
+const TERMINAL_NEWS: ReadonlySet<NewsStatus> = new Set<NewsStatus>([
+  "fresh",
+  "stale",
+  "live",
+  "unavailable",
+  "sample",
+]);
+
 export default function DetailsView({
   initial,
   ticker,
@@ -108,81 +120,44 @@ export default function DetailsView({
 
   const [stockData, setStockData] = useState<StockData>(initial);
   const [news, setNews] = useState<News[]>(initial.news);
-  // Set once the price poll below exhausts its retries while still unavailable
-  // — lets the chart swap its message from "retrying" to an honest dead end
-  // with a way out, instead of claiming to retry forever.
-  const [priceGaveUp, setPriceGaveUp] = useState(false);
   const stockDataRef = useRef(stockData);
   useEffect(() => {
     stockDataRef.current = stockData;
   }, [stockData]);
 
   useEffect(() => {
-    // "analyzing": an AI ingest is running in the background. "unavailable":
-    // a live fetch failed transiently (e.g. the Polygon budget was spent) —
-    // both resolve on their own, so both are worth re-polling.
-    setPriceGaveUp(false);
-    const transient =
-      initial.newsStatus === "analyzing" ||
-      initial.newsStatus === "unavailable" ||
-      initial.priceStatus === "unavailable";
-    if (!transient) return;
+    // Slim resolve loop (redesign D24): the ONLY thing worth chasing is a
+    // genuine first-analysis run ("analyzing"). The priority lane revalidates
+    // the "news" tag on success, so a short poll picks up the verdict within
+    // ~40s. Any terminal status stops the loop; price "unavailable" gets NO
+    // retry storm — the chart's honest empty state simply stands.
+    if (initial.newsStatus !== "analyzing") return;
 
     let cancelled = false;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-
-    const MAX_RETRIES = 6;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const POLL_MS = 8_000;
+    const MAX_ATTEMPTS = 5;
     let attempts = 0;
 
     const poll = () => {
       fetchDetails(ticker).then((data) => {
         if (cancelled || !data) return;
-        const stillPending =
-          data.newsStatus === "analyzing" ||
-          data.newsStatus === "unavailable" ||
-          data.priceStatus === "unavailable";
-        const giveUp = stillPending && attempts >= MAX_RETRIES;
-        if (giveUp && data.newsStatus === "analyzing") {
-          // Mirrors the server's `isNewsStale` rule (NEWS_TTL_MS = 7 days).
-          // Replicated inline to avoid pulling the server data layer into the
-          // client bundle. If the analysis we have is older than the TTL and
-          // the background refresh never landed, label it "stale" — never
-          // "fresh" — so we don't present week-plus-old data as up to date.
-          // With nothing at all to show, settle on the honest "unavailable"
-          // (never "sample": no fabricated headlines for end users).
-          const NEWS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-          const isStale =
-            !!data.newsUpdatedAt &&
-            Date.now() - Date.parse(data.newsUpdatedAt) > NEWS_TTL_MS;
-          data = {
-            ...data,
-            newsStatus: data.newsUpdatedAt
-              ? isStale
-                ? "stale"
-                : "fresh"
-              : data.news.length > 0
-                ? "live"
-                : "unavailable",
-          };
-        }
         const merged = mergeDetails(stockDataRef.current, data);
         setStockData(merged);
         setNews(merged.news);
-        if (stillPending && !giveUp) {
-          attempts += 1;
-          retry = setTimeout(poll, 30_000);
-        } else if (giveUp && merged.priceStatus === "unavailable") {
-          setPriceGaveUp(true);
+        attempts += 1;
+        if (!TERMINAL_NEWS.has(data.newsStatus) && attempts < MAX_ATTEMPTS) {
+          timer = setTimeout(poll, POLL_MS);
         }
       });
     };
 
-    retry = setTimeout(poll, 30_000);
+    timer = setTimeout(poll, POLL_MS);
     return () => {
       cancelled = true;
-      if (retry) clearTimeout(retry);
+      if (timer) clearTimeout(timer);
     };
-  }, [initial.newsStatus, initial.priceStatus, ticker]);
+  }, [initial.newsStatus, ticker]);
 
   const [intradayData, setIntradayData] = useState<BarPoint[] | undefined>(
     initial.intradayData,
@@ -302,7 +277,6 @@ export default function DetailsView({
                         hasShuffle={true}
                         onRequestRange={handleRequestRange}
                         loadingRange={loadingRange}
-                        gaveUp={priceGaveUp}
                       />
                     }
                     back={

@@ -11,8 +11,6 @@ export {
 export {
   FALLBACK_TICKERS,
   CRON_WARMUP_TICKERS,
-  SEARCH_TICKERS,
-  searchFallbackTickers,
 } from "./ticker-lists";
 
 export {

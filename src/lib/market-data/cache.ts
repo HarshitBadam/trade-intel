@@ -5,7 +5,6 @@ import { News } from "@/components/news/RecentInfluential";
 import { DataAPIClient } from "@datastax/astra-db-ts";
 import {
   FALLBACK_TICKERS,
-  SEARCH_TICKERS,
   CRON_WARMUP_TICKERS,
   CURATED_PEERS,
 } from "@/data/fallbacks";
@@ -18,14 +17,13 @@ import {
   hasPolygon,
 } from "@/lib/config";
 import {
-  mapPolygonNews,
   mapPolygonAggs,
   mapAlpacaBars,
   mapAlpacaSnapshotQuote,
-  type PolygonNewsResult,
   type PolygonAggBar,
 } from "./transforms";
-import { polygonFetch, type PolygonPriority } from "./polygon";
+import { polygonFetch } from "./polygon";
+import { readAnalysisDoc, readTickerArticles } from "./news-store";
 import {
   getAlpacaBars,
   getAlpacaBarsLive,
@@ -40,6 +38,8 @@ import type {
   TickerDetail,
   Mover,
   BarPoint,
+  StoredArticle,
+  AnalysisDoc,
 } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -53,12 +53,14 @@ type GroupedRow = { T: string; o: number; c: number; v: number };
 
 // The bounded symbol universe the Alpaca snapshot market-map covers (Alpaca
 // can't return "the whole market" the way Polygon's grouped-daily does, so we
-// enumerate the tickers we actually surface: search index, movers, cron warm
-// set, and every curated peer). Polygon's grouped-daily fallback still covers
-// the entire market when Alpaca isn't configured.
+// enumerate the tickers the home/related surfaces actually render: movers,
+// cron warm set, and every curated peer). Deliberately NOT the full search
+// universe (~12.5k names) — that would balloon one snapshot into ~126 chunked
+// calls; details pages quote arbitrary symbols via getQuotesForCached instead.
+// Polygon's grouped-daily fallback still covers the entire market when Alpaca
+// isn't configured.
 const KNOWN_UNIVERSE: string[] = (() => {
   const set = new Set<string>();
-  for (const t of SEARCH_TICKERS) set.add(t.ticker);
   for (const t of FALLBACK_TICKERS) set.add(t.ticker);
   for (const t of CRON_WARMUP_TICKERS) set.add(t.ticker);
   for (const [key, peers] of Object.entries(CURATED_PEERS)) {
@@ -92,7 +94,6 @@ async function fetchBarsChain(
   fromMs: number,
   toMs: number,
   polygonUrl: string,
-  priority?: PolygonPriority,
   liveTail = false
 ): Promise<BarPoint[]> {
   let alpacaFailed = false;
@@ -116,10 +117,7 @@ async function fetchBarsChain(
     }
   }
   if (hasPolygon) {
-    const response = await polygonFetch(
-      polygonUrl,
-      priority ? { priority } : undefined
-    );
+    const response = await polygonFetch(polygonUrl);
     if (!response.ok) {
       console.error(
         `[polygon] bars fetch failed for ${ticker}: ${response.status} ${response.statusText}`
@@ -143,25 +141,29 @@ async function fetchBarsChain(
 // layer clamps automatically), so we source the current session's true volume
 // here and overlay it onto snapshot quotes. Best-effort: a miss leaves the
 // (real, if undercounted) IEX figure untouched rather than blanking a card.
-const getSessionVolumesForCached = unstable_cache(
-  async (symbolsKey: string): Promise<Record<string, number>> => {
-    const symbols = symbolsKey.split(",").filter(Boolean);
-    if (symbols.length === 0 || !hasAlpaca) return {};
-    try {
-      const start = isoTime(Date.now() - 6 * DAY_MS);
-      const end = isoTime(Date.now());
-      const bySym = await getAlpacaMultiBars(symbols, "1Day", start, end);
-      const map: Record<string, number> = {};
-      for (const [sym, bars] of Object.entries(bySym)) {
-        const last = bars[bars.length - 1];
-        if (last && typeof last.v === "number" && last.v > 0) map[sym] = last.v;
-      }
-      return map;
-    } catch (error) {
-      console.error("[alpaca] session volumes failed:", error);
-      return {};
+async function fetchSessionVolumes(
+  symbolsKey: string
+): Promise<Record<string, number>> {
+  const symbols = symbolsKey.split(",").filter(Boolean);
+  if (symbols.length === 0 || !hasAlpaca) return {};
+  try {
+    const start = isoTime(Date.now() - 6 * DAY_MS);
+    const end = isoTime(Date.now());
+    const bySym = await getAlpacaMultiBars(symbols, "1Day", start, end);
+    const map: Record<string, number> = {};
+    for (const [sym, bars] of Object.entries(bySym)) {
+      const last = bars[bars.length - 1];
+      if (last && typeof last.v === "number" && last.v > 0) map[sym] = last.v;
     }
-  },
+    return map;
+  } catch (error) {
+    console.error("[alpaca] session volumes failed:", error);
+    return {};
+  }
+}
+
+const getSessionVolumesForCached = unstable_cache(
+  fetchSessionVolumes,
   ["session-volumes"],
   { revalidate: 300, tags: ["movers"] }
 );
@@ -189,58 +191,60 @@ function volumeKey(symbols: string[]): string {
 
 // Home movers: Alpaca multi-symbol snapshot over the known movers → Polygon
 // grouped-daily (whole market, walked back over holidays) → null (caller mocks).
-export const getGroupedDailyCached = unstable_cache(
-  async (): Promise<Mover[] | null> => {
-    if (hasAlpaca) {
-      try {
-        const snaps = await getAlpacaSnapshots(MOVER_SYMBOLS);
-        const movers: Mover[] = [];
-        for (const { ticker, name } of FALLBACK_TICKERS) {
-          const q = mapAlpacaSnapshotQuote(ticker, snaps[ticker]);
-          if (q) movers.push({ ...q, name });
-        }
-        if (movers.length > 0) {
-          const vols = await getSessionVolumesForCached(
-            movers.map((m) => m.ticker).sort().join(",")
-          );
-          for (const m of movers) {
-            const v = vols[m.ticker];
-            if (typeof v === "number" && v > 0) m.volume = v;
-          }
-          return movers;
-        }
-      } catch (error) {
-        console.error("[alpaca] movers snapshot failed, trying Polygon:", error);
+async function fetchGroupedDaily(): Promise<Mover[] | null> {
+  if (hasAlpaca) {
+    try {
+      const snaps = await getAlpacaSnapshots(MOVER_SYMBOLS);
+      const movers: Mover[] = [];
+      for (const { ticker, name } of FALLBACK_TICKERS) {
+        const q = mapAlpacaSnapshotQuote(ticker, snaps[ticker]);
+        if (q) movers.push({ ...q, name });
       }
-    }
-    if (hasPolygon) {
-      for (let back = 1; back <= 6; back++) {
-        const day = new Date(Date.now() - back * DAY_MS);
-        const response = await polygonFetch(
-          `https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/${fmtDay(
-            day
-          )}?adjusted=true`
+      if (movers.length > 0) {
+        const vols = await getSessionVolumesForCached(
+          movers.map((m) => m.ticker).sort().join(",")
         );
-        assertPolygonOk(response, "grouped daily");
-        const data = await response.json();
-        const rows = (data.results ?? []) as GroupedRow[];
-        if (rows.length === 0) continue;
-
-        const movers = rows
-          .filter((r) => MOVER_SYMBOL_SET.has(r.T) && r.o > 0)
-          .map((r) => ({
-            ticker: r.T,
-            name: MOVER_NAMES.get(r.T) ?? r.T,
-            price: r.c,
-            change: r.c - r.o,
-            percentChange: ((r.c - r.o) / r.o) * 100,
-            volume: r.v,
-          }));
-        if (movers.length > 0) return movers;
+        for (const m of movers) {
+          const v = vols[m.ticker];
+          if (typeof v === "number" && v > 0) m.volume = v;
+        }
+        return movers;
       }
+    } catch (error) {
+      console.error("[alpaca] movers snapshot failed, trying Polygon:", error);
     }
-    return null;
-  },
+  }
+  if (hasPolygon) {
+    for (let back = 1; back <= 6; back++) {
+      const day = new Date(Date.now() - back * DAY_MS);
+      const response = await polygonFetch(
+        `https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/${fmtDay(
+          day
+        )}?adjusted=true`
+      );
+      assertPolygonOk(response, "grouped daily");
+      const data = await response.json();
+      const rows = (data.results ?? []) as GroupedRow[];
+      if (rows.length === 0) continue;
+
+      const movers = rows
+        .filter((r) => MOVER_SYMBOL_SET.has(r.T) && r.o > 0)
+        .map((r) => ({
+          ticker: r.T,
+          name: MOVER_NAMES.get(r.T) ?? r.T,
+          price: r.c,
+          change: r.c - r.o,
+          percentChange: ((r.c - r.o) / r.o) * 100,
+          volume: r.v,
+        }));
+      if (movers.length > 0) return movers;
+    }
+  }
+  return null;
+}
+
+export const getGroupedDailyCached = unstable_cache(
+  fetchGroupedDaily,
   ["market-movers"],
   { revalidate: 3600, tags: ["movers"] }
 );
@@ -248,54 +252,56 @@ export const getGroupedDailyCached = unstable_cache(
 // Multi-ticker quote map: Alpaca snapshot over the known universe → Polygon
 // grouped-daily (whole market) → {}. Powers home live quotes, the quote
 // fallback, and related-stock cards.
-export const getMarketMapCached = unstable_cache(
-  async (): Promise<Record<string, LiveQuote>> => {
-    if (hasAlpaca) {
-      try {
-        const [snaps, vols] = await Promise.all([
-          getAlpacaSnapshots(KNOWN_UNIVERSE),
-          getSessionVolumesForCached(volumeKey(KNOWN_UNIVERSE)),
-        ]);
-        const map: Record<string, LiveQuote> = {};
-        for (const sym of Object.keys(snaps)) {
-          const q = mapAlpacaSnapshotQuote(sym, snaps[sym]);
-          if (q) map[sym] = q;
-        }
-        if (Object.keys(map).length > 0) return applySessionVolumes(map, vols);
-      } catch (error) {
-        console.error("[alpaca] market map snapshot failed, trying Polygon:", error);
+async function fetchMarketMap(): Promise<Record<string, LiveQuote>> {
+  if (hasAlpaca) {
+    try {
+      const [snaps, vols] = await Promise.all([
+        getAlpacaSnapshots(KNOWN_UNIVERSE),
+        getSessionVolumesForCached(volumeKey(KNOWN_UNIVERSE)),
+      ]);
+      const map: Record<string, LiveQuote> = {};
+      for (const sym of Object.keys(snaps)) {
+        const q = mapAlpacaSnapshotQuote(sym, snaps[sym]);
+        if (q) map[sym] = q;
       }
+      if (Object.keys(map).length > 0) return applySessionVolumes(map, vols);
+    } catch (error) {
+      console.error("[alpaca] market map snapshot failed, trying Polygon:", error);
     }
-    if (hasPolygon) {
-      for (let back = 1; back <= 6; back++) {
-        const day = new Date(Date.now() - back * DAY_MS);
-        const response = await polygonFetch(
-          `https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/${fmtDay(
-            day
-          )}?adjusted=true`
-        );
-        assertPolygonOk(response, "market map");
-        const data = await response.json();
-        const rows = (data.results ?? []) as GroupedRow[];
-        if (rows.length === 0) continue;
+  }
+  if (hasPolygon) {
+    for (let back = 1; back <= 6; back++) {
+      const day = new Date(Date.now() - back * DAY_MS);
+      const response = await polygonFetch(
+        `https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/${fmtDay(
+          day
+        )}?adjusted=true`
+      );
+      assertPolygonOk(response, "market map");
+      const data = await response.json();
+      const rows = (data.results ?? []) as GroupedRow[];
+      if (rows.length === 0) continue;
 
-        const map: Record<string, LiveQuote> = {};
-        for (const r of rows) {
-          if (r.o > 0) {
-            map[r.T] = {
-              ticker: r.T,
-              price: r.c,
-              change: r.c - r.o,
-              percentChange: ((r.c - r.o) / r.o) * 100,
-              volume: r.v,
-            };
-          }
+      const map: Record<string, LiveQuote> = {};
+      for (const r of rows) {
+        if (r.o > 0) {
+          map[r.T] = {
+            ticker: r.T,
+            price: r.c,
+            change: r.c - r.o,
+            percentChange: ((r.c - r.o) / r.o) * 100,
+            volume: r.v,
+          };
         }
-        return map;
       }
+      return map;
     }
-    return {};
-  },
+  }
+  return {};
+}
+
+export const getMarketMapCached = unstable_cache(
+  fetchMarketMap,
   ["market-map"],
   { revalidate: 3600, tags: ["movers"] }
 );
@@ -304,45 +310,47 @@ export const getMarketMapCached = unstable_cache(
 // a short daily window ~1 year back across the known universe (earliest close in
 // window). Polygon: grouped-daily walked back ~1 year. Either may be empty, in
 // which case related ranking falls back to the daily % move.
-export const getMarketMapYearAgoCached = unstable_cache(
-  async (): Promise<Record<string, number>> => {
-    if (hasAlpaca) {
-      try {
-        const start = isoTime(Date.now() - 372 * DAY_MS);
-        const end = isoTime(Date.now() - 358 * DAY_MS);
-        const bySym = await getAlpacaMultiBars(KNOWN_UNIVERSE, "1Day", start, end);
-        const map: Record<string, number> = {};
-        for (const [sym, bars] of Object.entries(bySym)) {
-          const first = bars[0];
-          if (first && typeof first.c === "number" && first.c > 0) {
-            map[sym] = first.c;
-          }
+async function fetchMarketMapYearAgo(): Promise<Record<string, number>> {
+  if (hasAlpaca) {
+    try {
+      const start = isoTime(Date.now() - 372 * DAY_MS);
+      const end = isoTime(Date.now() - 358 * DAY_MS);
+      const bySym = await getAlpacaMultiBars(KNOWN_UNIVERSE, "1Day", start, end);
+      const map: Record<string, number> = {};
+      for (const [sym, bars] of Object.entries(bySym)) {
+        const first = bars[0];
+        if (first && typeof first.c === "number" && first.c > 0) {
+          map[sym] = first.c;
         }
-        if (Object.keys(map).length > 0) return map;
-      } catch (error) {
-        console.error("[alpaca] year-ago bars failed, trying Polygon:", error);
       }
+      if (Object.keys(map).length > 0) return map;
+    } catch (error) {
+      console.error("[alpaca] year-ago bars failed, trying Polygon:", error);
     }
-    if (hasPolygon) {
-      for (let back = 365; back >= 359; back--) {
-        const day = new Date(Date.now() - back * DAY_MS);
-        const response = await polygonFetch(
-          `https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/${fmtDay(
-            day
-          )}?adjusted=true`
-        );
-        assertPolygonOk(response, "market map (year ago)");
-        const data = await response.json();
-        const rows = (data.results ?? []) as GroupedRow[];
-        if (rows.length === 0) continue;
+  }
+  if (hasPolygon) {
+    for (let back = 365; back >= 359; back--) {
+      const day = new Date(Date.now() - back * DAY_MS);
+      const response = await polygonFetch(
+        `https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/${fmtDay(
+          day
+        )}?adjusted=true`
+      );
+      assertPolygonOk(response, "market map (year ago)");
+      const data = await response.json();
+      const rows = (data.results ?? []) as GroupedRow[];
+      if (rows.length === 0) continue;
 
-        const map: Record<string, number> = {};
-        for (const r of rows) if (r.c > 0) map[r.T] = r.c;
-        return map;
-      }
+      const map: Record<string, number> = {};
+      for (const r of rows) if (r.c > 0) map[r.T] = r.c;
+      return map;
     }
-    return {};
-  },
+  }
+  return {};
+}
+
+export const getMarketMapYearAgoCached = unstable_cache(
+  fetchMarketMapYearAgo,
   ["market-map-year-ago"],
   { revalidate: 86_400, tags: ["movers"] }
 );
@@ -351,134 +359,139 @@ export const getMarketMapYearAgoCached = unstable_cache(
 // free tier's aggregate window (a 5y request 403s there); Alpaca is fine either
 // way. Returns the close series plus a summary + the latest daily volume (reused
 // by the popularity card so no extra request is spent on it).
-export const getCandlesCached = unstable_cache(
-  async (ticker: string) => {
-    const to = Date.now();
-    const from = to - 2 * 365 * DAY_MS;
-    const polygonUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${fmtDay(
-      new Date(from)
-    )}/${fmtDay(new Date(to))}?adjusted=true&sort=asc&limit=50000`;
+async function fetchCandles(ticker: string) {
+  const to = Date.now();
+  const from = to - 2 * 365 * DAY_MS;
+  const polygonUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${fmtDay(
+    new Date(from)
+  )}/${fmtDay(new Date(to))}?adjusted=true&sort=asc&limit=50000`;
 
-    const bars = await fetchBarsChain(ticker, "1Day", from, to, polygonUrl, "high");
-    if (bars.length < 2) return null;
+  const bars = await fetchBarsChain(ticker, "1Day", from, to, polygonUrl);
+  if (bars.length < 2) return null;
 
-    const last = bars[bars.length - 1];
-    const prev = bars[bars.length - 2];
-    const result = {
-      chart_data: bars,
-      stock_price: last.value,
-      price_change: last.value - prev.value,
-      percent_change: ((last.value - prev.value) / prev.value) * 100,
-      latest_volume:
-        typeof last.volume === "number" ? Math.round(last.volume) : null,
-    };
+  const last = bars[bars.length - 1];
+  const prev = bars[bars.length - 2];
+  const result = {
+    chart_data: bars,
+    stock_price: last.value,
+    price_change: last.value - prev.value,
+    percent_change: ((last.value - prev.value) / prev.value) * 100,
+    latest_volume:
+      typeof last.volume === "number" ? Math.round(last.volume) : null,
+  };
 
-    // The daily bars are SIP, so the headline price lags ~16 min during market
-    // hours (unlike the sub-daily charts, daily bars aren't worth tail-filling
-    // — a 16-min gap is invisible on a multi-year line). Instead, best-effort
-    // override just the scalar price fields with the real-time IEX snapshot,
-    // refreshed each 5-min cache window. chart_data/latest_volume stay
-    // SIP-derived (full-market volume stays accurate); the snapshot's change is
-    // measured vs the previous daily close, matching the day-change semantics.
-    if (hasAlpaca) {
-      try {
-        const snaps = await getAlpacaSnapshots([ticker]);
-        const quote = mapAlpacaSnapshotQuote(ticker, snaps[ticker]);
-        if (quote && quote.price > 0) {
-          result.stock_price = quote.price;
-          result.price_change = quote.change;
-          result.percent_change = quote.percentChange;
-        }
-      } catch (error) {
-        console.error(`[alpaca] headline snapshot failed for ${ticker}:`, error);
+  // The daily bars are SIP, so the headline price lags ~16 min during market
+  // hours (unlike the sub-daily charts, daily bars aren't worth tail-filling
+  // — a 16-min gap is invisible on a multi-year line). Instead, best-effort
+  // override just the scalar price fields with the real-time IEX snapshot,
+  // refreshed each 5-min cache window. chart_data/latest_volume stay
+  // SIP-derived (full-market volume stays accurate); the snapshot's change is
+  // measured vs the previous daily close, matching the day-change semantics.
+  if (hasAlpaca) {
+    try {
+      const snaps = await getAlpacaSnapshots([ticker]);
+      const quote = mapAlpacaSnapshotQuote(ticker, snaps[ticker]);
+      if (quote && quote.price > 0) {
+        result.stock_price = quote.price;
+        result.price_change = quote.change;
+        result.percent_change = quote.percentChange;
       }
+    } catch (error) {
+      console.error(`[alpaca] headline snapshot failed for ${ticker}:`, error);
     }
+  }
 
-    return result;
-  },
-  ["candles"],
-  { revalidate: 300, tags: ["candles"] }
-);
+  return result;
+}
 
-export const getNewsCached = unstable_cache(
-  async (ticker: string): Promise<News[]> => {
-    const client = new DataAPIClient(ASTRA_DB_APPLICATION_TOKEN!);
-    const database = client.db(ASTRA_DB_API_ENDPOINT!);
-    const table = database.collection<News>(ASTRA_DB_NEWS_COLLECTION);
-    return table.find({ "metadata.ticker": ticker }).toArray();
-  },
-  ["astra-news"],
+export const getCandlesCached = unstable_cache(fetchCandles, ["candles"], {
+  revalidate: 300,
+  tags: ["candles"],
+});
+
+async function fetchAstraNews(ticker: string): Promise<News[]> {
+  const client = new DataAPIClient(ASTRA_DB_APPLICATION_TOKEN!);
+  const database = client.db(ASTRA_DB_API_ENDPOINT!);
+  const table = database.collection<News>(ASTRA_DB_NEWS_COLLECTION);
+  return table.find({ "metadata.ticker": ticker }).toArray();
+}
+
+export const getNewsCached = unstable_cache(fetchAstraNews, ["astra-news"], {
+  revalidate: 600,
+  tags: ["news"],
+});
+
+// ─── Store-first request path (redesign §5) ──────────────────────────────────
+// The details news/sentiment panel reads a ticker's stored article rows and its
+// analysis verdict THROUGH these cached wrappers (tag "news", 10-min revalidate)
+// and never touches a provider at request time. The cron and priority store
+// lanes tag their writes "news", so a revalidateTag("news") busts these the
+// moment fresh articles land or a verdict is written.
+async function readStoredTickerArticles(ticker: string): Promise<StoredArticle[]> {
+  return readTickerArticles(ticker, 200);
+}
+
+export const readStoredArticlesCached = unstable_cache(
+  readStoredTickerArticles,
+  ["store-ticker-articles"],
   { revalidate: 600, tags: ["news"] }
 );
 
-// The single Polygon news source for a ticker: 90 days, sorted newest-first.
-// Polygon stays EXCLUSIVELY for this call (its free 5/min budget is no longer
-// shared with price/search/peers). Throw (don't `return []`) on failure so
-// unstable_cache doesn't pin an empty result for the whole revalidate window.
-export const getTickerNewsCached = unstable_cache(
-  async (ticker: string): Promise<News[]> => {
-    const from = new Date(Date.now() - 90 * DAY_MS).toISOString().slice(0, 10);
-    const url =
-      `https://api.polygon.io/v2/reference/news?ticker=${ticker}` +
-      `&published_utc.gte=${from}&order=desc&sort=published_utc&limit=1000`;
-    const response = await polygonFetch(url, { priority: "high" });
-    if (!response.ok) {
-      console.error(
-        `[polygon] news fetch failed for ${ticker}: ${response.status} ${response.statusText}`
-      );
-      throw new Error(`polygon news failed: ${response.status}`);
-    }
-    const data = await response.json();
-    const results = (data.results ?? []) as PolygonNewsResult[];
-    return mapPolygonNews(ticker, results);
-  },
-  ["polygon-ticker-news-90d"],
-  { revalidate: 1800, tags: ["news"] }
+async function readTickerAnalysis(ticker: string): Promise<AnalysisDoc | null> {
+  return readAnalysisDoc(ticker);
+}
+
+export const readAnalysisDocCached = unstable_cache(
+  readTickerAnalysis,
+  ["store-analysis-doc"],
+  { revalidate: 600, tags: ["news"] }
 );
 
 // 1-minute intraday over the last few sessions, sliced to the latest session for
 // the 1D view. Alpaca (real-time IEX) → Polygon 1-min aggregates.
-export const getIntradayCached = unstable_cache(
-  async (ticker: string): Promise<BarPoint[] | null> => {
-    const to = Date.now();
-    const from = to - 5 * DAY_MS;
-    const polygonUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/minute/${fmtDay(
-      new Date(from)
-    )}/${fmtDay(new Date(to))}?adjusted=true&sort=asc&limit=50000`;
+async function fetchIntraday(ticker: string): Promise<BarPoint[] | null> {
+  const to = Date.now();
+  const from = to - 5 * DAY_MS;
+  const polygonUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/minute/${fmtDay(
+    new Date(from)
+  )}/${fmtDay(new Date(to))}?adjusted=true&sort=asc&limit=50000`;
 
-    const bars = await fetchBarsChain(ticker, "1Min", from, to, polygonUrl, "high", true);
-    if (bars.length < 2) return null;
+  const bars = await fetchBarsChain(ticker, "1Min", from, to, polygonUrl, true);
+  if (bars.length < 2) return null;
 
-    const lastDay = bars[bars.length - 1].date.slice(0, 10);
-    const session = bars.filter((b) => b.date.slice(0, 10) === lastDay);
-    return session.length >= 2 ? session : bars;
-  },
-  ["intraday-1m"],
-  { revalidate: 300, tags: ["candles"] }
-);
+  const lastDay = bars[bars.length - 1].date.slice(0, 10);
+  const session = bars.filter((b) => b.date.slice(0, 10) === lastDay);
+  return session.length >= 2 ? session : bars;
+}
+
+export const getIntradayCached = unstable_cache(fetchIntraday, ["intraday-1m"], {
+  revalidate: 300,
+  tags: ["candles"],
+});
 
 // "Fine" 15-minute bars power 1W/1M/3M as a dense line. ~92 days is capped so the
 // Polygon fallback stays under its 50k-result cap and inside the free window.
 // Alpaca (15Min) → Polygon 15-min aggregates.
-export const getFineCached = unstable_cache(
-  async (ticker: string): Promise<BarPoint[] | null> => {
-    const to = Date.now();
-    const from = to - 96 * DAY_MS;
-    const polygonUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/15/minute/${fmtDay(
-      new Date(from)
-    )}/${fmtDay(new Date(to))}?adjusted=true&sort=asc&limit=50000`;
+async function fetchFine(ticker: string): Promise<BarPoint[] | null> {
+  const to = Date.now();
+  const from = to - 96 * DAY_MS;
+  const polygonUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/15/minute/${fmtDay(
+    new Date(from)
+  )}/${fmtDay(new Date(to))}?adjusted=true&sort=asc&limit=50000`;
 
-    const bars = await fetchBarsChain(ticker, "15Min", from, to, polygonUrl, "high", true);
-    if (bars.length < 2) return null;
+  const bars = await fetchBarsChain(ticker, "15Min", from, to, polygonUrl, true);
+  if (bars.length < 2) return null;
 
-    const latest = Date.parse(bars[bars.length - 1].date);
-    const cutoff = latest - 92 * DAY_MS;
-    const recent = bars.filter((b) => Date.parse(b.date) >= cutoff);
-    return recent.length >= 2 ? recent : bars;
-  },
-  ["fine-15m"],
-  { revalidate: 300, tags: ["candles"] }
-);
+  const latest = Date.parse(bars[bars.length - 1].date);
+  const cutoff = latest - 92 * DAY_MS;
+  const recent = bars.filter((b) => Date.parse(b.date) >= cutoff);
+  return recent.length >= 2 ? recent : bars;
+}
+
+export const getFineCached = unstable_cache(fetchFine, ["fine-15m"], {
+  revalidate: 300,
+  tags: ["candles"],
+});
 
 // Quotes for an ARBITRARY, exact symbol set (e.g. a peer group Finnhub just
 // returned) — deliberately independent of KNOWN_UNIVERSE. The curated-universe
@@ -489,76 +502,84 @@ export const getFineCached = unstable_cache(
 // for. Polygon's fallback IS whole-market already, so it can reuse the shared
 // map. Cached per unique (sorted) symbol set, which for a peer group of ~5
 // tickers is cheap and — unlike the curated list — always correct.
-export const getQuotesForCached = unstable_cache(
-  async (symbolsKey: string): Promise<Record<string, LiveQuote>> => {
-    const symbols = symbolsKey.split(",").filter(Boolean);
-    if (symbols.length === 0) return {};
-    if (hasAlpaca) {
-      try {
-        const [snaps, vols] = await Promise.all([
-          getAlpacaSnapshots(symbols),
-          getSessionVolumesForCached(volumeKey(symbols)),
-        ]);
-        const map: Record<string, LiveQuote> = {};
-        for (const sym of symbols) {
-          const q = mapAlpacaSnapshotQuote(sym, snaps[sym]);
-          if (q) map[sym] = q;
-        }
-        if (Object.keys(map).length > 0) return applySessionVolumes(map, vols);
-      } catch (error) {
-        console.error("[alpaca] targeted quotes failed, trying Polygon:", error);
-      }
-    }
-    if (hasPolygon) {
-      const whole = await getMarketMapCached().catch(
-        () => ({}) as Record<string, LiveQuote>
-      );
+async function fetchQuotesFor(
+  symbolsKey: string
+): Promise<Record<string, LiveQuote>> {
+  const symbols = symbolsKey.split(",").filter(Boolean);
+  if (symbols.length === 0) return {};
+  if (hasAlpaca) {
+    try {
+      const [snaps, vols] = await Promise.all([
+        getAlpacaSnapshots(symbols),
+        getSessionVolumesForCached(volumeKey(symbols)),
+      ]);
       const map: Record<string, LiveQuote> = {};
-      for (const sym of symbols) if (whole[sym]) map[sym] = whole[sym];
-      return map;
+      for (const sym of symbols) {
+        const q = mapAlpacaSnapshotQuote(sym, snaps[sym]);
+        if (q) map[sym] = q;
+      }
+      if (Object.keys(map).length > 0) return applySessionVolumes(map, vols);
+    } catch (error) {
+      console.error("[alpaca] targeted quotes failed, trying Polygon:", error);
     }
-    return {};
-  },
+  }
+  if (hasPolygon) {
+    const whole = await getMarketMapCached().catch(
+      () => ({}) as Record<string, LiveQuote>
+    );
+    const map: Record<string, LiveQuote> = {};
+    for (const sym of symbols) if (whole[sym]) map[sym] = whole[sym];
+    return map;
+  }
+  return {};
+}
+
+export const getQuotesForCached = unstable_cache(
+  fetchQuotesFor,
   ["targeted-quotes"],
   { revalidate: 300, tags: ["movers"] }
 );
 
 // Year-ago close for an ARBITRARY, exact symbol set — same rationale as
 // getQuotesForCached above (a peer group is never bounded to KNOWN_UNIVERSE).
-export const getYearAgoQuotesForCached = unstable_cache(
-  async (symbolsKey: string): Promise<Record<string, number>> => {
-    const symbols = symbolsKey.split(",").filter(Boolean);
-    if (symbols.length === 0) return {};
-    if (hasAlpaca) {
-      try {
-        const start = isoTime(Date.now() - 372 * DAY_MS);
-        const end = isoTime(Date.now() - 358 * DAY_MS);
-        const bySym = await getAlpacaMultiBars(symbols, "1Day", start, end);
-        const map: Record<string, number> = {};
-        for (const [sym, bars] of Object.entries(bySym)) {
-          const first = bars[0];
-          if (first && typeof first.c === "number" && first.c > 0) {
-            map[sym] = first.c;
-          }
-        }
-        if (Object.keys(map).length > 0) return map;
-      } catch (error) {
-        console.error(
-          "[alpaca] targeted year-ago quotes failed, trying Polygon:",
-          error
-        );
-      }
-    }
-    if (hasPolygon) {
-      const whole = await getMarketMapYearAgoCached().catch(
-        () => ({}) as Record<string, number>
-      );
+async function fetchYearAgoQuotesFor(
+  symbolsKey: string
+): Promise<Record<string, number>> {
+  const symbols = symbolsKey.split(",").filter(Boolean);
+  if (symbols.length === 0) return {};
+  if (hasAlpaca) {
+    try {
+      const start = isoTime(Date.now() - 372 * DAY_MS);
+      const end = isoTime(Date.now() - 358 * DAY_MS);
+      const bySym = await getAlpacaMultiBars(symbols, "1Day", start, end);
       const map: Record<string, number> = {};
-      for (const sym of symbols) if (whole[sym]) map[sym] = whole[sym];
-      return map;
+      for (const [sym, bars] of Object.entries(bySym)) {
+        const first = bars[0];
+        if (first && typeof first.c === "number" && first.c > 0) {
+          map[sym] = first.c;
+        }
+      }
+      if (Object.keys(map).length > 0) return map;
+    } catch (error) {
+      console.error(
+        "[alpaca] targeted year-ago quotes failed, trying Polygon:",
+        error
+      );
     }
-    return {};
-  },
+  }
+  if (hasPolygon) {
+    const whole = await getMarketMapYearAgoCached().catch(
+      () => ({}) as Record<string, number>
+    );
+    const map: Record<string, number> = {};
+    for (const sym of symbols) if (whole[sym]) map[sym] = whole[sym];
+    return map;
+  }
+  return {};
+}
+
+export const getYearAgoQuotesForCached = unstable_cache(
+  fetchYearAgoQuotesFor,
   ["targeted-year-ago-quotes"],
   { revalidate: 86_400, tags: ["movers"] }
 );
@@ -592,53 +613,55 @@ function usdMarketCap(
 // Company profile (name / market cap / sector): Finnhub /stock/profile2
 // (marketCapitalization is in millions → ×1e6) → Polygon ticker-detail. Finnhub
 // has no SIC code, so related-industry matching falls back to the sector string.
-export const getTickerDetailCached = unstable_cache(
-  async (ticker: string): Promise<TickerDetail | null> => {
-    if (hasFinnhub) {
-      try {
-        const p = await finnhubProfile(ticker);
-        if (p) {
-          const industry =
-            p.finnhubIndustry && p.finnhubIndustry !== "N/A"
-              ? p.finnhubIndustry
-              : null;
-          return {
-            ticker,
-            name: p.name ?? ticker,
-            sicCode: null,
-            sector: industry,
-            marketCap:
-              typeof p.marketCapitalization === "number"
-                ? usdMarketCap(p.marketCapitalization * 1e6, p.currency)
-                : null,
-          };
-        }
-      } catch (error) {
-        console.error(`[finnhub] profile failed for ${ticker}:`, error);
-        if (!hasPolygon) throw error;
+async function fetchTickerDetail(ticker: string): Promise<TickerDetail | null> {
+  if (hasFinnhub) {
+    try {
+      const p = await finnhubProfile(ticker);
+      if (p) {
+        const industry =
+          p.finnhubIndustry && p.finnhubIndustry !== "N/A"
+            ? p.finnhubIndustry
+            : null;
+        return {
+          ticker,
+          name: p.name ?? ticker,
+          sicCode: null,
+          sector: industry,
+          marketCap:
+            typeof p.marketCapitalization === "number"
+              ? usdMarketCap(p.marketCapitalization * 1e6, p.currency)
+              : null,
+        };
       }
+    } catch (error) {
+      console.error(`[finnhub] profile failed for ${ticker}:`, error);
+      if (!hasPolygon) throw error;
     }
-    if (hasPolygon) {
-      const response = await polygonFetch(
-        `https://api.polygon.io/v3/reference/tickers/${ticker}`
-      );
-      // 404 means the ticker genuinely has no reference entry — cache that. Any
-      // other failure is transient; throw so a 429 isn't pinned as null for 24h.
-      if (response.status === 404) return null;
-      assertPolygonOk(response, `ticker detail (${ticker})`);
-      const data = await response.json();
-      const r = data.results;
-      if (!r) return null;
-      return {
-        ticker,
-        name: r.name ?? ticker,
-        sicCode: r.sic_code ? String(r.sic_code) : null,
-        sector: r.sic_description ?? null,
-        marketCap: saneMarketCap(r.market_cap),
-      };
-    }
-    return null;
-  },
+  }
+  if (hasPolygon) {
+    const response = await polygonFetch(
+      `https://api.polygon.io/v3/reference/tickers/${ticker}`
+    );
+    // 404 means the ticker genuinely has no reference entry — cache that. Any
+    // other failure is transient; throw so a 429 isn't pinned as null for 24h.
+    if (response.status === 404) return null;
+    assertPolygonOk(response, `ticker detail (${ticker})`);
+    const data = await response.json();
+    const r = data.results;
+    if (!r) return null;
+    return {
+      ticker,
+      name: r.name ?? ticker,
+      sicCode: r.sic_code ? String(r.sic_code) : null,
+      sector: r.sic_description ?? null,
+      marketCap: saneMarketCap(r.market_cap),
+    };
+  }
+  return null;
+}
+
+export const getTickerDetailCached = unstable_cache(
+  fetchTickerDetail,
   ["ticker-detail"],
   { revalidate: 86_400, tags: ["fundamentals"] }
 );
@@ -646,64 +669,39 @@ export const getTickerDetailCached = unstable_cache(
 // Peers: Finnhub /stock/peers → Polygon related-companies → [] (caller uses
 // curated peers). A transient provider error throws (not pinned) so the next
 // render retries; a legitimately empty peer list falls through.
+async function fetchRelatedTickers(ticker: string): Promise<string[]> {
+  const symbol = ticker.toUpperCase();
+  if (hasFinnhub) {
+    try {
+      const peers = await finnhubPeers(ticker);
+      const cleaned = peers
+        .map((p) => p.toUpperCase())
+        .filter((p) => p && p !== symbol);
+      if (cleaned.length > 0) return cleaned;
+    } catch (error) {
+      console.error(`[finnhub] peers failed for ${ticker}:`, error);
+      if (!hasPolygon) throw error;
+    }
+  }
+  if (hasPolygon) {
+    const response = await polygonFetch(
+      `https://api.polygon.io/v1/related-companies/${ticker}`
+    );
+    if (!response.ok) {
+      throw new Error(`polygon related companies failed: ${response.status}`);
+    }
+    const data = await response.json();
+    const rows = (data.results ?? []) as { ticker?: string }[];
+    return rows.map((x) => x.ticker ?? "").filter(Boolean);
+  }
+  return [];
+}
+
 export const getRelatedTickersCached = unstable_cache(
-  async (ticker: string): Promise<string[]> => {
-    const symbol = ticker.toUpperCase();
-    if (hasFinnhub) {
-      try {
-        const peers = await finnhubPeers(ticker);
-        const cleaned = peers
-          .map((p) => p.toUpperCase())
-          .filter((p) => p && p !== symbol);
-        if (cleaned.length > 0) return cleaned;
-      } catch (error) {
-        console.error(`[finnhub] peers failed for ${ticker}:`, error);
-        if (!hasPolygon) throw error;
-      }
-    }
-    if (hasPolygon) {
-      const response = await polygonFetch(
-        `https://api.polygon.io/v1/related-companies/${ticker}`
-      );
-      if (!response.ok) {
-        throw new Error(`polygon related companies failed: ${response.status}`);
-      }
-      const data = await response.json();
-      const rows = (data.results ?? []) as { ticker?: string }[];
-      return rows.map((x) => x.ticker ?? "").filter(Boolean);
-    }
-    return [];
-  },
+  fetchRelatedTickers,
   ["related-tickers"],
   { revalidate: 86_400, tags: ["fundamentals"] }
 );
-
-const COMPANY_TICKER_TYPES = new Set([
-  "CS",
-  "ADRC",
-  "ADRP",
-  "GDR",
-  "NYRS",
-  "PFD",
-  "NVDR",
-]);
-
-type PolygonTickerHit = { ticker: string; name?: string; type?: string };
-
-function polygonSearchRelevance(hit: PolygonTickerHit, q: string): number {
-  const tk = hit.ticker.toUpperCase();
-  const name = (hit.name ?? "").toUpperCase();
-  const isCompany = COMPANY_TICKER_TYPES.has(hit.type ?? "");
-
-  let score = 0;
-  if (tk === q) score -= 1000;
-  score += isCompany ? 0 : 300;
-  if (tk.startsWith(q)) score -= 80;
-  else if (tk.includes(q)) score -= 20;
-  if (name.startsWith(q)) score -= 30;
-  score += tk.length;
-  return score;
-}
 
 type FinnhubHitLite = { ticker: string; name: string; type: string };
 
@@ -722,167 +720,28 @@ function finnhubSearchRelevance(hit: FinnhubHitLite, q: string): number {
   return score;
 }
 
-// Below this count of USABLE (post-filter) Finnhub hits, we treat the result
-// as "thin" and also query Polygon to fill it out. Finnhub's /search is a
-// GLOBAL endpoint — for a broad/generic term (e.g. "tech", "green", "auto")
-// most of its raw hits are foreign-exchange-suffixed tickers (e.g. "005930.KS")
-// that finnhubSearchToLite deliberately strips (they aren't chartable here).
-// Polygon's endpoint is already scoped to `market=stocks` (US-listed, no
-// suffix), so it doesn't suffer that loss — it's the richer source for exactly
-// the queries where Finnhub comes back thin, so it's worth the extra call.
-const FINNHUB_RICH_ENOUGH = 6;
-
-async function polygonSearchLite(query: string, q: string): Promise<SearchResult[]> {
-  // Fetch wide, then rank locally — Polygon's default order buries exact matches.
-  const response = await polygonFetch(
-    `https://api.polygon.io/v3/reference/tickers?search=${encodeURIComponent(
-      query
-    )}&market=stocks&active=true&limit=30`
-  );
-  if (!response.ok) {
-    throw new Error(`polygon ticker search failed: ${response.status}`);
-  }
-  const data = await response.json();
-  if (data.status === "ERROR") {
-    throw new Error(data.error ?? "polygon ticker search error");
-  }
-  const results = (data.results ?? []) as PolygonTickerHit[];
-  return results
+// Live symbol search for the long tail the local universe can't answer:
+// Finnhub /search ONLY (fuzzy matching, 60/min), filtered to plausible
+// US-listed symbols and ranked locally so exact/prefix matches surface first.
+// Callers gate on hasFinnhub and only reach here on ZERO local hits, so this
+// is rare. Throws on failure (never returns [] for an outage) so
+// unstable_cache doesn't pin the failure for the whole revalidate window and
+// the caller can distinguish "search down" from "no matches".
+async function fetchTickerSearch(query: string): Promise<SearchResult[]> {
+  const q = query.toUpperCase();
+  const hits = finnhubSearchToLite(await finnhubSearch(query));
+  return hits
     .slice()
-    .sort((a, b) => polygonSearchRelevance(a, q) - polygonSearchRelevance(b, q))
-    .map((s) => ({ ticker: s.ticker, name: s.name ?? s.ticker }));
+    .sort((a, b) => finnhubSearchRelevance(a, q) - finnhubSearchRelevance(b, q))
+    .slice(0, 10)
+    .map((s) => ({ ticker: s.ticker, name: s.name || s.ticker }));
 }
 
-function mergeByTicker(
-  primary: SearchResult[],
-  extra: SearchResult[]
-): SearchResult[] {
-  const out = primary.slice();
-  const seen = new Set(out.map((s) => s.ticker.toUpperCase()));
-  for (const s of extra) {
-    if (seen.has(s.ticker.toUpperCase())) continue;
-    seen.add(s.ticker.toUpperCase());
-    out.push(s);
-    if (out.length >= 10) break;
-  }
-  return out;
-}
-
-// Symbol search: Finnhub /search (rich for exact names/tickers, 60/min),
-// supplemented by Polygon reference/tickers when Finnhub comes back thin (see
-// FINNHUB_RICH_ENOUGH above) or fails outright. Both are ranked locally so
-// exact/prefix matches surface first. Callers hit this only when the local
-// static index is thin, so it's rare.
 export const searchTickersCached = unstable_cache(
-  async (query: string): Promise<SearchResult[]> => {
-    const q = query.toUpperCase();
-    let finnhubOut: SearchResult[] = [];
-    let finnhubFailed = false;
-    if (hasFinnhub) {
-      try {
-        const hits = finnhubSearchToLite(await finnhubSearch(query));
-        finnhubOut = hits
-          .slice()
-          .sort((a, b) => finnhubSearchRelevance(a, q) - finnhubSearchRelevance(b, q))
-          .map((s) => ({ ticker: s.ticker, name: s.name || s.ticker }));
-        if (finnhubOut.length >= FINNHUB_RICH_ENOUGH) {
-          return finnhubOut.slice(0, 10);
-        }
-      } catch (error) {
-        console.error(`[finnhub] search failed for "${query}":`, error);
-        finnhubFailed = true;
-        if (!hasPolygon) throw error;
-      }
-    }
-    if (hasPolygon) {
-      try {
-        const polygonOut = await polygonSearchLite(query, q);
-        // Finnhub's own matches rank first (sharper name/ticker relevance);
-        // Polygon fills in the rest so a thin Finnhub result still comes back
-        // as rich as before the provider split.
-        return mergeByTicker(finnhubOut, polygonOut);
-      } catch (error) {
-        // Finnhub already gave SOMETHING and Polygon just failed/rate-limited
-        // — better to return the partial Finnhub list than nothing.
-        if (finnhubOut.length > 0) return finnhubOut.slice(0, 10);
-        throw error;
-      }
-    }
-    if (finnhubFailed) throw new Error(`search failed for "${query}"`);
-    return finnhubOut.slice(0, 10);
-  },
+  fetchTickerSearch,
   ["ticker-search"],
   { revalidate: 86_400, tags: ["search"] }
 );
-
-// Background, NON-blocking chartability check for search results: verifies
-// which tickers Alpaca can actually chart via one batched snapshot call. This
-// is deliberately kept OFF the main search path — measured, a single snapshot
-// round-trip runs ~3x slower than the Finnhub search call itself, so gating
-// every keystroke on it would undo the latency fix. Instead callers show
-// results immediately and quietly drop the (rare, ~2.7% of results) unchartable
-// ones a moment later. Alpaca's high budget (180/min, see limiter.ts) makes
-// this affordable as a background call even though it wouldn't be as a
-// blocking one. Fails OPEN: if Alpaca is unset or the check itself fails, every
-// ticker is treated as chartable rather than hiding results we can't verify.
-export async function getChartableTickers(tickers: string[]): Promise<string[]> {
-  if (!hasAlpaca || tickers.length === 0) return tickers;
-  try {
-    const snaps = await getAlpacaSnapshots(tickers);
-    return tickers.filter((t) => !!snaps[t]?.dailyBar);
-  } catch (error) {
-    console.error("[alpaca] search chartability check failed, skipping filter:", error);
-    return tickers;
-  }
-}
-
-// Short-lived, in-memory warm cache for the check above. searchStocks()
-// speculatively kicks this off via Next's `after()` the moment its own
-// results are ready — BEFORE its response is sent — so the Alpaca round-trip
-// (~790ms measured) runs concurrently with that response reaching the client
-// and the client's own follow-up request, instead of only starting once that
-// follow-up arrives. checkSearchChartable() then reuses whatever's already
-// in flight rather than firing a second, redundant Alpaca call. Same
-// per-instance-only caveat as the in-memory rate limiter (rate-limit.ts):
-// best-effort, not a correctness requirement — a cold instance just falls
-// back to a fresh (still correct, just not pre-warmed) fetch.
-const chartableWarm = new Map<string, { promise: Promise<string[]>; ts: number }>();
-const CHARTABLE_WARM_TTL_MS = 20_000;
-
-function chartableKey(tickers: string[]): string {
-  return [...new Set(tickers.map((t) => t.toUpperCase()))].sort().join(",");
-}
-
-function sweepChartableWarm(now: number) {
-  for (const [key, entry] of chartableWarm) {
-    if (now - entry.ts > CHARTABLE_WARM_TTL_MS) chartableWarm.delete(key);
-  }
-}
-
-// Fire-and-forget: starts (or reuses an in-flight) chartability check for this
-// exact ticker set without awaiting it. Intended to run inside `after()`.
-export function warmChartable(tickers: string[]): void {
-  if (!hasAlpaca || tickers.length === 0) return;
-  const now = Date.now();
-  sweepChartableWarm(now);
-  const key = chartableKey(tickers);
-  if (chartableWarm.has(key)) return;
-  chartableWarm.set(key, { promise: getChartableTickers(tickers), ts: now });
-}
-
-// Reuses a still-fresh warm entry for this exact ticker set if one exists,
-// otherwise fetches fresh — either way, correctness is identical to calling
-// getChartableTickers directly; only the timing differs.
-export async function getChartableTickersFast(
-  tickers: string[]
-): Promise<string[]> {
-  if (!hasAlpaca || tickers.length === 0) return tickers;
-  const now = Date.now();
-  const key = chartableKey(tickers);
-  const entry = chartableWarm.get(key);
-  if (entry && now - entry.ts < CHARTABLE_WARM_TTL_MS) return entry.promise;
-  return getChartableTickers(tickers);
-}
 
 // Normalize Finnhub search hits to US-primary equity candidates: drop empty and
 // exchange-suffixed foreign symbols (e.g. "AAPL.MX") so the picks stay clean.

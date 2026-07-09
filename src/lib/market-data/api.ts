@@ -35,7 +35,6 @@ import {
   getYearAgoQuotesForCached,
   getCandlesCached,
   getNewsCached,
-  getTickerNewsCached,
   getTickerDetailCached,
   getRelatedTickersCached,
 } from "./cache";
@@ -107,20 +106,15 @@ export async function getHeadlineData(ticker: string): Promise<Headline> {
   const symbol = sanitizeTicker(ticker);
   if (!symbol) return mockHeadline("AAPL");
 
+  // Store-first (redesign §5): the top headline reads the Astra news store, the
+  // same collection the cron/priority lanes populate. No request-time Polygon
+  // news call — that lane was deleted; a cold ticker just falls to the mock.
   if (hasAstra) {
     try {
       const news = await getNewsCached(symbol);
       if (news.length > 0) return newsToHeadline(symbol, pickTopArticle(news));
     } catch (error) {
-      console.error("Astra headline fetch failed, trying Polygon:", error);
-    }
-  }
-  if (hasPolygon) {
-    try {
-      const news = await getTickerNewsCached(symbol);
-      if (news.length > 0) return newsToHeadline(symbol, news[0]);
-    } catch (error) {
-      console.error("Polygon headline fetch failed, using fallback:", error);
+      console.error("Astra headline fetch failed, using fallback:", error);
     }
   }
   return mockHeadline(symbol);
