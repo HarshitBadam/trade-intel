@@ -66,11 +66,9 @@ export function useStaleData<T>(
   const [isStale, setIsStale] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<unknown>(undefined);
-  // Bumping this re-runs the fetch effect for the current key (manual refresh).
   const [refreshTick, setRefreshTick] = useState(0);
 
-  // Keep the latest fetcher without making it an effect dependency — callers
-  // routinely pass an inline arrow that would otherwise re-run every render.
+  // Stable ref so callers can pass inline arrows without triggering re-fetches.
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
@@ -83,8 +81,8 @@ export function useStaleData<T>(
       return;
     }
 
-    // Per-run cancellation flag: a late resolution is ignored once the key
-    // changes or the component unmounts (the effect cleanup flips it).
+    // Cancellation flag: late resolutions are ignored once key changes or
+    // the component unmounts.
     let cancelled = false;
     const cached = readStaleCache<T>(activeKey, maxAgeMs);
 

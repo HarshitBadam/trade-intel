@@ -42,9 +42,6 @@ export function SearchBar() {
   const [showResults, setShowResults] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  // True when the search itself failed (live fallback errored, or the action
-  // call didn't go through) — rendered as an honest "temporarily unavailable"
-  // notice, never conflated with a successful zero-match search.
   const [searchFailed, setSearchFailed] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const router = useRouter();

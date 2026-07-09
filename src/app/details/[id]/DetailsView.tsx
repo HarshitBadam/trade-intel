@@ -64,10 +64,6 @@ function SentimentPanelSkeleton() {
   );
 }
 
-// A poll refresh may itself come back "unavailable" transiently; never let it
-// regress data already on screen. This keep-good-data behavior matters most for
-// live PRICE (a spent budget mid-poll must not blank a real chart) and, while a
-// cold ticker is still analyzing, for the interim headlines already shown.
 function mergeDetails(prev: StockData, fresh: StockData): StockData {
   return {
     ...fresh,
@@ -98,9 +94,6 @@ function mergeDetails(prev: StockData, fresh: StockData): StockData {
   };
 }
 
-// The ONE terminal-vs-pending signal (redesign D24). "analyzing" is the only
-// non-terminal news status — it means a first-analysis priority run is genuinely
-// in flight — so it is the only case the slim poll below chases.
 const TERMINAL_NEWS: ReadonlySet<NewsStatus> = new Set<NewsStatus>([
   "fresh",
   "stale",
@@ -126,11 +119,6 @@ export default function DetailsView({
   }, [stockData]);
 
   useEffect(() => {
-    // Slim resolve loop (redesign D24): the ONLY thing worth chasing is a
-    // genuine first-analysis run ("analyzing"). The priority lane revalidates
-    // the "news" tag on success, so a short poll picks up the verdict within
-    // ~40s. Any terminal status stops the loop; price "unavailable" gets NO
-    // retry storm — the chart's honest empty state simply stands.
     if (initial.newsStatus !== "analyzing") return;
 
     let cancelled = false;

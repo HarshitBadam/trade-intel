@@ -14,31 +14,13 @@ import {
 } from "@/lib/config";
 import type { AnalysisDoc, StoredArticle } from "./types";
 
-// The single write/ops surface for the news store (redesign §0/§14): the cron
-// lanes load articles and the analysis pass writes verdicts THROUGH this
-// module, so Next.js is the only Astra writer. The request path keeps reading
-// via cache.ts; nothing here runs per-request.
-//
-// Collections: article rows stay in the legacy news collection (the vector one
-// Langflow wrote), so old and new rows serve from one query. Analysis docs
-// PREFER their own small non-vector collection; if the free-tier collection cap
-// blocks creating it, they degrade to the news collection under a `doc_type`
-// discriminator (see ensureAnalysisCollection). Either way article reads filter
-// on `metadata.ticker` — which verdict docs never carry — so a verdict can
-// never contaminate a news read.
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// One client per process: config is parsed once and every helper (plus any
-// future cron caller) shares the connection pool instead of re-instantiating
-// per call the way the legacy read path does.
 let db: Db | null = null;
 
 export function astraDb(): Db {
   if (!db) {
-    db = new DataAPIClient(ASTRA_DB_APPLICATION_TOKEN!).db(
-      ASTRA_DB_API_ENDPOINT!
-    );
+    db = new DataAPIClient(ASTRA_DB_APPLICATION_TOKEN!).db(ASTRA_DB_API_ENDPOINT!);
   }
   return db;
 }
@@ -51,25 +33,20 @@ export async function listNewsStoreCollections(): Promise<string[]> {
   return astraDb().listCollections({ nameOnly: true });
 }
 
-// ─── Analysis store location (separate collection, with a cap fallback) ──────
-
 export type AnalysisMode = "separate" | "fallback";
 
-// Marks a verdict row when it has to live in the news collection (fallback
-// mode). Namespacing the `_id` (`analysis_<TICKER>`) is what actually keeps it
-// out of article reads; this field just makes the intent legible.
+// Marks a verdict row when it has to live in the news collection (fallback mode).
+// Namespacing the `_id` (`analysis_<TICKER>`) keeps it out of article reads;
+// this field just makes the intent legible.
 const ANALYSIS_DOC_TYPE = "ticker_analysis";
 
-// Resolved once per process by ensureAnalysisCollection; every analysis op waits
-// on it so reads and writes agree on where verdicts live.
 let analysisMode: AnalysisMode | null = null;
 
 // Create the analysis collection (plain, non-vector — verdicts are read by key,
-// never similarity-searched, and vector collections weigh more against the
-// free-tier collection cap). Safe to call repeatedly: `checkExists: false`
-// makes an exact re-create a no-op. If creation fails AND the collection still
-// isn't listed, we assume the free-tier cap and fall back to co-locating
-// verdicts in the news collection rather than breaking the whole store.
+// never similarity-searched, and vector collections weigh more against the free-tier
+// collection cap). Safe to call repeatedly: `checkExists: false` makes an exact
+// re-create a no-op. If creation fails AND the collection still isn't listed, we
+// assume the free-tier cap and fall back to co-locating verdicts in the news collection.
 export async function ensureAnalysisCollection(): Promise<AnalysisMode> {
   if (analysisMode) return analysisMode;
   const existing = await listNewsStoreCollections().catch(() => [] as string[]);
@@ -99,7 +76,6 @@ export async function ensureAnalysisCollection(): Promise<AnalysisMode> {
   return analysisMode;
 }
 
-// Where a ticker's verdict doc lives + how it's keyed, per the resolved mode.
 async function analysisRef(ticker: string): Promise<{
   collection: Collection<AnalysisDoc>;
   id: string;
@@ -121,11 +97,9 @@ async function analysisRef(ticker: string): Promise<{
   };
 }
 
-// ─── Article identity ────────────────────────────────────────────────────────
-
 // Query params that only track the click, never identify the article. Kept to
-// a conservative, well-known set — over-stripping would merge genuinely
-// different URLs into one id.
+// a conservative, well-known set — over-stripping would merge genuinely different
+// URLs into one id.
 const TRACKING_PARAMS = new Set([
   "fbclid",
   "gclid",
@@ -140,10 +114,6 @@ function isTrackingParam(key: string): boolean {
   return key.toLowerCase().startsWith("utm_") || TRACKING_PARAMS.has(key.toLowerCase());
 }
 
-// Canonical form of an article URL so the same story hashes to the same id no
-// matter which tracking decoration a provider appended. `new URL` already
-// lowercases scheme+host; we drop the fragment and tracking params and sort
-// what remains so param order can't split identities.
 function normalizeArticleUrl(raw: string | null | undefined): string | null {
   const trimmed = (raw ?? "").trim();
   if (!trimmed || trimmed === "#") return null;
@@ -174,18 +144,11 @@ export function stableArticleId(
   return `art_${createHash("sha256").update(basis).digest("hex").slice(0, 24)}`;
 }
 
-// ─── Article writes ──────────────────────────────────────────────────────────
-
 const UPSERT_CONCURRENCY = 8;
 
-// Idempotent per-article upsert keyed on `_id = article_id`: re-running a load
-// rewrites the same rows instead of duplicating them, which is why this is an
-// updateOne loop rather than one insertMany (insertMany can't upsert; ordered
-// error-handling around duplicate keys is messier than it's worth for a
-// cron-side write). Rows the deep pass has already relabeled
-// (label_source "ai") are left untouched — a routine re-load must not
-// downgrade AI labels back to interim provider ones, and the loader has
-// nothing new to say about an article it already stored.
+// Idempotent per-article upsert keyed on `_id = article_id`. Rows the deep pass
+// has already relabeled (label_source "ai") are left untouched — a routine re-load
+// must not downgrade AI labels back to interim provider ones.
 export async function upsertArticles(
   ticker: string,
   articles: StoredArticle[]
@@ -221,13 +184,10 @@ export async function upsertArticles(
   };
 }
 
-// Apply the deep pass's per-article labels IN PLACE (redesign §5/D6: the gauge
-// refines on the same stored set rather than swapping in a different one). Only
-// the four fields the LLM owns are $set, keyed by `_id`, so titles/urls/dates
-// are untouched. `label_source` flips to "ai" — which is exactly what
-// upsertArticles keys off to protect these rows from a later provider re-load
-// downgrading them. Batched at the same concurrency as upsertArticles. Lives
-// here (not in analysis.ts) so Astra remains the news-store's single writer.
+// Apply the deep pass's per-article labels IN PLACE. Only the four fields the
+// LLM owns are $set; titles/urls/dates are untouched. `label_source` flips to
+// "ai" — which is exactly what upsertArticles keys off to protect these rows
+// from a later provider re-load downgrading them.
 export async function applyArticleLabels(
   updates: {
     _id: string;
@@ -261,9 +221,6 @@ export async function applyArticleLabels(
   return modified;
 }
 
-// Newest-first read of a ticker's stored rows. Exists for ops/diagnosis (and
-// as the natural backend for the future store-first request path) — the live
-// request path still reads through cache.ts today.
 export async function readTickerArticles(
   ticker: string,
   limit = 10
@@ -276,9 +233,6 @@ export async function readTickerArticles(
     .toArray();
 }
 
-// Total stored rows for a ticker — used to prove idempotent re-loads don't grow
-// the collection. Bounded at the Data API's 1000-doc counting cap (far above a
-// single ticker's article count).
 export async function countTickerArticles(ticker: string): Promise<number> {
   return newsCollection().countDocuments(
     { "metadata.ticker": ticker.trim().toUpperCase() },
@@ -286,11 +240,7 @@ export async function countTickerArticles(ticker: string): Promise<number> {
   );
 }
 
-// ─── Analysis docs (one per ticker, `_id` = uppercased symbol) ───────────────
-
-export async function readAnalysisDoc(
-  ticker: string
-): Promise<AnalysisDoc | null> {
+export async function readAnalysisDoc(ticker: string): Promise<AnalysisDoc | null> {
   const { collection, id } = await analysisRef(ticker);
   return collection.findOne({ _id: id });
 }
@@ -300,9 +250,6 @@ export async function readAnalysisDoc(
 export async function writeAnalysisDoc(doc: AnalysisDoc): Promise<void> {
   const { collection, id, onInsert } = await analysisRef(doc._id ?? doc.ticker);
   const { _id: _ignored, ...fields } = doc;
-  // On upsert Astra assigns `_id` from the filter equality, so it is never in
-  // the update body. `onInsert` (ticker, and doc_type in fallback mode) is kept
-  // in `$set` because those values are stable identity, not per-write data.
   await collection.updateOne(
     { _id: id },
     { $set: { ...fields, ...onInsert } },
@@ -310,9 +257,9 @@ export async function writeAnalysisDoc(doc: AnalysisDoc): Promise<void> {
   );
 }
 
-// Stamped by the news loader after a successful article load. Deliberately
-// NOT `analyzed_at`: staleness of the verdict is judged from `analyzed_at`
-// alone (redesign §11), which only the analysis pass may write.
+// Stamped by the news loader after a successful article load. Deliberately NOT
+// `analyzed_at`: staleness of the verdict is judged from `analyzed_at` alone,
+// which only the analysis pass may write.
 export async function touchNewsLoadedAt(
   ticker: string,
   when: string = new Date().toISOString()
@@ -325,10 +272,8 @@ export async function touchNewsLoadedAt(
   );
 }
 
-// ─── Retention (redesign §9: storage hygiene only) ───────────────────────────
-
 function prunableFilter(cutoffDay: string) {
-  // publication_date is stored as "YYYY-MM-DD", so lexicographic comparison IS
+  // `publication_date` is "YYYY-MM-DD", so lexicographic comparison IS
   // chronological. `$exists` + `$gt: ""` protect docs with a missing or empty
   // date (some legacy Langflow rows) — an undated row must never be deleted.
   return {
@@ -340,18 +285,13 @@ function pruneCutoff(days: number): string {
   return new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10);
 }
 
-// Dry-run companion to pruneOldArticles: how many rows WOULD go. Throws
-// TooManyDocumentsToCountError past the Data API's 1000-doc counting cap.
 export async function countPrunableArticles(days = 90): Promise<number> {
   return newsCollection().countDocuments(prunableFilter(pruneCutoff(days)), 1000);
 }
 
-// Delete article rows older than the retention window. astra-db-ts's
-// deleteMany already re-issues the command while the API reports `moreData`,
+// astra-db-ts's deleteMany re-issues the command while the API reports `moreData`,
 // so one call drains every match and returns the total.
 export async function pruneOldArticles(days = 90): Promise<number> {
-  const result = await newsCollection().deleteMany(
-    prunableFilter(pruneCutoff(days))
-  );
+  const result = await newsCollection().deleteMany(prunableFilter(pruneCutoff(days)));
   return result.deletedCount;
 }

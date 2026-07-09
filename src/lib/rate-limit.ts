@@ -97,7 +97,6 @@ export async function rateLimit(
     try {
       return await upstashLimit(namespace, key, limit, windowSec);
     } catch (error) {
-      // Limiter outage must not take down the action; fall back to memory.
       console.error("Upstash rate limit failed, using in-memory fallback:", error);
     }
   }

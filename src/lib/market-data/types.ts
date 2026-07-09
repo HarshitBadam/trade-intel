@@ -1,13 +1,3 @@
-// Shared market-data DTOs.
-//
-// These describe the shapes that flow from the server data layer
-// (`market-data.ts`, a `server-only` module) out to the `"use server"` action
-// wrappers and the client components that render them. They live in their own
-// directive-free module on purpose: a `"use server"` file may only export async
-// functions, so it cannot re-export types, and client components must not import
-// values from a `server-only` module. A neutral types module lets both sides
-// share the contract without violating either constraint.
-
 import type { RelatedStock } from "@/data/fallbacks";
 import type { News, NewsStatus } from "@/components/news/RecentInfluential";
 
@@ -16,19 +6,13 @@ export type SearchResult = {
   name: string;
 };
 
-// What searchStocks hands the search UI. `searchUnavailable` is set when the
-// live fallback errored AND the local universe had nothing — so the UI can
-// say "search is temporarily unavailable" instead of the lie "no stocks
-// found". An honestly-empty result (search worked, zero matches) omits it.
 export type SearchResponse = {
   stocks: SearchResult[];
   searchUnavailable?: true;
 };
 
-// A single chart bar. `value` is the close (what the price line reads, so
-// MainChart is untouched). `volume` (shares) and `trades` (count) ride along
-// from the provider aggregates and power the dense popularity/activity chart —
-// zero extra API calls, since they come free with the same bars.
+// `value` is the close (what the price line reads). `volume` (shares) and
+// `trades` (count) come free with the same bars and power the activity chart.
 export type BarPoint = {
   date: string;
   value: number;
@@ -82,8 +66,8 @@ export type LiveQuote = {
 };
 
 // Richer, multi-horizon quote used to ground the StockSage chat. Built from
-// per-ticker daily aggregates (the same source the detail page uses), so it is
-// reliable for any ticker without depending on the market-wide grouped snapshot.
+// per-ticker daily aggregates so it is reliable for any ticker without depending
+// on the market-wide grouped snapshot.
 export type ChatQuote = {
   ticker: string;
   price: number;
@@ -112,17 +96,13 @@ export type PopularitySeriesPoint = {
   negative: number;
 };
 
-// One point on the dense market-activity chart (the redesigned popularity view).
-// `activity` is the per-bar trade count (preferred) or volume; `sentiment` is the
-// prevailing, forward-filled net news sentiment as of that bar (-1..1), used to
-// TINT the area.
 export type ActivityPoint = {
   date: number;
   activity: number;
+  /** Prevailing net news sentiment tinting this bar (-1..1), forward-filled. */
   sentiment: number;
 };
 
-// A day on which news broke, placed as a sentiment-colored marker on the chart.
 export type ActivityMarker = {
   date: number;
   activity: number;
@@ -136,9 +116,6 @@ export type ActivitySeries = {
   metric: "trades" | "volume";
 };
 
-// Social/popularity payload for the details flip card. `status` is "live" when
-// every value is backed by a real source (Polygon volume + Polygon/Astra news)
-// and "sample" when we fell back to the deterministic mock (open demo mode).
 export type PopularityData = {
   popularityRate: number;
   /** Latest daily trading volume; 0 when no real volume source is available. */
@@ -155,16 +132,15 @@ export type TickerDetail = {
   marketCap: number | null;
 };
 
-// Who produced the CURRENT per-article sentiment label. "polygon"/"alpaca" are
+// Who produced the current per-article sentiment label. "polygon"/"alpaca" are
 // interim provider labels written at load time; "ai" means the deep-analysis
-// pass has relabeled the row. Lets the analysis cron and diagnosis tools tell
-// interim labels from AI ones without guessing.
+// pass has relabeled the row.
 export type LabelSource = "polygon" | "ai" | "alpaca";
 
 // An article row as the store writes it: the exact `News` shape the reader
-// already consumes (so legacy Langflow rows and new loader rows read
-// identically) plus the store's own bookkeeping fields. The extras are
-// optional because legacy rows predate them; the loaders always set them.
+// already consumes (so legacy Langflow rows and new loader rows read identically)
+// plus store bookkeeping fields. The extras are optional because legacy rows
+// predate them; the loaders always set them.
 export type StoredArticle = News & {
   metadata: News["metadata"] & {
     /** Stable content id (see stableArticleId); also the doc `_id`. */
@@ -182,12 +158,10 @@ export type AnalysisKeyDriver = {
   article_ids: string[];
 };
 
-// Per-ticker collection-level verdict (redesign §6) stored in the analysis
-// collection, one doc per symbol with `_id` = uppercased ticker. The news
-// loader only ever stamps `news_loaded_at`; the deep-analysis pass owns the
-// rest and writes `analyzed_at` ONLY on success (§11 — staleness is judged
-// from it, never from article dates). Everything but the identity is optional
-// because the doc exists as soon as either writer touches it.
+// Per-ticker collection-level verdict stored in the analysis collection, one doc
+// per symbol with `_id` = uppercased ticker. The news loader only stamps
+// `news_loaded_at`; the deep-analysis pass owns the rest and writes `analyzed_at`
+// ONLY on success — staleness is judged from it, never from article dates.
 export type AnalysisDoc = {
   _id?: string;
   ticker: string;

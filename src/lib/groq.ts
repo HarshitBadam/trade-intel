@@ -3,27 +3,16 @@ import "server-only";
 import { GROQ_API_KEY } from "@/lib/config";
 import { parseFencedJson } from "@/lib/llm-json";
 
-// Plain-fetch Groq client (OpenAI-compatible Chat Completions). Deliberately no
-// SDK: the surface we need is a single POST, and the redesign keeps the LLM
-// transport swappable (D7/D10 — Task 6 puts a Langflow flow in FRONT of the
-// same analysis engine), so one thin, dependency-free client is the cleanest
-// seam and the least to reason about when it fails.
-
 const GROQ_CHAT_COMPLETIONS_URL =
   "https://api.groq.com/openai/v1/chat/completions";
 
-// Groq's LPU is fast, but a cold model or a long completion can still run for a
-// while; 60s is generous headroom over the few-second norm without letting a
-// caller (cron/priority lane) hang indefinitely on a wedged request.
 const REQUEST_TIMEOUT_MS = 60_000;
 
-// A 429 with a SHORT retry-after is a transient burst worth waiting out once; a
-// long one means the per-minute/day bucket is genuinely spent, so we throw and
-// let the caller move on rather than block a serverless invocation for minutes.
+// A 429 with a short retry-after is worth waiting out once; a long one means
+// the per-minute/day bucket is genuinely spent, so we throw instead of blocking
+// a serverless invocation for minutes.
 const MAX_RETRY_WAIT_MS = 20_000;
 
-// Low but non-zero: analysis wants stable, near-deterministic labels, not
-// creativity. Callers can override for a chattier lane (Task 6's chat fallback).
 const DEFAULT_TEMPERATURE = 0.2;
 
 type GroqChatArgs = {
@@ -42,9 +31,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Groq reports retry-after in seconds (sometimes fractional). Fall back to the
-// max budget when the header is absent so a retry still paces itself instead of
-// hammering immediately.
 function retryAfterMs(response: Response): number {
   const header = response.headers.get("retry-after");
   const seconds = header ? Number(header) : NaN;
@@ -81,8 +67,6 @@ async function postChatCompletion(
   });
 }
 
-// One call with a single retry on a short-enough 429. Returns the raw assistant
-// message content; typing/parsing is the caller's concern.
 async function groqChatRaw(
   args: GroqChatArgs,
   jsonMode: boolean
@@ -117,10 +101,6 @@ async function groqChatRaw(
   return content;
 }
 
-// Structured call: forces JSON mode and returns the parsed object. Callers pass
-// the expected shape via <T> and are responsible for validating it (we make no
-// guarantees about the model's adherence to a schema beyond "it's JSON"). The
-// fence-stripping parse is shared with the Langflow lane (see lib/llm-json.ts).
 export async function groqChatJSON<T = unknown>(
   args: GroqChatArgs
 ): Promise<T> {
@@ -128,8 +108,6 @@ export async function groqChatJSON<T = unknown>(
   return parseFencedJson<T>(raw);
 }
 
-// Plain-text call. Unused today; exported now so the client is complete for
-// Task 6's chat fallback (which wants prose, not JSON).
 export async function groqChatText(args: GroqChatArgs): Promise<string> {
   return groqChatRaw(args, false);
 }

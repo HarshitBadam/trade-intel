@@ -12,9 +12,6 @@ interface PopularityGraphProps {
   searchVolume: number;
   sentimentPercentage: number;
   status: "live" | "sample";
-  // The SAME lazily-loaded price bars the price view uses (now carrying
-  // volume/trades). The activity chart is derived from these — zero extra API
-  // calls — and the range buttons drive the SAME onRequestRange fetch.
   chartData: BarPoint[];
   intradayData?: BarPoint[];
   weekData?: BarPoint[];
@@ -39,8 +36,6 @@ export function PopularityGraph({
   onRequestRange,
   loadingRange,
 }: PopularityGraphProps) {
-  // Default to 1Y like the price view — the daily bars are already loaded, so
-  // the activity chart is populated immediately on flip (no fetch needed).
   const [rangeDays, setRangeDays] = React.useState<number>(365);
 
   const has1D = (intradayData?.length ?? 0) >= 2;
@@ -59,8 +54,6 @@ export function PopularityGraph({
         ? fineData ?? []
         : chartData;
 
-  // 1D (1-min), 1W/1M/3M (15-min) carry sub-daily bars, so their axis/tooltips
-  // want a time component; daily+ ranges (6M/1Y/All) don't.
   const subDaily = isIntraday || isWeek || isFine;
 
   const spanDays = React.useMemo(() => {
@@ -79,8 +72,6 @@ export function PopularityGraph({
         <div className="stock-text-description-left p-8">
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold">{companyName}</h2>
-            {/* Only disclaim in the true zero-provider demo build. With any live
-                source the numbers below and the activity chart are real. */}
             {status === "sample" && (
               <span
                 className="text-[10px] uppercase tracking-wide font-medium text-muted-foreground border border-border rounded-full px-2 py-0.5"
@@ -109,8 +100,6 @@ export function PopularityGraph({
                 r.days === 1 ? has1D : r.days === 7 ? hasWeek : hasFine;
 
               const disabled = (() => {
-                // A lazily-fetchable range is always clickable (it triggers the
-                // fetch); otherwise gate on how much daily history we have.
                 if (kind && onRequestRange) return false;
                 if (r.days === 1) return !has1D;
                 return r.days !== Infinity && r.days > spanDays + 1;
@@ -123,7 +112,6 @@ export function PopularityGraph({
                   type="button"
                   disabled={disabled}
                   onClick={(e) => {
-                    // Don't let a range change bubble up and flip the card.
                     e.stopPropagation();
                     setRangeDays(r.days);
                     if (onRequestRange && kind && !hiResAvailable) {

@@ -10,7 +10,7 @@
 // "server-only". Env is parsed from .env.local manually and the knob overrides
 // (--batch / --analyses) are written to process.env BEFORE the route is
 // dynamically imported, because the handler reads them at request time and the
-// store modules read config at import time. Mirrors scripts/load-news.ts.
+// store modules read config at import time.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -80,8 +80,6 @@ async function main(): Promise<void> {
   if (batch !== undefined) process.env.CRON_BATCH_SIZE = batch;
   if (analyses !== undefined) process.env.CRON_MAX_ANALYSES = analyses;
 
-  // The in-process test needs a secret to authorize against; set a temporary one
-  // if .env.local didn't provide it (real prod runs get it from the environment).
   if (!process.env.CRON_SECRET) {
     process.env.CRON_SECRET = "local-test-secret";
     console.warn("CRON_SECRET not set; using a temporary local value.");

@@ -15,15 +15,8 @@ import type { NewsSummary, PopularityData, BarPoint, AnalysisDoc, StoredArticle 
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Any provider that yields real price bars. Alpaca is preferred; Polygon
-// aggregates remain the fallback so the app behaves exactly as before until
-// Alpaca keys are added.
 const hasPrices = hasAlpaca || hasPolygon;
-// Any live source at all — used to decide whether the popularity card is real
-// data ("live") or the deterministic demo mock ("sample"/"Illustrative").
 const hasAnyLive = hasAlpaca || hasPolygon || hasFinnhub || hasAstra;
-// A source of headlines for the request path: the Astra store (stored articles)
-// or a live Alpaca cold fetch. With neither, the news panel is the demo mock.
 const hasNewsSource = hasAstra || hasAlpaca;
 import {
   sanitizeTicker,
@@ -50,11 +43,6 @@ import {
   readAnalysisDocCached,
 } from "./cache";
 
-// The background priority lane is fired by the ACTION/PAGE layer (which owns
-// after()/revalidateTag — see src/app/details/[id]/priority.ts). getDetailsData
-// only decides WHETHER to fire it (cold ticker) and reflects the result in the
-// status; the caller supplies this trigger, which returns true when a run was
-// actually dispatched. Left undefined (cron warm-ups, ops scripts) no lane runs.
 export type PriorityTrigger = (ticker: string) => Promise<boolean>;
 
 export type CandleData = {
@@ -65,9 +53,6 @@ export type CandleData = {
   latest_volume?: number | null;
 };
 
-// Live mode returns null on failure — the page then renders an honest
-// "price unavailable" placeholder instead of a mock chart masquerading as a
-// real one. Mock candles exist only for the demo build.
 export async function getStockCandles(ticker: string): Promise<CandleData | null> {
   if (!hasPrices) return generateMockStockData(ticker);
   try {
@@ -78,10 +63,6 @@ export async function getStockCandles(ticker: string): Promise<CandleData | null
   }
 }
 
-// In live mode a failed range fetch returns [] — the chart then keeps showing
-// the REAL daily series for that range instead of swapping in a fake hi-res
-// one. Mock series exist only for the zero-provider demo mode, where the whole
-// product is explicitly illustrative.
 export async function getIntraday(ticker: string): Promise<BarPoint[]> {
   if (!hasPrices) return generateMockIntraday(ticker);
   try {
@@ -93,9 +74,8 @@ export async function getIntraday(ticker: string): Promise<BarPoint[]> {
   return [];
 }
 
-// The 1W series is a pure slice of the fine (15-min, ~96-day) series — same
-// resolution, same source — so it costs zero extra requests. Volume/trades ride
-// along on each BarPoint so the popularity activity chart works at this range.
+// 1W is a pure slice of the fine (15-min, ~96-day) series — same resolution,
+// same source — so it costs zero extra requests.
 const WEEK_SLICE_DAYS = 8;
 
 export function sliceRecentDays(series: BarPoint[], days: number): BarPoint[] {
@@ -126,12 +106,6 @@ export async function getFine(ticker: string): Promise<BarPoint[]> {
   return [];
 }
 
-// ─── Store-first news reads (redesign §5/§8) ─────────────────────────────────
-// The request path reads stored articles + the verdict doc THROUGH cache.ts's
-// named unstable_cache wrappers and never calls a provider for news. Both are
-// wrapped so a transient store outage renders an empty/"unavailable" panel
-// rather than throwing the whole page (the zero-provider demo also relies on
-// these short-circuiting to [] / null).
 async function fetchStoredArticles(ticker: string): Promise<StoredArticle[]> {
   if (!hasAstra) return [];
   try {
@@ -152,8 +126,6 @@ async function fetchAnalysisDoc(ticker: string): Promise<AnalysisDoc | null> {
   }
 }
 
-// Pure fetch+map, no writes — safe on the hot path. A cold ticker shows these
-// live Benzinga headlines immediately while the priority lane loads real news.
 async function fetchColdAlpacaNews(ticker: string): Promise<News[]> {
   try {
     return await fetchAlpacaNews(ticker);
@@ -163,12 +135,7 @@ async function fetchColdAlpacaNews(ticker: string): Promise<News[]> {
   }
 }
 
-// ─── The request-path status contract (redesign §5/§11, D6/D14) ──────────────
-// Pure: given a ticker's article rows, its analysis verdict, and whether a
-// priority run was just dispatched, produce the sentiment summary + status the
-// UI renders. The gauge aggregates the SAME per-article labels via summarizeNews
-// (Polygon-interim or AI depending on label_source — D6 by design). Staleness is
-// judged from analyzed_at ONLY (D14), never from article dates.
+// Staleness is judged from analyzed_at ONLY — never from article dates.
 export function buildNewsSummary(
   articles: News[],
   analysisDoc: AnalysisDoc | null,
@@ -177,8 +144,6 @@ export function buildNewsSummary(
 ): NewsSummary {
   if (articles.length > 0) {
     const analyzedAt = analysisDoc?.analyzed_at;
-    // What the recency copy shows: analysis time first, then the last article
-    // load, then (legacy rows only) the newest article timestamp.
     const updatedAt =
       analyzedAt ?? analysisDoc?.news_loaded_at ?? latestNewsTimestamp(articles);
     const recent = windowNews(articles, POPULARITY_WINDOW_DAYS, now);
@@ -189,22 +154,11 @@ export function buildNewsSummary(
         now - analyzedMs <= ANALYSIS_TTL_DAYS * DAY_MS;
       return summarizeNews(recent, fresh ? "fresh" : "stale", updatedAt);
     }
-    // Articles present but never deep-analyzed (interim provider/Alpaca labels):
-    // "stale" would be dishonest (nothing was analyzed) and "analyzing" a lie
-    // when nothing is running, so use "live" — the status provider-labeled
-    // headlines already carry.
     return summarizeNews(recent, "live", updatedAt);
   }
-  // No stored articles. "analyzing" ONLY when a priority run is genuinely in
-  // flight; otherwise an honest empty "unavailable" panel (no retry storm).
   return summarizeNews([], priorityStarted ? "analyzing" : "unavailable");
 }
 
-// Builds the popularity/social card from the SAME article set the sentiment
-// panel uses (stored rows, or Alpaca cold headlines): the trend from dated,
-// sentiment-tagged news and the volume stat from the candles the caller already
-// fetched — zero extra requests. Falls back to the deterministic mock (status
-// "sample" → the "Illustrative" badge) only in the zero-provider demo build.
 function buildPopularityData(
   ticker: string,
   articles: News[],
@@ -287,9 +241,6 @@ export async function getDetailsData(
     );
   }
 
-  // Store-first: candles, the stored article rows, and the verdict doc, all in
-  // parallel. The news reads go through unstable_cache; NO provider news call
-  // happens on this path — the cron owns refresh (D5). Never call Polygon here.
   const [stock_data, storedArticles, analysisDoc] = await Promise.all([
     getStockCandles(symbol),
     fetchStoredArticles(symbol),
@@ -310,20 +261,14 @@ export async function getDetailsData(
   let popularityArticles: News[];
 
   if (!hasNewsSource) {
-    // Zero-provider demo build: keep the deterministic mock (status "sample").
     news = summarizeNews(generateMockNews(symbol), "sample");
     popularityArticles = [];
   } else if (storedArticles.length > 0) {
     news = buildNewsSummary(storedArticles, analysisDoc, false);
     popularityArticles = storedArticles;
   } else {
-    // Cold ticker: show Alpaca headlines immediately (honest neutral gauge) and
-    // fire the priority lane so real news is loaded + analyzed in the
-    // background. The response never blocks on any of that.
     const alpaca = hasAlpaca ? await fetchColdAlpacaNews(symbol) : [];
-    const priorityStarted = triggerPriority
-      ? await triggerPriority(symbol)
-      : false;
+    const priorityStarted = triggerPriority ? await triggerPriority(symbol) : false;
     news = buildNewsSummary(alpaca, null, priorityStarted);
     popularityArticles = alpaca;
   }
@@ -363,7 +308,6 @@ export async function getChartRangeData(
   }
 }
 
-// Best-effort cache warming for cron — pure reads only, no ingestion side effects.
 export async function warmMarketCaches(): Promise<void> {
   if (!hasPrices) return;
   await Promise.allSettled([
@@ -380,11 +324,9 @@ export async function warmTicker(ticker: string): Promise<void> {
   if (hasPrices) {
     tasks.push(getStockCandles(symbol));
   }
-  // Profile is served by Finnhub (preferred) or Polygon.
   if (hasFinnhub || hasPolygon) {
     tasks.push(getTickerDetailCached(symbol));
   }
-  // Warm the store READ caches the details news panel serves from (no writes).
   if (hasAstra) {
     tasks.push(readStoredArticlesCached(symbol));
     tasks.push(readAnalysisDocCached(symbol));

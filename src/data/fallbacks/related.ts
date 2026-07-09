@@ -39,19 +39,14 @@ export function getCuratedPeers(symbol: string): string[] {
   return CURATED_PEERS[symbol.toUpperCase()] ?? [];
 }
 
-// Hand-curated sector cohorts drawn from our chartable US universe. The live
-// peer feed (Finnhub) is broad but noisy: for names with heavy foreign listings
-// it returns tickers our US price provider can't chart (e.g. Atlassian/TEAM
-// comes back as mostly ASX-listed `.AX` software names plus a couple of poor US
-// matches), which leaves the Related Stocks section thin and off-topic. For any
-// name that belongs to a cohort here we seed the peer pool with these first —
-// real, on-topic, guaranteed-chartable siblings — and let the live feed only
-// supplement. Ordered to span a range of market caps so the "Similar Market
-// Cap" card has a close match to pick. Pure metadata: stable, zero API cost.
-// Any ticker not listed here is unaffected and still uses the live feed.
+// Sector cohorts for names where Finnhub's live peer feed is noisy (e.g.
+// foreign ADRs return ASX-listed tickers our US price provider can't chart).
+// These seed the peer pool first; the live feed supplements. Ordered to span
+// market caps so "Similar Market Cap" has a close match. Any ticker not listed
+// here still uses only the live feed.
 const PEER_GROUPS: string[][] = [
   ["MSFT", "AAPL", "GOOGL", "AMZN", "META", "ORCL"],
-  // SaaS / enterprise software (mega down to mid cap)
+  // SaaS / enterprise software
   ["CRM", "NOW", "SNOW", "DDOG", "MDB", "WDAY", "HUBS", "TEAM", "ADBE", "INTU", "SAP"],
   // Cybersecurity
   ["CRWD", "PANW", "ZS", "FTNT", "NET", "OKTA", "S"],
@@ -69,8 +64,8 @@ const PEER_GROUPS: string[][] = [
   ["JPM", "BAC", "WFC", "C", "GS", "MS", "SCHW", "COF", "USB"],
   // Payment networks
   ["V", "MA", "AXP"],
-  // Pharma / biotech (US-listed; foreign ADRs like NVO omitted because Finnhub
-  // reports their cap in local currency and inflates it)
+  // Pharma / biotech (US-listed; ADRs like NVO omitted — Finnhub reports their
+  // cap in local currency and inflates it relative to USD-listed peers)
   ["LLY", "PFE", "MRK", "ABBV", "BMY", "AMGN", "GILD", "MRNA"],
   // Healthcare services / devices
   ["UNH", "JNJ", "TMO", "ABT", "DHR", "CVS"],
@@ -88,11 +83,10 @@ const PEER_GROUPS: string[][] = [
   ["BA", "CAT", "GE", "HON", "UPS", "LMT", "DE"],
   // Telecom
   ["T", "VZ", "TMUS"],
-  // IT services / consulting (INR-listed INFY/WIT omitted; see NVO note above)
+  // IT services / consulting (INR-listed INFY/WIT excluded; see ADR note above)
   ["ACN", "CTSH", "IBM", "EPAM"],
 ];
 
-// ticker -> its cohort siblings (first cohort wins for names in more than one).
 const GROUP_INDEX: Record<string, string[]> = (() => {
   const idx: Record<string, string[]> = {};
   for (const group of PEER_GROUPS) {

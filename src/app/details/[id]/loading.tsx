@@ -1,7 +1,6 @@
 import { Search } from "lucide-react";
 import { TopGainerSkeleton } from "@/components/stocks/TopGainer";
 
-// Mirrors DetailsView's grid so the layout doesn't shift when data arrives.
 function SearchBarSkeleton() {
   return (
     <div className="relative w-full shadow-md rounded-lg glass-card">

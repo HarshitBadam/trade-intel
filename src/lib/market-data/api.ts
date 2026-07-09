@@ -3,8 +3,6 @@ import "server-only";
 import { getCuratedPeers, getGroupPeers } from "@/data/fallbacks";
 import { hasAstra, hasAlpaca, hasPolygon } from "@/lib/config";
 
-// Preferred (Alpaca) or fallback (Polygon) price provider. Quotes/movers/related
-// prices all require one of these to render real numbers.
 const hasPrices = hasAlpaca || hasPolygon;
 import type {
   Quote,
@@ -62,8 +60,6 @@ export async function getQuoteData(ticker: string): Promise<Quote> {
   const symbol = sanitizeTicker(ticker);
   if (!symbol) return mockQuote("N/A");
 
-  // 1W is sliced from the fine series rather than fetched, and the two must
-  // not race each other into a duplicate cold fetch — so fine is fetched once.
   const [stock_data, intraday, fine] = await Promise.all([
     getStockCandles(symbol),
     getIntraday(symbol),
@@ -72,9 +68,6 @@ export async function getQuoteData(ticker: string): Promise<Quote> {
   const week = hasPrices ? weekFromFine(fine) : generateMockWeek(symbol);
 
   if (!stock_data) {
-    // Live mode, candles transiently failed: fall back to the shared market
-    // map (real end-of-day quote, cached hourly) rather than fabricating a
-    // price. Empty series render as an honest empty chart.
     const quote = await getMarketMapCached()
       .then((m) => m[symbol])
       .catch(() => undefined);
@@ -106,9 +99,6 @@ export async function getHeadlineData(ticker: string): Promise<Headline> {
   const symbol = sanitizeTicker(ticker);
   if (!symbol) return mockHeadline("AAPL");
 
-  // Store-first (redesign §5): the top headline reads the Astra news store, the
-  // same collection the cron/priority lanes populate. No request-time Polygon
-  // news call — that lane was deleted; a cold ticker just falls to the mock.
   if (hasAstra) {
     try {
       const news = await getNewsCached(symbol);
@@ -175,14 +165,7 @@ export async function getChatQuotes(tickers: string[]): Promise<ChatQuote[]> {
     .filter((q): q is ChatQuote => Boolean(q));
 }
 
-// Final count of peer cards' worth of candidates. Each surviving peer costs one
-// (24h-cached) ticker-detail request; 3 cards need at most this many to choose
-// from. The wider pool below is only quote-filtered (one batched snapshot), so
-// raising this is cheap on candidate discovery but not on detail lookups.
 const MAX_PEERS = 4;
-// Upper bound on the pre-filter candidate pool. Bounds the single batched
-// snapshot that decides chartability; comfortably fits a cohort plus the live
-// feed plus the curated map.
 const PEER_POOL_MAX = 18;
 
 export async function getRelatedStocksData(
@@ -192,15 +175,10 @@ export async function getRelatedStocksData(
   if (!symbol || !hasPrices) return [];
 
   try {
-    // The subject's own profile doesn't depend on the peer list, so kick it off
-    // now and let it resolve alongside peer discovery and the quote fetch below
-    // instead of waiting for its own serial round-trip later.
     const currentDetailPromise = getTickerDetailCached(symbol).catch(
       () => null as TickerDetail | null
     );
 
-    // Isolated so a transient failure (now thrown, no longer cached) still
-    // falls through to the curated sources instead of aborting the request.
     let relatedTickers: string[] = [];
     try {
       relatedTickers = await getRelatedTickersCached(symbol);
@@ -211,10 +189,8 @@ export async function getRelatedStocksData(
     const clean = (list: string[]) =>
       list.map(sanitizeTicker).filter((t) => t && t !== symbol);
 
-    // Candidate pool, highest-quality source first: hand-curated sector cohort
-    // (on-topic, chartable), then the live peer feed, then the legacy per-ticker
-    // map. Deduped and bounded. Sourcing the cohort first is what keeps names
-    // like TEAM (whose live peers are mostly unchartable ASX listings) on-topic.
+    // Curated cohort first keeps names like TEAM (whose live peers are mostly
+    // unchartable ASX listings) on-topic; then the live peer feed; then legacy map.
     const pool = Array.from(
       new Set([
         ...clean(getGroupPeers(symbol)),
@@ -225,11 +201,8 @@ export async function getRelatedStocksData(
 
     if (pool.length === 0) return [];
 
-    // Decide chartability BEFORE capping: one batched snapshot over the whole
-    // pool, keep only peers our price provider can actually quote, THEN take the
-    // top MAX_PEERS. Previously we capped first, so unchartable peers (foreign
-    // listings, illiquid names) burned the display slots and left the section
-    // half-empty. Keyed on the sorted set so it stays correct for any ticker.
+    // Filter by chartability BEFORE capping so unchartable peers (foreign listings)
+    // don't burn display slots, then take the top MAX_PEERS.
     const poolKey = [...new Set([symbol, ...pool])].sort().join(",");
     const marketMap = await getQuotesForCached(poolKey).catch(
       () => ({}) as Record<string, LiveQuote>
@@ -238,7 +211,6 @@ export async function getRelatedStocksData(
     const peerTickers = pool.filter((t) => marketMap[t]).slice(0, MAX_PEERS);
     if (peerTickers.length === 0) return [];
 
-    // Year-ago closes and profiles only for the final, chartable selection.
     const finalKey = [...new Set([symbol, ...peerTickers])].sort().join(",");
     const [yearAgoMap, currentDetail, peerDetails] = await Promise.all([
       getYearAgoQuotesForCached(finalKey).catch(
@@ -258,9 +230,6 @@ export async function getRelatedStocksData(
       return now && ago ? (now / ago - 1) * 100 : null;
     };
 
-    // Only peers with a live quote become candidates: a card must never show
-    // invented prices. If the market map is unavailable this yields zero
-    // candidates and the section simply stays hidden for this render.
     type QuotedCandidate = Candidate & { quote: LiveQuote };
     const candidates: QuotedCandidate[] = peerTickers
       .map((t, i): QuotedCandidate | null => {
@@ -290,29 +259,15 @@ export async function getRelatedStocksData(
     const curSic = currentDetail?.sicCode ?? null;
     const curSector = currentDetail?.sector ?? null;
 
-    // Comparison anchors for the "Key Reason" engine. Peer selection (below)
-    // still uses the raw fields; these feed the human-readable insight only.
     const subjectStats: RelationStats = {
-      ticker: symbol,
-      price: marketMap[symbol]?.price ?? null,
-      pct: curPct,
-      ret1y: curRet,
-      volume: curVol,
-      marketCap: curCap,
-      sector: curSector,
+      ticker: symbol, price: marketMap[symbol]?.price ?? null,
+      pct: curPct, ret1y: curRet, volume: curVol, marketCap: curCap, sector: curSector,
     };
     const peerStats = (c: QuotedCandidate): RelationStats => ({
-      ticker: c.ticker,
-      price: c.quote.price,
-      pct: c.pct,
-      ret1y: c.ret1y,
-      volume: c.volume,
-      marketCap: c.marketCap,
-      sector: c.sector,
+      ticker: c.ticker, price: c.quote.price, pct: c.pct,
+      ret1y: c.ret1y, volume: c.volume, marketCap: c.marketCap, sector: c.sector,
     });
-    // Shared across all three cards so no two reasons lean on the same angle.
     const usedKinds = new Set<string>();
-
     const used = new Set<string>();
     const remaining = () => candidates.filter((c) => !used.has(c.ticker));
     const byCategory: Record<string, RelatedCard> = {};
@@ -323,7 +278,7 @@ export async function getRelatedStocksData(
       if (byCategory.industry) return;
       const rem = remaining();
       // SIC code is the sharpest match (Polygon). Finnhub has no SIC, so fall
-      // back to an exact sector-string match before the fuzzy pass.
+      // back to exact sector-string match before the fuzzy pass.
       const pick =
         (curSic && rem.find((c) => c.sicCode === curSic)) ||
         (curSic && rem.find((c) => major(c.sicCode) === major(curSic))) ||
@@ -349,9 +304,7 @@ export async function getRelatedStocksData(
       const withRet = rem.filter((c) => c.ret1y != null);
       if (curRet != null && withRet.length > 0) {
         pick = withRet.reduce((best, c) =>
-          Math.abs(c.ret1y! - curRet) < Math.abs(best.ret1y! - curRet)
-            ? c
-            : best
+          Math.abs(c.ret1y! - curRet) < Math.abs(best.ret1y! - curRet) ? c : best
         );
       } else {
         const withPct = rem.filter((c) => c.pct != null);
@@ -390,9 +343,7 @@ export async function getRelatedStocksData(
         const withVol = rem.filter((c) => c.volume != null);
         if (curVol != null && withVol.length > 0) {
           pick = withVol.reduce((best, c) =>
-            Math.abs(c.volume! - curVol) < Math.abs(best.volume! - curVol)
-              ? c
-              : best
+            Math.abs(c.volume! - curVol) < Math.abs(best.volume! - curVol) ? c : best
           );
         } else {
           pick = rem[0];
@@ -444,4 +395,3 @@ export async function getHomeTickerData(ticker: string): Promise<{
   ]);
   return { quote, headline };
 }
-

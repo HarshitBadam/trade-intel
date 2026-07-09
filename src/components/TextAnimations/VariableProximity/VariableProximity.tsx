@@ -1,7 +1,3 @@
-/*
-	Installed from https://reactbits.dev/ts/tailwind/
-*/
-
 import { forwardRef, useMemo, useRef, useEffect, MutableRefObject, CSSProperties } from "react";
 import { motion } from "framer-motion";
 

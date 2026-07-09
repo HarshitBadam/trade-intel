@@ -25,7 +25,7 @@ export function prefetch<T>(key: string, fetcher: () => Promise<T>): void {
       recentlyDone.set(key, Date.now());
     })
     .catch(() => {
-      // Prefetch is best-effort; swallow errors.
+      // Best-effort; swallow errors.
     })
     .finally(() => {
       inflight.delete(key);

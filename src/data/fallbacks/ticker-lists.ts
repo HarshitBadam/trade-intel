@@ -49,6 +49,3 @@ export const CRON_WARMUP_TICKERS = [
   { ticker: "BA", name: "The Boeing Company" },
   { ticker: "CAT", name: "Caterpillar Inc." },
 ];
-
-// Symbol search is served by the committed full universe (src/data/universe.json
-// via src/lib/market-data/universe.ts), not a curated list here.

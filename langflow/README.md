@@ -148,12 +148,14 @@ The transport itself lives in one place: `src/lib/langflow.ts`
 
 ---
 
-## `stocksage-ingestion.json` — RETIRED (historical)
+## Retired: the old Tavily→Gemini→Astra ingestion flow
 
-This is the **retired** Tavily→Gemini→Astra news ETL flow. Its app-side callers
-were deleted in Task 5 — Next.js now loads news itself (Polygon/Alpaca) and
-writes the store directly. The file is kept for historical reference only; **do
-not import or wire it into the app.**
+An earlier version of this project ingested news via a Langflow flow (Tavily
+search → Gemini extraction → Astra write). Its app-side callers were deleted
+in Task 5 — Next.js now loads news itself (Polygon/Alpaca cron) and writes the
+store directly — so that flow file has been removed from this directory. If
+you still have it imported on your Space, delete/archive it there too: running
+it would double-write article rows and burn Tavily credits for no benefit.
 
 ---
 

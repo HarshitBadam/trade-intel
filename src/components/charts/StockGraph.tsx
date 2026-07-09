@@ -7,7 +7,6 @@ type ChartPoint = { date: string | number; value: number };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// `days: 1` is the sentinel for the intraday (1D) view, which renders the
 const RANGES: { label: string; days: number; blurb: string }[] = [
   { label: "1D", days: 1, blurb: "today" },
   { label: "1W", days: 7, blurb: "past week" },
@@ -65,7 +64,6 @@ export function StockGraph({
 }) {
   const [rangeDays, setRangeDays] = useState<number>(365);
 
-  // A missing price renders as a dash, not a fabricated $0.00.
   const priceLabel = stockPrice > 0 ? `$${stockPrice.toFixed(2)}` : "—";
 
   const dailyPoints = useMemo(() => normalize(chartData), [chartData]);
@@ -125,8 +123,6 @@ export function StockGraph({
     ? fineData ?? []
     : chartData;
 
-  // 1D (1-min), 1W/1M/3M (15-min) all carry sub-daily bars, so their tooltips
-  // need a time component; daily+ ranges (6M/1Y/All) don't.
   const subDaily = isIntraday || isWeek || isFine;
 
   const showIntradayLoading =
@@ -202,11 +198,6 @@ export function StockGraph({
         ) : activePoints.length >= 2 ? (
           <MainChart cd={chartSeries} rangeDays={rangeDays} intraday={isIntraday} subDaily={subDaily} />
         ) : (
-          // Honest empty state — never a fake series. Price is served fresh from
-          // SSR and is no longer re-polled (redesign D24), so this is a settled
-          // dead end: we can't tell a provider hiccup apart from a
-          // delisted/unsupported ticker, so we don't guess — we hand off to a
-          // web search rather than claim to keep retrying.
           <div className="py-24 text-center text-sm space-y-2">
             <p>Chart data isn&apos;t available for {companyName}.</p>
             <a

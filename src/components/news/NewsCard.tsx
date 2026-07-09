@@ -8,7 +8,7 @@ interface NewsCardProps {
   id: string;
   username: string;
   content: string;
-  date: string;  // Format: YYYY-MM-DD to match with the chart data
+  date: string;
   significance: string;
   avatarUrl: string;
   source: string;
