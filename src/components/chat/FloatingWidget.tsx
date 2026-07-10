@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowUp } from 'lucide-react';
+import { X, ArrowUp, Telescope } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import styles from './FloatingWidget.module.css';
-import { getSummary, warmStockSage } from '@/app/actions';
+import { getSummary } from '@/app/actions';
 import { LegalDialog } from '@/components/legal/LegalModal';
+import type { ChatMode } from '@/lib/stocksage/types';
 
 type Message = {
   id: number;
   sender: 'ai' | 'user';
   text: string;
+  citationUrls?: string[];
 };
 
 const initialMessages: Message[] = [
@@ -23,21 +25,38 @@ const initialMessages: Message[] = [
 function CitationChip({
   href,
   children,
+  allowedHrefs,
 }: {
   href?: string;
   children?: React.ReactNode;
+  allowedHrefs?: string[];
 }) {
   let domain = '';
+  let safeHref = '';
   try {
-    if (href) domain = new URL(href).hostname.replace(/^www\./, '');
+    if (href) {
+      const url = new URL(href);
+      if (url.protocol === 'http:' || url.protocol === 'https:') {
+        safeHref = url.toString();
+        domain = url.hostname.replace(/^www\./, '');
+      }
+    }
   } catch {
   }
+  const allowed = (allowedHrefs ?? []).some((candidate) => {
+    try {
+      return new URL(candidate).toString() === safeHref;
+    } catch {
+      return false;
+    }
+  });
+  if (!safeHref || !allowed) return <span>{children}</span>;
   const favicon = domain
     ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
     : '';
   return (
     <a
-      href={href}
+      href={safeHref}
       target="_blank"
       rel="noopener noreferrer"
       title={domain || undefined}
@@ -111,9 +130,9 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [wakingUp, setWakingUp] = useState(false);
+  const [selectedMode, setSelectedMode] = useState<ChatMode>('regular');
+  const [pendingMode, setPendingMode] = useState<ChatMode | null>(null);
   const [showLegal, setShowLegal] = useState(false);
-  const firstReplyDoneRef = useRef(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const sessionIdRef = useRef<string | null>(null);
@@ -128,47 +147,41 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isThinking]);
 
-  useEffect(() => {
-    warmStockSage();
-  }, []);
-
   const sendMessage = async () => {
     const text = inputValue.trim();
     if (!text || isThinking) return;
+    const mode = selectedMode;
 
     setInputValue('');
+    setSelectedMode('regular');
     setMessages((prev) => [
       ...prev,
       { id: prev.length + 1, sender: 'user', text },
     ]);
     setIsThinking(true);
-    setWakingUp(!firstReplyDoneRef.current);
+    setPendingMode(mode);
 
     const history = messages
       .filter((m) => m.id !== 1)
       .map((m) => ({ role: m.sender, text: m.text }));
 
     try {
-      const MAX_ATTEMPTS = 3;
-      let reply = await getSummary(
-        text,
-        sessionIdRef.current ?? undefined,
-        history
-      );
-      for (let attempt = 1; attempt < MAX_ATTEMPTS && reply.retryable; attempt++) {
-        setWakingUp(true);
-        await new Promise((r) => setTimeout(r, 1500));
-        reply = await getSummary(
-          text,
-          sessionIdRef.current ?? undefined,
-          history
-        );
-      }
+      const request = {
+        message: text,
+        mode,
+        sessionId: sessionIdRef.current ?? undefined,
+        history,
+      };
+      const reply = await getSummary(request);
 
-      if (reply.live) firstReplyDoneRef.current = true;
       setMessages((prev) => [
         ...prev,
-        { id: prev.length + 1, sender: 'ai', text: reply.text },
+        {
+          id: prev.length + 1,
+          sender: 'ai',
+          text: reply.text,
+          citationUrls: reply.citationUrls,
+        },
       ]);
     } catch {
       setMessages((prev) => [
@@ -181,7 +194,7 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
       ]);
     } finally {
       setIsThinking(false);
-      setWakingUp(false);
+      setPendingMode(null);
     }
   };
 
@@ -268,7 +281,18 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                           >
                             {msg.sender === "ai" ? (
                               <div className="text-sm leading-relaxed space-y-2 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4">
-                                <ReactMarkdown components={{ a: CitationChip }}>
+                                <ReactMarkdown
+                                  components={{
+                                    a: ({ href, children }) => (
+                                      <CitationChip
+                                        href={href}
+                                        allowedHrefs={msg.citationUrls}
+                                      >
+                                        {children}
+                                      </CitationChip>
+                                    ),
+                                  }}
+                                >
                                   {tidyCitations(msg.text)}
                                 </ReactMarkdown>
                               </div>
@@ -281,8 +305,8 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                       {isThinking && (
                         <div className="flex max-w-full justify-start">
                           <div className="p-3 rounded-lg max-w-xs text-muted-foreground animate-pulse">
-                            {wakingUp
-                              ? "Waking StockSage up. This can take a moment…"
+                            {pendingMode === "deep"
+                              ? "Running Deep Research…"
                               : "Thinking…"}
                           </div>
                         </div>
@@ -292,13 +316,38 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
                   </div>
 
                   <div className="mt-auto flex gap-4">
-                    <div className="flex text-sm text-muted-foreground p-4 bg-muted rounded-lg outline outline-1 outline-border w-full">
-                      <form className="w-full" onSubmit={handleSubmit}>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground p-2 bg-muted rounded-lg outline outline-1 outline-border w-full">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedMode((mode) =>
+                            mode === "deep" ? "regular" : "deep"
+                          )
+                        }
+                        disabled={isThinking}
+                        aria-pressed={selectedMode === "deep"}
+                        aria-label="Toggle Deep Research"
+                        title="Use the Langflow Deep Research workflow for this message"
+                        className={`flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                          selectedMode === "deep"
+                            ? "bg-foreground text-background"
+                            : "bg-background/70 text-foreground/70 hover:text-foreground"
+                        }`}
+                      >
+                        <Telescope className="h-4 w-4" />
+                        <span className="hidden sm:inline">Deep Research</span>
+                      </button>
+                      <form className="w-full px-2" onSubmit={handleSubmit}>
                         <input 
                           type="text" 
                           value={inputValue}
                           onChange={(e) => setInputValue(e.target.value)}
-                          placeholder="Ask me about any stock or market trend" 
+                          maxLength={1200}
+                          placeholder={
+                            selectedMode === "deep"
+                              ? "Ask a deeper finance research question"
+                              : "Ask about a stock, company, or market"
+                          }
                           className="w-full outline-none bg-transparent" 
                         />
                       </form>

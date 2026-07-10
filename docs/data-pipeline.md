@@ -65,7 +65,7 @@ The 90-day window is what the sentiment chart draws, and it doubles as the outag
 
 ## The LLM lane
 
-Analysis and chat both run Langflow-first with a direct-Groq fallback, gated by the circuit breaker. If Langflow is configured and healthy the flow runs; otherwise the same prompt goes straight to Groq. Analysis uses the 8B model (`llama-3.1-8b-instant`, roomy daily quota for batch work), chat uses the 70B model (`llama-3.3-70b-versatile`, smarter answers where a person is waiting). Full detail is in [langflow/README.md](../langflow/README.md).
+Batch analysis remains Langflow-first with a direct-Groq fallback and uses the 8B model (`llama-3.1-8b-instant`). Regular interactive chat runs a Next.js retrieval path and sends its evidence-bound prompt directly to the 70B model (`llama-3.3-70b-versatile`). Langflow's 70B RAG chat flow runs only when the user explicitly selects Deep Research. Full flow detail is in [langflow/README.md](../langflow/README.md).
 
 ## Running it by hand
 

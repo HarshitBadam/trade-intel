@@ -19,10 +19,9 @@ These are called directly from client components. Each one that touches a provid
 
 | Action | Limit | Returns |
 |--------|-------|---------|
-| `warmStockSage()` | none | void. Pings the Langflow host so the first message is not cold |
-| `getSummary(message, sessionId?, history?)` | 10 / min | `{ text, live, retryable? }`, the reply as markdown |
+| `getSummary({ message, mode, sessionId?, history })` | 10 / min | `{ text, live, retryable?, citationUrls? }`, the reply as markdown |
 
-`getSummary` grounds the model with live quotes for any tickers it finds in the message, the recent conversation, and today's date, then answers through Langflow or the Groq fallback.
+`getSummary` validates the mode and bounded recent history server-side. Regular mode uses validated US quotes, exact-ticker Astra news, optional fresh Tavily context, and direct Groq 70B synthesis. Deep Research explicitly runs the existing Langflow chat flow.
 
 **Stock data** (`src/app/details/[id]/actions.ts`)
 

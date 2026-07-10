@@ -131,7 +131,7 @@ export async function getLiveQuotes(tickers: string[]): Promise<LiveQuote[]> {
 
 export async function getChatQuotes(tickers: string[]): Promise<ChatQuote[]> {
   if (!hasPrices || tickers.length === 0) return [];
-  const uniq = [...new Set(tickers.map((t) => t.toUpperCase()))].slice(0, 3);
+  const uniq = [...new Set(tickers.map((t) => t.toUpperCase()))].slice(0, 4);
 
   const quotes = await Promise.all(
     uniq.map(async (ticker): Promise<ChatQuote | null> => {
