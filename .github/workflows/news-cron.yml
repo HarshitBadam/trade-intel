@@ -1,18 +1,8 @@
 name: News + analysis cron
 
-# The REAL cadence for the background lane (redesign §9). GH Actions cron is
-# best-effort and can be delayed several minutes under load — that is fine here:
-# the request path only ever reads the store, so a late run just means slightly
-# staler news, never a broken page. The Vercel cron on this same endpoint is a
-# once-a-day backstop.
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
-# Don't let a slow run (up to ~5 min) stack on top of the next tick. We drop the
-# newer run rather than cancel the in-flight one, which could otherwise leave a
-# batch half-loaded.
 concurrency:
   group: news-cron
   cancel-in-progress: false
@@ -31,9 +21,31 @@ jobs:
             echo "CRON_URL / CRON_SECRET secret not set — skipping cron run."
             exit 0
           fi
-          # --max-time 280 stays under the endpoint's 300s maxDuration. Print the
-          # response body: it's the run summary JSON, which makes this Actions log
-          # the de-facto cron dashboard.
-          curl -fsS --max-time 280 \
+          response_file="$(mktemp)"
+          trap 'rm -f "${response_file}"' EXIT
+
+          status="$(curl -sS --max-time 280 \
+            -o "${response_file}" \
+            -w '%{http_code}' \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${CRON_URL}"
+            "${CRON_URL}")"
+
+          cat "${response_file}"
+          echo
+
+          if [ "${status}" != "200" ]; then
+            echo "::error::Cron endpoint returned HTTP ${status}; expected 200."
+            exit 1
+          fi
+
+          if ! jq -e '
+            .ok == true
+            and (.cursor | type == "object")
+            and (.news.loaded | type == "array")
+            and (.news.failed | type == "array")
+            and (.analysis | type == "array")
+            and (.breakers | type == "object")
+          ' "${response_file}" >/dev/null; then
+            echo "::error::Cron endpoint returned an invalid run report."
+            exit 1
+          fi
