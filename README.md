@@ -4,7 +4,7 @@ TradeIntel is a stock research dashboard built around news sentiment. Search any
 
 TradeIntel home screen with the price chart, sentiment gauge, and top market movers
 
-> **Live:** [tradeintel.example.com](https://your-deployment-url.example) (sign in with Google)
+> **Live:** [trade-intel-app.vercel.app](https://trade-intel-app.vercel.app) (sign in with Google)
 >
 > **Note:** a research project, not financial advice.
 
