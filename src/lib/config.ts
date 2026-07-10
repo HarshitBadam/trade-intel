@@ -54,6 +54,9 @@ export const GROQ_CHAT_MODEL =
   process.env.GROQ_CHAT_MODEL ?? "llama-3.3-70b-versatile";
 const rawGroq = Boolean(GROQ_API_KEY);
 
+export const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
+const rawTavily = Boolean(TAVILY_API_KEY);
+
 export const hasAuthSecret = Boolean(
   process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET
 );
@@ -76,10 +79,17 @@ export const hasAstra = rawAstra && liveAllowed;
 export const hasGroq = rawGroq && liveAllowed;
 export const hasLangflow = rawLangflow && liveAllowed;
 export const hasLangflowAnalyze = rawLangflowAnalyze && liveAllowed;
+export const hasTavily = rawTavily && liveAllowed;
 
 if (
   isProd &&
-  (rawPolygon || rawAlpaca || rawFinnhub || rawAstra || rawLangflow) &&
+  (rawPolygon ||
+    rawAlpaca ||
+    rawFinnhub ||
+    rawAstra ||
+    rawGroq ||
+    rawLangflow ||
+    rawTavily) &&
   !enforceAuth
 ) {
   console.error(

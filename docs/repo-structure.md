@@ -8,7 +8,7 @@ The source tree, annotated. Config and generated files are omitted.
 │   ├── news-cron.yml            # runs /api/cron/news every 5 minutes
 │   └── keep-warm.yml            # pings the Langflow host every 15 minutes
 ├── langflow/
-│   ├── README.md                # the flows, and how the Groq fallback mirrors them
+│   ├── README.md                # the Deep Research and analysis flows
 │   ├── stocksage-chat.json      # RAG chat flow (Astra + Tavily + Groq 70B)
 │   └── stocksage-analysis.json  # stateless article-to-labels flow (Groq 8B)
 ├── scripts/
@@ -34,7 +34,7 @@ The source tree, annotated. Config and generated files are omitted.
     │   ├── layout.tsx           # root shell, fonts, theme bootstrap, nav
     │   ├── page.tsx             # home, server-renders the default ticker
     │   ├── HomeView.tsx         # home client UI (search, chips, chart, movers, news)
-    │   ├── actions.ts           # chat server actions (warmStockSage, getSummary)
+    │   ├── actions.ts           # validated chat server action
     │   ├── globals.css          # imports the style layers in src/styles
     │   ├── error.tsx            # error boundary page
     │   ├── not-found.tsx        # 404 page
@@ -66,7 +66,7 @@ The source tree, annotated. Config and generated files are omitted.
     │   ├── rate-limit.ts        # Upstash sliding-window limiter
     │   ├── guard.ts             # per-action, per-identity rate guard
     │   ├── langflow.ts          # runLangflowFlow transport
-    │   ├── groq.ts              # groqChatJSON / groqChatText, the direct fallback
+    │   ├── groq.ts              # groqChatJSON / groqChatText transport
     │   ├── llm-json.ts          # fenced-JSON parsing for LLM output
     │   ├── auth-actions.ts      # sign-in / sign-out server actions
     │   ├── movers.ts            # market movers helpers
@@ -75,10 +75,19 @@ The source tree, annotated. Config and generated files are omitted.
     │   ├── useStaleData.ts      # stale-while-revalidate client hook
     │   ├── utils.ts             # cn() and small shared helpers
     │   ├── stocksage/
-    │   │   ├── chat.ts          # chat orchestration (grounding, Langflow, fallback)
-    │   │   ├── prompt.ts        # loads the chat system prompt
+    │   │   ├── chat.ts          # thin regular / Deep Research router
+    │   │   ├── regular.ts       # direct-Groq regular chat orchestration
+    │   │   ├── deep.ts          # existing Langflow flow orchestration
+    │   │   ├── retrieve.ts      # quotes, exact-ticker Astra, and Tavily fan-out
+    │   │   ├── citations.ts     # source-ID validation and safe link expansion
+    │   │   ├── entities.ts      # US quote-safe and web-only entity resolution
+    │   │   ├── intent.ts        # deterministic intent and pleasantry handling
+    │   │   ├── regular-prompt.ts    # evidence-bound intent-aware prompt
+    │   │   ├── tavily.ts        # bounded server-side Tavily fetch wrapper
+    │   │   ├── types.ts         # validated chat contracts
+    │   │   ├── prompt.ts        # loads the Deep Research system prompt
     │   │   ├── analysis-prompt.ts   # the deep-analysis instructions
-    │   │   └── system-prompt.json   # canonical chat system prompt
+    │   │   └── system-prompt.json   # Deep Research system prompt
     │   └── market-data/
     │       ├── index.ts         # public re-exports
     │       ├── api.ts           # high-level read API (movers, quotes, home bundles)

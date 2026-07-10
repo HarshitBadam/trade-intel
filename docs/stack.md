@@ -23,5 +23,6 @@ Grouped by role. The choices that actually shape the app are explained in [archi
 ## AI
 
 - **Groq** runs the models: an 8B for batch sentiment analysis, a 70B for chat.
-- **Langflow** is the visible orchestration layer for those calls, with a direct-Groq fallback for when the flow host is unavailable.
+- **Tavily** supplies fresh web context to regular chat through a small server-side fetch wrapper.
+- **Langflow** runs the existing Deep Research workflow and remains the primary batch-analysis orchestration layer.
 - **Auth.js** handles Google sign-in.

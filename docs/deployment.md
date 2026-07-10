@@ -29,4 +29,4 @@ news endpoint as a backstop.
 
 ## The Langflow host
 
-StockSage's flows run on a separate Langflow instance (a Hugging Face Space in this setup). It can sleep or drop into an error state, which is why every call has a direct-Groq fallback and why the keep-warm job exists. Import and secret-setup steps for the flows are in [langflow/README.md](../langflow/README.md).
+StockSage's Deep Research and batch-analysis flows run on a separate Langflow instance (a Hugging Face Space in this setup). Regular chat does not depend on that host. The keep-warm job remains so an explicitly selected Deep Research request is less likely to hit a cold start. Import and secret-setup steps for the flows are in [langflow/README.md](../langflow/README.md).

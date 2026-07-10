@@ -34,6 +34,7 @@ flowchart TB
     FINNHUB["Finnhub (metadata)"]
     POLYGON["Polygon (news)"]
     GROQ["Groq (LLM)"]
+    TAVILY["Tavily (web search)"]
     LANGFLOW["Langflow host"]
   end
 
@@ -45,8 +46,9 @@ flowchart TB
   CACHE --> ALPACA
   CACHE --> FINNHUB
   RSC --> REDIS
-  CHAT --> LANGFLOW
-  CHAT -.fallback.-> GROQ
+  CHAT --> GROQ
+  CHAT --> TAVILY
+  CHAT -.Deep Research.-> LANGFLOW
 
   CRON --> POLYGON
   CRON --> GROQ
@@ -54,7 +56,7 @@ flowchart TB
   CRON --> ASTRA
 ```
 
-Read-path providers are Astra, Alpaca, and Finnhub. Polygon and the LLMs sit on the cron side. The one exception is the chat assistant, which is interactive by nature and calls Langflow (or Groq) live.
+Pages read Astra, Alpaca, and Finnhub. Polygon and the batch LLM lane sit behind the cron. Regular chat is interactive and concurrently reads validated US quotes, exact-ticker Astra news, and Tavily web context before direct Groq synthesis. Deep Research is the explicit Langflow path.
 
 ## Serving a page
 
@@ -94,7 +96,8 @@ sequenceDiagram
 | Polygon | Bulk news and per-article interim sentiment | Cron only |
 | Astra DB | Stored articles and per-ticker verdicts | Both |
 | Groq | Batch analysis (8B) and chat (70B) | Cron and chat |
-| Langflow | Orchestrates the Groq calls | Cron and chat |
+| Tavily | Fresh web context for regular chat | Chat |
+| Langflow | Batch orchestration and explicit Deep Research | Cron and chat |
 
 Prices resolve in order: Alpaca SIP history with a live IEX tail, then Polygon aggregates as a backup, then nothing. In live mode the UI shows an "unavailable" state rather than inventing a price.
 

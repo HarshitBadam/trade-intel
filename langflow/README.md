@@ -1,17 +1,16 @@
 # StockSage — Langflow Flows
 
-StockSage's AI runs through two [Langflow](https://www.langflow.org/) flows
-(v1.10), **both backed by Groq**. Langflow is the visible orchestration layer —
-the project's thesis — but the Space can go down, so every Langflow call in the
-app has a **direct-Groq fallback** using the same models and prompts, gated by a
-circuit breaker. One rule everywhere: **Langflow-first, Groq-direct-fallback.**
+StockSage keeps two [Langflow](https://www.langflow.org/) flows (v1.10), both
+backed by Groq. The analysis flow remains the primary batch path with a direct
+Groq fallback. The chat flow is reserved for the user-selected Deep Research
+mode; ordinary chat runs the Next.js retrieval path and calls Groq directly.
 
 ```
                 ┌──────────────────────── Vercel (Next.js) ────────────────────────┐
-                │  deep analysis (cron / priority)         chat: "sentiment on NVDA?"│
+                │  deep analysis (cron / priority)         Deep Research chat        │
                 └─────────┬───────────────────────────────────────┬─────────────────┘
                           │ POST /run/<analyze_id>                 │ POST /run/<chat_id>
-                          │  (fallback: Groq 8B direct)            │  (fallback: Groq 70B direct)
+                          │  (fallback: Groq 8B direct)            │  (explicit mode only)
                           ▼                                        ▼
         ┌──────────────────────────────┐          ┌──────────────────────────────┐
         │  stocksage-analysis.json      │          │  stocksage-chat.json          │
@@ -77,10 +76,11 @@ reservation against the 6,000 TPM preflight, so `prompt + 2,400 < 6,000`.
 
 ---
 
-## `stocksage-chat.json` — RAG chat
+## `stocksage-chat.json` — Deep Research chat
 
-Answers questions grounded in ingested Astra news, a **live Tavily web search**,
-and the app's real-time market grounding — all Groq-backed now.
+Runs only when the user selects Deep Research. It answers questions grounded in
+ingested Astra news, a **live Tavily web search**, and the app's market
+grounding. Regular chat does not call this flow.
 
 | Node | Type | Role |
 |------|------|------|
@@ -105,7 +105,7 @@ untouched.
 | `history` | The last few conversation turns. |
 | `focus_tickers` | Tickers in scope, to keep retrieved news on-subject. |
 
-It also tweaks the Groq node's `system_message` with StockSage's system prompt
+It also tweaks the Groq node's `system_message` with StockSage's Deep Research prompt
 (the Groq component derives `system_message` from `LCModelComponent`, so the
 tweak path is unchanged from the old node).
 
@@ -114,18 +114,18 @@ tweak path is unchanged from the old node).
 ## The breaker + fallback story
 
 Every Langflow call is wrapped by the `"langflow"` circuit breaker
-(`src/lib/breaker.ts`) and has a direct-Groq fallback (`src/lib/groq.ts`):
+(`src/lib/breaker.ts`):
 
 - **Analysis** (`src/lib/market-data/analysis.ts`): if `LANGFLOW_ANALYZE_FLOW_ID`
   is set **and** the breaker is closed, run the flow and parse its text; on any
   failure record a breaker failure and fall through to a direct
   `groqChatJSON` on the 8B model (its own `"groq"` breaker unchanged).
-- **Chat** (`src/lib/stocksage/chat.ts`): if the breaker is closed, run the chat
-  flow; on failure (or when the breaker is open) answer with a direct
-  `groqChatText` on the 70B model, using StockSage's system prompt **plus the
-  same grounding block** the flow would have received. A canned market snapshot
-  is the last resort if Groq is also down.
-- `warmStockSage()` does **not** ping the Space while the breaker is open.
+- **Deep Research** (`src/lib/stocksage/deep.ts`): if the breaker is closed, run
+  the existing chat flow. A failure returns a retryable Deep Research error
+  instead of silently substituting the regular mode.
+- **Regular chat** (`src/lib/stocksage/regular.ts`): does not call Langflow. It
+  retrieves validated context in Next.js and calls `groqChatText` on the 70B
+  model through the `"groq"` breaker.
 
 The transport itself lives in one place: `src/lib/langflow.ts`
 (`runLangflowFlow`).
@@ -134,11 +134,10 @@ The transport itself lives in one place: `src/lib/langflow.ts`
 
 ## Known trade-offs
 
-- **Tavily-per-chat-message.** The chat flow fires a Tavily web search on *every*
-  message. It gives broad, fresh coverage of any entity, but it adds latency and
-  a Tavily dependency to each turn — a fragile spot. The wiring is intentionally
-  left intact; if Tavily rate-limits, the flow can error and the Groq fallback
-  takes over.
+- **Two Tavily call sites.** Deep Research retains the existing Tavily component
+  inside the flow. Regular finance chat uses the bounded Next.js Tavily wrapper
+  and degrades to quotes, Astra evidence, or a grounded fallback when Tavily is
+  unavailable.
 - **New store rows lack vector embeddings.** Next.js now writes analysis rows
   directly (single-writer), and those rows are not embedded the way the retired
   ingestion flow embedded them. So the chat flow's vector RAG recall skews toward

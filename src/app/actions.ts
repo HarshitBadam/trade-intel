@@ -1,20 +1,13 @@
 "use server";
 
 import { guard } from "@/lib/guard";
-import { answerChat, warmStockSage as warmStockSageCore } from "@/lib/stocksage/chat";
-import type { ChatReply, ChatTurn } from "@/lib/stocksage/chat";
+import { answerChat } from "@/lib/stocksage/chat";
+import { parseChatRequest } from "@/lib/stocksage/types";
+import type { ChatReply } from "@/lib/stocksage/types";
 
-export type { ChatReply, ChatTurn };
+export type { ChatMode, ChatReply, ChatRequest, ChatTurn } from "@/lib/stocksage/types";
 
-export async function warmStockSage(): Promise<void> {
-  await warmStockSageCore();
-}
-
-export async function getSummary(
-  message: string,
-  sessionId?: string,
-  history: ChatTurn[] = []
-): Promise<ChatReply> {
+export async function getSummary(request: unknown): Promise<ChatReply> {
   const access = await guard("chat", { limit: 10, windowSec: 60 });
   if (!access.ok) {
     if (access.reason === "unauthorized") {
@@ -26,5 +19,7 @@ export async function getSummary(
     };
   }
 
-  return answerChat(message, sessionId, history);
+  const parsed = parseChatRequest(request);
+  if (!parsed.ok) return { text: parsed.error, live: false };
+  return answerChat(parsed.value);
 }
