@@ -4,12 +4,15 @@ The write side of the app. A scheduled job fetches news, runs sentiment analysis
 
 ## Trigger
 
-Everything runs behind one endpoint, `/api/cron/news`, protected by a bearer token (`CRON_SECRET`). Two schedulers hit it:
+Everything runs behind one endpoint, `/api/cron/news`, protected by a bearer token (`CRON_SECRET`). QStash drives it and Vercel provides a daily backstop:
 
 | Scheduler | Cadence | Defined in |
 |-----------|---------|------------|
-| GitHub Actions | Every 5 minutes | `.github/workflows/news-cron.yml` |
+| Upstash QStash | Every 5 minutes | `scripts/setup-qstash.ts` |
 | Vercel cron | Once a day (backstop) | `vercel.json` |
+
+`.github/workflows/news-cron.yml` remains available for manual diagnostics and
+fails unless the endpoint returns HTTP 200 with a valid run report.
 
 > Freshness is measured in days, not minutes (see [Two clocks](#two-clocks) below), so the schedule can stay loose without changing anything a user sees.
 

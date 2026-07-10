@@ -1,6 +1,6 @@
 # Deployment
 
-A standard Next.js deploy plus two scheduled jobs.
+A standard Next.js deploy plus two QStash schedules.
 
 ## Hosting
 
@@ -8,19 +8,24 @@ The app runs on Vercel. Connect the repo and it builds on push, or build it your
 
 ## Background jobs
 
-Two GitHub Actions workflows drive the pipeline. Both skip cleanly if their secrets are unset, so a fork does nothing until you configure it.
+QStash owns the recurring schedules:
 
-| Workflow | Schedule | What it does |
-|----------|----------|--------------|
-| `news-cron.yml` | Every 5 minutes | Calls `/api/cron/news` with a bearer token to ingest news and run analysis |
-| `keep-warm.yml` | Every 15 minutes | Pings the Langflow host's `/health` so it does not fall asleep |
+| Schedule | Cadence | What it does |
+|----------|---------|--------------|
+| `tradeintel-news-cron` | Every 5 minutes | Calls `/api/cron/news` with a bearer token to ingest news and run analysis |
+| `tradeintel-keep-warm` | Every 15 minutes | Pings the Langflow host's `/health` so it does not fall asleep |
 
-Repo secrets they read:
+Fill the QStash, cron, and Langflow values in `.env.local`, then create or
+reconcile both schedules:
 
-- `CRON_URL` and `CRON_SECRET` for the news cron.
-- `LANGFLOW_BASE_URL` for keep-warm.
+```bash
+npm run ops:qstash
+```
 
-`vercel.json` also registers a once-a-day cron on the same endpoint as a backstop.
+The setup is idempotent and keeps the news lane single-flight. The GitHub
+Actions workflows remain as manually dispatched diagnostics, with strict HTTP
+and response validation. `vercel.json` also registers a once-a-day cron on the
+news endpoint as a backstop.
 
 ## The Langflow host
 

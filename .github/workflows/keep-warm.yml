@@ -1,8 +1,6 @@
 name: Keep StockSage warm
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -22,7 +20,33 @@ jobs:
             echo "LANGFLOW_BASE_URL secret not set — skipping keep-warm ping."
             exit 0
           fi
+
           url="${LANGFLOW_BASE_URL%/}/health"
           echo "Pinging ${url}"
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 "${url}" || echo 000)
-          echo "HTTP ${code}"
+
+          response_file="$(mktemp)"
+          trap 'rm -f "${response_file}"' EXIT
+
+          metrics="$(curl -sS \
+            --max-time 60 \
+            --retry 2 \
+            --retry-all-errors \
+            --retry-delay 10 \
+            -o "${response_file}" \
+            -w '%{http_code} %{time_total}' \
+            "${url}")"
+          read -r code latency <<< "${metrics}"
+
+          cat "${response_file}"
+          echo
+          echo "HTTP ${code} in ${latency}s"
+
+          if [ "${code}" != "200" ]; then
+            echo "::error::Langflow health endpoint returned HTTP ${code}."
+            exit 1
+          fi
+
+          if ! jq -e '.status == "ok"' "${response_file}" >/dev/null; then
+            echo "::error::Langflow health response did not report status=ok."
+            exit 1
+          fi

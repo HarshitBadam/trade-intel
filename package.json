@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "ops:qstash": "tsx scripts/setup-qstash.ts"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^1.5.0",
@@ -41,6 +42,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@upstash/qstash": "^2.11.1",
     "eslint": "^9",
     "eslint-config-next": "^15.5.19",
     "tailwindcss": "^4",
