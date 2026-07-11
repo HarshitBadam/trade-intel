@@ -1,14 +1,15 @@
-export type ChatMode = "regular" | "deep";
+import { z } from "zod";
 
-export type ChatIntent =
-  | "conversation"
-  | "help"
-  | "thanks"
-  | "company_update"
+export type ChatRoute =
+  | "social"
+  | "general"
+  | "out_of_scope"
+  | "refused"
+  | "stable_finance"
+  | "current_finance"
   | "comparison"
-  | "macro"
-  | "general_finance"
-  | "deep_research";
+  | "clarify"
+  | "safety_support";
 
 export type ChatTurn = {
   role: "user" | "ai";
@@ -17,9 +18,9 @@ export type ChatTurn = {
 
 export type ChatRequest = {
   message: string;
-  mode: ChatMode;
   sessionId?: string;
   history: ChatTurn[];
+  state?: ConversationState;
 };
 
 export type ChatReply = {
@@ -27,13 +28,28 @@ export type ChatReply = {
   live: boolean;
   retryable?: boolean;
   citationUrls?: string[];
+  responseId?: string;
+  deepResearch?: DeepResearchOffer;
+  state?: ConversationState;
 };
 
 export type FinanceEntity = {
+  id: string;
   name: string;
   query: string;
   ticker?: string;
   market: "us" | "web";
+  jurisdiction?: string;
+};
+
+export type ConversationState = {
+  version: 1;
+  revision: number;
+  entities: FinanceEntity[];
+  explicitEntitySet: string[];
+  criteria: string[];
+  horizon?: string;
+  jurisdiction?: string;
 };
 
 export type SourceKind = "astra" | "tavily";
@@ -46,6 +62,72 @@ export type EvidenceSource = {
   publishedAt?: string;
   url: string;
   excerpt: string;
+  score?: number;
+  entityIds: string[];
+  criteria: string[];
+  retrievedAt: string;
+  queryId?: string;
+};
+
+export type EvidenceProvider = "quotes" | "astra" | "tavily";
+
+export type EvidenceQuery = {
+  id: string;
+  provider: EvidenceProvider;
+  query: string;
+  entityIds: string[];
+  tickers: string[];
+  criteria: string[];
+  freshnessDays?: number;
+  topic: "general" | "news";
+  limit: number;
+};
+
+export type EvidencePlan = {
+  version: 1;
+  route: ChatRoute;
+  asOf: string;
+  queries: EvidenceQuery[];
+  requiredEntityIds: string[];
+  criteria: string[];
+};
+
+export type RouteDecision = {
+  route: ChatRoute;
+  reasonCode: string;
+  retrievalRequired: boolean;
+  deepEligible: boolean;
+  clarification?: string;
+};
+
+export type DomainReasonCode =
+  | "allowed_finance"
+  | "social"
+  | "out_of_scope"
+  | "prohibited_gambling"
+  | "prohibited_financial_misconduct"
+  | "prohibited_crypto_promotion"
+  | "crypto_risk_only"
+  | "ambiguous_crypto"
+  | "explicit_self_harm";
+
+export type DomainPolicyDecision = {
+  action: "allow" | "respond" | "clarify";
+  reasonCode: DomainReasonCode;
+  response?: string;
+};
+
+export type DeepResearchOffer = {
+  token: string;
+  workId: string;
+};
+
+export type DeepResearchReply = {
+  workId: string;
+  status: "success" | "failure";
+  text?: string;
+  citationUrls?: string[];
+  retryable?: boolean;
 };
 
 export const MAX_MESSAGE_CHARS = 1200;
@@ -53,6 +135,25 @@ export const MAX_HISTORY_TURNS = 8;
 export const MAX_HISTORY_TURN_CHARS = 1000;
 const MAX_HISTORY_TOTAL_CHARS = 6000;
 const MAX_SESSION_CHARS = 128;
+
+const EntitySchema = z.object({
+  id: z.string().min(1).max(40),
+  name: z.string().min(1).max(120),
+  query: z.string().min(1).max(180),
+  ticker: z.string().min(1).max(12).optional(),
+  market: z.enum(["us", "web"]),
+  jurisdiction: z.string().max(40).optional(),
+});
+
+const ConversationStateSchema = z.object({
+  version: z.literal(1),
+  revision: z.number().int().min(0).max(10_000),
+  entities: z.array(EntitySchema).max(8),
+  explicitEntitySet: z.array(z.string().min(1).max(40)).max(8),
+  criteria: z.array(z.string().min(1).max(60)).max(8),
+  horizon: z.string().max(60).optional(),
+  jurisdiction: z.string().max(40).optional(),
+});
 
 type ParseResult =
   | { ok: true; value: ChatRequest }
@@ -94,9 +195,6 @@ export function parseChatRequest(value: unknown): ParseResult {
   }
 
   const input = value as Record<string, unknown>;
-  if (input.mode !== "regular" && input.mode !== "deep") {
-    return { ok: false, error: "Choose regular or Deep Research mode." };
-  }
   if (typeof input.message !== "string") {
     return { ok: false, error: "Enter a message." };
   }
@@ -118,14 +216,15 @@ export function parseChatRequest(value: unknown): ParseResult {
     /^[A-Za-z0-9_-]+$/.test(rawSession)
       ? rawSession
       : undefined;
+  const parsedState = ConversationStateSchema.safeParse(input.state);
 
   return {
     ok: true,
     value: {
       message,
-      mode: input.mode,
       sessionId,
       history: recentHistory(input.history),
+      state: parsedState.success ? parsedState.data : undefined,
     },
   };
 }

@@ -1,27 +1,27 @@
 import "server-only";
 
+import { z } from "zod";
+import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
 import { hasTavily, TAVILY_API_KEY } from "@/lib/config";
 import type { EvidenceInput } from "./citations";
-
-type TavilyTopic = "general" | "news";
-
-type TavilyResult = {
-  title?: unknown;
-  url?: unknown;
-  content?: unknown;
-  published_date?: unknown;
-};
-
-type TavilyResponse = {
-  results?: TavilyResult[];
-};
+import type { EvidenceQuery } from "./types";
 
 const TAVILY_URL = "https://api.tavily.com/search";
 const TAVILY_TIMEOUT_MS = 8_000;
 
-function stringValue(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
+const TavilyResponseSchema = z.object({
+  results: z
+    .array(
+      z.object({
+        title: z.string().optional(),
+        url: z.string().optional(),
+        content: z.string().optional(),
+        published_date: z.string().optional(),
+        score: z.number().optional(),
+      })
+    )
+    .default([]),
+});
 
 function outlet(url: string): string {
   try {
@@ -32,10 +32,16 @@ function outlet(url: string): string {
 }
 
 export async function searchTavily(
-  query: string,
-  topic: TavilyTopic
+  query: EvidenceQuery
 ): Promise<EvidenceInput[]> {
-  if (!hasTavily || !TAVILY_API_KEY) return [];
+  if (
+    query.provider !== "tavily" ||
+    !hasTavily ||
+    !TAVILY_API_KEY ||
+    (await isOpen("tavily"))
+  ) {
+    return [];
+  }
 
   try {
     const response = await fetch(TAVILY_URL, {
@@ -45,13 +51,13 @@ export async function searchTavily(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        query: query.slice(0, 500),
-        topic,
+        query: query.query.slice(0, 500),
+        topic: query.topic,
         search_depth: "basic",
-        max_results: 5,
+        max_results: query.limit,
         include_answer: false,
         include_raw_content: false,
-        ...(topic === "news" ? { days: 14 } : {}),
+        ...(query.freshnessDays ? { days: query.freshnessDays } : {}),
       }),
       cache: "no-store",
       signal: AbortSignal.timeout(TAVILY_TIMEOUT_MS),
@@ -61,19 +67,28 @@ export async function searchTavily(
       throw new Error(`Tavily responded with ${response.status}`);
     }
 
-    const data = (await response.json()) as TavilyResponse;
-    return (data.results ?? []).slice(0, 5).map((result) => {
-      const url = stringValue(result.url);
+    const parsed = TavilyResponseSchema.safeParse(await response.json());
+    if (!parsed.success) throw new Error("Tavily returned an invalid response");
+    await recordSuccess("tavily");
+    const retrievedAt = new Date().toISOString();
+    return parsed.data.results.slice(0, query.limit).map((result) => {
+      const url = result.url ?? "";
       return {
         kind: "tavily" as const,
-        title: stringValue(result.title),
+        title: result.title ?? "",
         outlet: outlet(url),
-        publishedAt: stringValue(result.published_date) || undefined,
+        publishedAt: result.published_date,
         url,
-        excerpt: stringValue(result.content),
+        excerpt: result.content ?? "",
+        score: result.score,
+        entityIds: query.entityIds,
+        criteria: query.criteria,
+        retrievedAt,
+        queryId: query.id,
       };
     });
   } catch (error) {
+    await recordFailure("tavily");
     console.error("[chat] Tavily retrieval failed:", error);
     return [];
   }

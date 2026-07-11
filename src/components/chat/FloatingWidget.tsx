@@ -1,94 +1,22 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowUp, Telescope } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import styles from './FloatingWidget.module.css';
-import { getSummary } from '@/app/actions';
-import { LegalDialog } from '@/components/legal/LegalModal';
-import type { ChatMode } from '@/lib/stocksage/types';
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowUp, X } from "lucide-react";
+import { getSummary, researchDeeper } from "@/app/actions";
+import { LegalDialog } from "@/components/legal/LegalModal";
+import type { ConversationState } from "@/lib/stocksage/types";
+import {
+  ChatMessage,
+  type ChatMessageModel,
+} from "./ChatMessage";
+import styles from "./FloatingWidget.module.css";
 
-type Message = {
-  id: number;
-  sender: 'ai' | 'user';
-  text: string;
-  citationUrls?: string[];
-};
-
-const initialMessages: Message[] = [
+const initialMessages: ChatMessageModel[] = [
   {
-    id: 1,
-    sender: 'ai',
-    text: "Welcome to StockSage, your AI markets assistant. Ask me about any stock's trend or its news sentiment.",
+    id: "welcome",
+    sender: "ai",
+    text: "Welcome to StockSage, your AI markets assistant. Ask me about a public company, market, or finance concept.",
   },
 ];
-
-function CitationChip({
-  href,
-  children,
-  allowedHrefs,
-}: {
-  href?: string;
-  children?: React.ReactNode;
-  allowedHrefs?: string[];
-}) {
-  let domain = '';
-  let safeHref = '';
-  try {
-    if (href) {
-      const url = new URL(href);
-      if (url.protocol === 'http:' || url.protocol === 'https:') {
-        safeHref = url.toString();
-        domain = url.hostname.replace(/^www\./, '');
-      }
-    }
-  } catch {
-  }
-  const allowed = (allowedHrefs ?? []).some((candidate) => {
-    try {
-      return new URL(candidate).toString() === safeHref;
-    } catch {
-      return false;
-    }
-  });
-  if (!safeHref || !allowed) return <span>{children}</span>;
-  const favicon = domain
-    ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
-    : '';
-  return (
-    <a
-      href={safeHref}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={domain || undefined}
-      className="mx-0.5 inline-flex items-center gap-1 align-middle whitespace-nowrap rounded-md bg-muted/70 px-1.5 py-px text-[0.78em] font-medium leading-none text-foreground/70 no-underline transition-colors hover:bg-accent hover:text-foreground"
-    >
-      {favicon && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={favicon}
-          alt=""
-          aria-hidden
-          className="h-[1.05em] w-[1.05em] rounded-[3px]"
-          onError={(e) => {
-            e.currentTarget.style.display = 'none';
-          }}
-        />
-      )}
-      <span>{children}</span>
-    </a>
-  );
-}
-
-function tidyCitations(text: string): string {
-  const LINK = '\\[[^\\]]+\\]\\((?:[^()]|\\([^()]*\\))*\\)';
-  const wrapped = new RegExp(`\\(\\s*(${LINK})\\s*(?:,[^()]*?)?\\)`, 'g');
-  const trailingDate = new RegExp(`(${LINK})\\s*\\(\\s*\\d[\\d\\-/.\\s]*\\)`, 'g');
-  return text
-    .replace(wrapped, '$1')
-    .replace(trailingDate, '$1')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/[ \t]+([.,;:])/g, '$1');
-}
 
 interface FloatingWidgetProps {
   isExpanded?: boolean;
@@ -96,279 +24,259 @@ interface FloatingWidgetProps {
   onOpen?: () => void;
 }
 
-export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: FloatingWidgetProps) {
-  const [isExpandedInternal, setIsExpandedInternal] = useState(false);
+function localId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `message-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
+export function FloatingWidget({
+  isExpanded: propIsExpanded,
+  onClose,
+  onOpen,
+}: FloatingWidgetProps) {
+  const [isExpandedInternal, setIsExpandedInternal] = useState(false);
+  const [messages, setMessages] =
+    useState<ChatMessageModel[]>(initialMessages);
+  const [inputValue, setInputValue] = useState("");
+  const [isThinking, setIsThinking] = useState(false);
+  const [showLegal, setShowLegal] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const conversationStateRef = useRef<ConversationState | undefined>(undefined);
+  const sessionIdRef = useRef<string>(localId());
   const isExpanded = propIsExpanded ?? isExpandedInternal;
 
   const handleOpen = () => {
-    if (onOpen) {
-      onOpen();
-    } else {
-      setIsExpandedInternal(true);
-    }
+    if (onOpen) onOpen();
+    else setIsExpandedInternal(true);
   };
 
   const handleClose = () => {
-    if (onClose) {
-      onClose();
-    }
+    if (onClose) onClose();
     setIsExpandedInternal(false);
   };
 
   useEffect(() => {
-    if (isExpanded) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
+    document.body.style.overflow = isExpanded ? "hidden" : "unset";
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = "unset";
     };
   }, [isExpanded]);
 
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [inputValue, setInputValue] = useState('');
-  const [isThinking, setIsThinking] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<ChatMode>('regular');
-  const [pendingMode, setPendingMode] = useState<ChatMode | null>(null);
-  const [showLegal, setShowLegal] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  const sessionIdRef = useRef<string | null>(null);
-  if (sessionIdRef.current === null) {
-    sessionIdRef.current =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  }
-
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking]);
 
   const sendMessage = async () => {
     const text = inputValue.trim();
     if (!text || isThinking) return;
-    const mode = selectedMode;
-
-    setInputValue('');
-    setSelectedMode('regular');
-    setMessages((prev) => [
-      ...prev,
-      { id: prev.length + 1, sender: 'user', text },
+    const history = messages
+      .filter((message) => message.id !== "welcome")
+      .map((message) => ({ role: message.sender, text: message.text }));
+    setInputValue("");
+    setMessages((previous) => [
+      ...previous,
+      { id: localId(), sender: "user", text },
     ]);
     setIsThinking(true);
-    setPendingMode(mode);
-
-    const history = messages
-      .filter((m) => m.id !== 1)
-      .map((m) => ({ role: m.sender, text: m.text }));
-
     try {
-      const request = {
+      const reply = await getSummary({
         message: text,
-        mode,
-        sessionId: sessionIdRef.current ?? undefined,
+        sessionId: sessionIdRef.current,
         history,
-      };
-      const reply = await getSummary(request);
-
-      setMessages((prev) => [
-        ...prev,
+        state: conversationStateRef.current,
+      });
+      conversationStateRef.current = reply.state;
+      setMessages((previous) => [
+        ...previous,
         {
-          id: prev.length + 1,
-          sender: 'ai',
+          id: reply.responseId ?? localId(),
+          sender: "ai",
           text: reply.text,
           citationUrls: reply.citationUrls,
+          deepResearch: reply.deepResearch,
+          deepState: reply.deepResearch ? { status: "idle" } : undefined,
         },
       ]);
     } catch {
-      setMessages((prev) => [
-        ...prev,
+      setMessages((previous) => [
+        ...previous,
         {
-          id: prev.length + 1,
-          sender: 'ai',
-          text: 'Something went wrong while fetching an answer. Please try again.',
+          id: localId(),
+          sender: "ai",
+          text: "Something went wrong while fetching an answer. Please try again.",
         },
       ]);
     } finally {
       setIsThinking(false);
-      setPendingMode(null);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    sendMessage();
+  const runResearch = async (messageId: string) => {
+    const target = messages.find((message) => message.id === messageId);
+    if (!target?.deepResearch || target.deepState?.status === "pending") return;
+    setMessages((previous) =>
+      previous.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              deepState: {
+                status: "pending",
+                progress: "Researching sources",
+              },
+            }
+          : message
+      )
+    );
+    try {
+      const result = await researchDeeper(target.deepResearch.token);
+      setMessages((previous) =>
+        previous.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                deepState: {
+                  status: result.status,
+                  text: result.text,
+                  citationUrls: result.citationUrls,
+                  retryable: result.retryable,
+                },
+              }
+            : message
+        )
+      );
+    } catch {
+      setMessages((previous) =>
+        previous.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                deepState: {
+                  status: "failure",
+                  text: "Research deeper failed. The regular answer is still available.",
+                  retryable: true,
+                },
+              }
+            : message
+        )
+      );
+    }
   };
 
   return (
     <>
       {!isExpanded && (
-        <div className="fixed bottom-6 right-6 pointer-events-auto z-10">
+        <div className="pointer-events-auto fixed bottom-6 right-6 z-10">
           <div
             onClick={handleOpen}
-            className="bg-card text-card-foreground border border-border glass-card rounded-lg shadow-lg p-4 w-[200px] hover:shadow-xl transition-shadow cursor-pointer"
+            className="glass-card w-[200px] cursor-pointer rounded-lg border border-border bg-card p-4 text-card-foreground shadow-lg transition-shadow hover:shadow-xl"
           >
-            <h3 className="font-semibold mb-2">StockSage</h3>
-            <div className="text-sm text-muted-foreground">Get Stock Insights</div>
+            <h3 className="mb-2 font-semibold">StockSage</h3>
+            <div className="text-sm text-muted-foreground">
+              Get Stock Insights
+            </div>
           </div>
         </div>
       )}
-
       <AnimatePresence>
         {isExpanded && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/30 backdrop-blur-xl z-50"
+            className="fixed inset-0 z-50 bg-black/30 backdrop-blur-xl"
             onClick={handleClose}
           >
             <motion.div
-              initial={{ 
+              initial={{
                 width: "200px",
                 height: "76px",
                 position: "absolute",
                 bottom: "24px",
                 right: "24px",
-                opacity: 1
               }}
-              animate={{ 
+              animate={{
                 width: "calc(100% - 64px)",
                 height: "calc(100% - 64px)",
                 position: "absolute",
                 bottom: "32px",
                 right: "32px",
-                opacity: 1
               }}
-              exit={{ 
+              exit={{
                 width: "200px",
                 height: "76px",
                 position: "absolute",
                 bottom: "24px",
                 right: "24px",
-                opacity: 1
               }}
               transition={{ type: "spring", damping: 25, stiffness: 120 }}
-              className="bg-white/80 dark:bg-card/85 backdrop-blur-xl border border-white/50 dark:border-white/10 rounded-xl overflow-y-auto origin-bottom-right shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
+              className="absolute origin-bottom-right overflow-y-auto rounded-xl border border-white/50 bg-white/80 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-card/85"
+              onClick={(event) => event.stopPropagation()}
             >
-              <div className="p-6 h-full flex flex-col">
-                <div className="max-w-7xl mx-auto w-full flex flex-col h-full">
-                  <div className="flex justify-between items-center mb-4">
+              <div className="flex h-full flex-col p-6">
+                <div className="mx-auto flex h-full w-full max-w-7xl flex-col">
+                  <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-xl font-bold">StockSage</h2>
                     <button
                       onClick={handleClose}
-                      className="p-2 hover:bg-muted rounded-full transition-colors"
+                      className="rounded-full p-2 transition-colors hover:bg-muted"
+                      aria-label="Close StockSage"
                     >
-                      <X className="w-5 h-5" />
+                      <X className="h-5 w-5" />
                     </button>
                   </div>
-
-                  <div className={`flex-1 overflow-y-scroll`}>
+                  <div className="flex-1 overflow-y-scroll">
                     <div className={styles.chatContent}>
-                      {messages.map((msg) => (
-                        <div
-                          key={msg.id}
-                          className={`flex max-w-full ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
-                        >
-                          <div
-                            className={`p-3 rounded-lg max-w-xs text-foreground ${
-                              msg.sender === "user" ? "bg-muted" : ""
-                            }`}
-                          >
-                            {msg.sender === "ai" ? (
-                              <div className="text-sm leading-relaxed space-y-2 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4">
-                                <ReactMarkdown
-                                  components={{
-                                    a: ({ href, children }) => (
-                                      <CitationChip
-                                        href={href}
-                                        allowedHrefs={msg.citationUrls}
-                                      >
-                                        {children}
-                                      </CitationChip>
-                                    ),
-                                  }}
-                                >
-                                  {tidyCitations(msg.text)}
-                                </ReactMarkdown>
-                              </div>
-                            ) : (
-                              msg.text
-                            )}
-                          </div>
-                        </div>
+                      {messages.map((message) => (
+                        <ChatMessage
+                          key={message.id}
+                          message={message}
+                          onResearch={runResearch}
+                        />
                       ))}
                       {isThinking && (
                         <div className="flex max-w-full justify-start">
-                          <div className="p-3 rounded-lg max-w-xs text-muted-foreground animate-pulse">
-                            {pendingMode === "deep"
-                              ? "Running Deep Research…"
-                              : "Thinking…"}
+                          <div className="max-w-xs animate-pulse rounded-lg p-3 text-muted-foreground">
+                            Thinking…
                           </div>
                         </div>
                       )}
                       <div ref={chatEndRef} />
                     </div>
                   </div>
-
                   <div className="mt-auto flex gap-4">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground p-2 bg-muted rounded-lg outline outline-1 outline-border w-full">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedMode((mode) =>
-                            mode === "deep" ? "regular" : "deep"
-                          )
-                        }
-                        disabled={isThinking}
-                        aria-pressed={selectedMode === "deep"}
-                        aria-label="Toggle Deep Research"
-                        title="Use the Langflow Deep Research workflow for this message"
-                        className={`flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
-                          selectedMode === "deep"
-                            ? "bg-foreground text-background"
-                            : "bg-background/70 text-foreground/70 hover:text-foreground"
-                        }`}
-                      >
-                        <Telescope className="h-4 w-4" />
-                        <span className="hidden sm:inline">Deep Research</span>
-                      </button>
-                      <form className="w-full px-2" onSubmit={handleSubmit}>
-                        <input 
-                          type="text" 
-                          value={inputValue}
-                          onChange={(e) => setInputValue(e.target.value)}
-                          maxLength={1200}
-                          placeholder={
-                            selectedMode === "deep"
-                              ? "Ask a deeper finance research question"
-                              : "Ask about a stock, company, or market"
-                          }
-                          className="w-full outline-none bg-transparent" 
-                        />
-                      </form>
-                    </div>
+                    <form
+                      className="flex w-full items-center rounded-lg bg-muted p-2 outline outline-1 outline-border"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        sendMessage();
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={inputValue}
+                        onChange={(event) => setInputValue(event.target.value)}
+                        maxLength={1200}
+                        placeholder="Ask about a company, market, or finance concept"
+                        className="w-full bg-transparent px-2 outline-none"
+                      />
+                    </form>
                     <button
                       type="button"
                       onClick={sendMessage}
                       disabled={isThinking || !inputValue.trim()}
                       aria-label="Send message"
-                      className="flex h-12 w-12 shrink-0 self-center items-center justify-center rounded-full bg-foreground text-background shadow-sm transition-all duration-150 hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      className="flex h-12 w-12 shrink-0 items-center justify-center self-center rounded-full bg-foreground text-background shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                     >
                       <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
                     </button>
                   </div>
-
                   <p className="mt-4 text-center text-xs text-muted-foreground">
                     StockSage is AI and can be wrong or out of date.{" "}
                     <button
                       type="button"
                       onClick={() => setShowLegal(true)}
-                      className="font-medium text-foreground/80 underline-offset-4 hover:underline cursor-pointer"
+                      className="font-medium text-foreground/80 underline-offset-4 hover:underline"
                     >
                       Terms &amp; Privacy
                     </button>
@@ -379,7 +287,6 @@ export function FloatingWidget({ isExpanded: propIsExpanded, onClose, onOpen }: 
           </motion.div>
         )}
       </AnimatePresence>
-
       <LegalDialog open={showLegal} onClose={() => setShowLegal(false)} />
     </>
   );

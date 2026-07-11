@@ -208,7 +208,9 @@ export async function maybeAnalyzeTicker(
   const gate = await shouldAnalyzeTicker(symbol);
   if (!gate.run) return { status: "skipped", reason: gate.reason };
 
-  if (await isOpen("groq")) return { status: "skipped", reason: "provider-down" };
+  if (await isOpen("groq-analysis")) {
+    return { status: "skipped", reason: "provider-down" };
+  }
 
   if (!(await claimAnalysisSlot(symbol))) {
     return { status: "skipped", reason: "in-flight" };

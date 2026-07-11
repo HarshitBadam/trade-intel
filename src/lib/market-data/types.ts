@@ -71,6 +71,7 @@ export type LiveQuote = {
 export type ChatQuote = {
   ticker: string;
   price: number;
+  asOf: string;
   /** latest session change vs the prior close, in percent */
   dayPct: number;
   /** trailing performance, in percent; null when not enough history */

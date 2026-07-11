@@ -80,6 +80,13 @@ export const hasGroq = rawGroq && liveAllowed;
 export const hasLangflow = rawLangflow && liveAllowed;
 export const hasLangflowAnalyze = rawLangflowAnalyze && liveAllowed;
 export const hasTavily = rawTavily && liveAllowed;
+export const STOCKSAGE_DEEP_SNAPSHOT_SECRET =
+  process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET ??
+  process.env.AUTH_SECRET ??
+  process.env.NEXTAUTH_SECRET;
+export const hasDeepResearch = Boolean(
+  hasLangflow && STOCKSAGE_DEEP_SNAPSHOT_SECRET
+);
 
 if (
   isProd &&

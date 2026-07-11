@@ -22,6 +22,7 @@ const NAME_TO_TICKER: Record<string, string> = {
   uber: "UBER",
   airbnb: "ABNB",
   coinbase: "COIN",
+  robinhood: "HOOD",
   paypal: "PYPL",
   disney: "DIS",
   nike: "NKE",

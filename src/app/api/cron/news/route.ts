@@ -190,6 +190,10 @@ export async function GET(request: Request) {
     analysis,
     pruned,
     elapsedMs: elapsed(),
-    breakers: await breakerSnapshot(["polygon", "groq", "langflow"]),
+    breakers: await breakerSnapshot([
+      "polygon",
+      "groq-analysis",
+      "langflow-analysis",
+    ]),
   });
 }

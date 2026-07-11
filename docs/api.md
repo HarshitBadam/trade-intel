@@ -19,9 +19,10 @@ These are called directly from client components. Each one that touches a provid
 
 | Action | Limit | Returns |
 |--------|-------|---------|
-| `getSummary({ message, mode, sessionId?, history })` | 10 / min | `{ text, live, retryable?, citationUrls? }`, the reply as markdown |
+| `getSummary({ message, sessionId?, history, state? })` | 10 / min | Regular reply, citations, resolved state, response id, and an optional research offer |
+| `researchDeeper(snapshotToken)` | 4 / min | Idempotent per-response research result |
 
-`getSummary` validates the mode and bounded recent history server-side. Regular mode uses validated US quotes, exact-ticker Astra news, optional fresh Tavily context, and direct Groq 70B synthesis. Deep Research explicitly runs the existing Langflow chat flow.
+`getSummary` validates bounded history and state, enforces the finance-domain policy, resolves references and groups, then retrieves only providers named by a typed evidence plan. Social, out-of-scope, general-code, and stable-finance turns do not retrieve. Eligible completed responses carry a signed immutable snapshot token for `researchDeeper`; there is no composer-selected research mode.
 
 **Stock data** (`src/app/details/[id]/actions.ts`)
 

@@ -124,23 +124,22 @@ export function clampScore(n: number): number {
   return Math.max(-1, Math.min(1, n));
 }
 
-// Langflow-first, Groq-direct-fallback. If the analysis flow is configured and
-// the "langflow" breaker is closed, run the flow. On any Langflow failure — or
-// when Langflow isn't configured / its breaker is open — fall through to the
-// direct Groq call. The `system` argument is used only by the direct path; the
-// flow carries its instructions internally.
 export async function runAnalysisLLM(user: string): Promise<unknown> {
-  if (hasLangflowAnalyze && LANGFLOW_ANALYZE_FLOW_ID && !(await isOpen("langflow"))) {
+  if (
+    hasLangflowAnalyze &&
+    LANGFLOW_ANALYZE_FLOW_ID &&
+    !(await isOpen("langflow-analysis"))
+  ) {
     try {
       const text = await runLangflowFlow({
         flowId: LANGFLOW_ANALYZE_FLOW_ID,
         input: user,
       });
       const parsed = parseFencedJson(text);
-      await recordSuccess("langflow");
+      await recordSuccess("langflow-analysis");
       return parsed;
     } catch (error) {
-      await recordFailure("langflow");
+      await recordFailure("langflow-analysis");
       console.error("[analysis] Langflow lane failed, falling back to direct Groq:", error);
     }
   }
@@ -152,10 +151,10 @@ export async function runAnalysisLLM(user: string): Promise<unknown> {
       user,
       maxTokens: ANALYSIS_MAX_TOKENS,
     });
-    await recordSuccess("groq");
+    await recordSuccess("groq-analysis");
     return raw;
   } catch (error) {
-    await recordFailure("groq");
+    await recordFailure("groq-analysis");
     throw error;
   }
 }

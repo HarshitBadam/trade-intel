@@ -17,12 +17,12 @@ Grouped by role. The choices that actually shape the app are explained in [archi
 ## Store and infrastructure
 
 - **Astra DB** (DataStax) holds analyzed articles and per-ticker verdicts. It is the store the request path reads from.
-- **Upstash Redis** backs rate limiting, the circuit breaker, and the cron cursor. It is HTTP-based, so it works from serverless functions and shares state across instances.
+- **Upstash Redis** backs rate limiting, isolated circuit breakers, the cron cursor, and deeper-research idempotency. It is HTTP-based, so it works from serverless functions and shares state across instances.
 - **Vercel** hosts the app; **GitHub Actions** runs the ingestion cron.
 
 ## AI
 
 - **Groq** runs the models: an 8B for batch sentiment analysis, a 70B for chat.
-- **Tavily** supplies fresh web context to regular chat through a small server-side fetch wrapper.
-- **Langflow** runs the existing Deep Research workflow and remains the primary batch-analysis orchestration layer.
+- **Tavily** supplies only explicitly planned, filtered evidence for current and comparison routes.
+- **Langflow** runs per-response deeper research and remains the primary batch-analysis orchestration layer.
 - **Auth.js** handles Google sign-in.
