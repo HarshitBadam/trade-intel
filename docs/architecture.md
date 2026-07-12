@@ -48,7 +48,7 @@ flowchart TB
   RSC --> REDIS
   CHAT --> GROQ
   CHAT --> TAVILY
-  CHAT -.Deep Research.-> LANGFLOW
+  CHAT -.per-response research.-> LANGFLOW
 
   CRON --> POLYGON
   CRON --> GROQ
@@ -56,7 +56,7 @@ flowchart TB
   CRON --> ASTRA
 ```
 
-Pages read Astra, Alpaca, and Finnhub. Polygon and the batch LLM lane sit behind the cron. Regular chat is interactive and concurrently reads validated US quotes, exact-ticker Astra news, and Tavily web context before direct Groq synthesis. Deep Research is the explicit Langflow path.
+Pages read Astra, Alpaca, and Finnhub. Polygon and the batch LLM lane sit behind the cron. Chat first applies a deterministic domain policy, resolves typed conversation state, and builds a bounded evidence plan. Social, out-of-scope, code, and stable-finance turns skip retrieval; current and comparison routes call only planned quote, Astra, or Tavily providers. Eligible regular answers can launch idempotent per-response research through Langflow.
 
 ## Serving a page
 
@@ -96,8 +96,8 @@ sequenceDiagram
 | Polygon | Bulk news and per-article interim sentiment | Cron only |
 | Astra DB | Stored articles and per-ticker verdicts | Both |
 | Groq | Batch analysis (8B) and chat (70B) | Cron and chat |
-| Tavily | Fresh web context for regular chat | Chat |
-| Langflow | Batch orchestration and explicit Deep Research | Cron and chat |
+| Tavily | Planned, filtered web evidence for current/comparison routes | Chat |
+| Langflow | Batch orchestration and per-response deeper research | Cron and chat |
 
 Prices resolve in order: Alpaca SIP history with a live IEX tail, then Polygon aggregates as a backup, then nothing. In live mode the UI shows an "unavailable" state rather than inventing a price.
 
@@ -123,7 +123,7 @@ Reads go through `unstable_cache` with tag-based revalidation. The cron calls `r
 
 Two mechanisms keep a flaky provider from becoming a broken page.
 
-**Circuit breaker** (`src/lib/breaker.ts`) tracks Polygon, Groq, and Langflow. Three failures inside ten minutes opens the circuit; callers then skip that provider and take the fallback path. State lives in Redis so it is shared across serverless instances, with an in-process map as the local fallback.
+**Circuit breaker** (`src/lib/breaker.ts`) isolates Polygon, retrieval providers, Langflow analysis/research, and the `groq-chat` and `groq-analysis` lanes. Three failures inside ten minutes opens only that circuit; batch failures cannot disable chat. State lives in Redis so it is shared across serverless instances, with an in-process map as the local fallback.
 
 **Sliding rate limiter** (`src/lib/market-data/limiter.ts`) smooths outgoing bursts to each provider (Alpaca 180/min, Finnhub 50/min). It never rejects, it delays. Callers just `await acquire()`.
 

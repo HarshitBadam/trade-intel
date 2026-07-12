@@ -2,7 +2,15 @@ import "server-only";
 
 import { hasUpstash } from "./config";
 
-export type Provider = "polygon" | "groq" | "langflow";
+export type Provider =
+  | "polygon"
+  | "groq-chat"
+  | "groq-analysis"
+  | "langflow-deep"
+  | "langflow-analysis"
+  | "tavily"
+  | "astra"
+  | "quotes";
 
 const FAILURE_THRESHOLD = 3;
 
@@ -102,4 +110,8 @@ export async function breakerSnapshot(
 
 export function breakerBackend(): "upstash" | "memory" {
   return hasUpstash ? "upstash" : "memory";
+}
+
+export function resetBreakerMemory(): void {
+  memory.clear();
 }

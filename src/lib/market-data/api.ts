@@ -149,6 +149,7 @@ export async function getChatQuotes(tickers: string[]): Promise<ChatQuote[]> {
         return {
           ticker,
           price: c.stock_price,
+          asOf: c.chart_data[i].date,
           dayPct: c.percent_change,
           weekPct: pctBack(5),
           monthPct: pctBack(21),

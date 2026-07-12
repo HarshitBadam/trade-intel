@@ -51,7 +51,7 @@ The source tree, annotated. Config and generated files are omitted.
     ├── components/
     │   ├── layout/              # Nav, HeaderGate, SearchBar, breadcrumb, theme toggle, user menu
     │   ├── charts/              # MainChart, StockGraph, PopularityGraph, grid/range helpers
-    │   ├── chat/                # FloatingWidget, the StockSage chat surface
+    │   ├── chat/                # FloatingWidget, ChatMessage, and the StockSage chat surface
     │   ├── news/                # NewsCard, NewsModal, TopNews, RecentInfluential, Bar
     │   ├── stocks/              # Overview, StockChips, TopGainer
     │   ├── shared/              # FlipCard, SentimentLabel
@@ -62,7 +62,7 @@ The source tree, annotated. Config and generated files are omitted.
     │   └── ui/                  # shadcn-style primitives (button, card, select, form, ...)
     ├── lib/
     │   ├── config.ts            # feature flags derived from which env keys exist
-    │   ├── breaker.ts           # circuit breaker (Polygon, Groq, Langflow)
+    │   ├── breaker.ts           # isolated provider and workload breakers
     │   ├── rate-limit.ts        # Upstash sliding-window limiter
     │   ├── guard.ts             # per-action, per-identity rate guard
     │   ├── langflow.ts          # runLangflowFlow transport
@@ -75,15 +75,25 @@ The source tree, annotated. Config and generated files are omitted.
     │   ├── useStaleData.ts      # stale-while-revalidate client hook
     │   ├── utils.ts             # cn() and small shared helpers
     │   ├── stocksage/
-    │   │   ├── chat.ts          # thin regular / Deep Research router
-    │   │   ├── regular.ts       # direct-Groq regular chat orchestration
-    │   │   ├── deep.ts          # existing Langflow flow orchestration
-    │   │   ├── retrieve.ts      # quotes, exact-ticker Astra, and Tavily fan-out
+    │   │   ├── chat.ts          # selective request lifecycle orchestration
+    │   │   ├── regular.ts       # regular synthesis and safe fallback
+    │   │   ├── deep.ts          # per-response Langflow research
+    │   │   ├── deep-snapshot.ts # signed immutable research snapshots
+    │   │   ├── deep-store.ts    # idempotent research result reuse
+    │   │   ├── deep-validation.ts # deep-report publication checks
+    │   │   ├── retrieve.ts      # typed evidence-plan execution
+    │   │   ├── planning.ts      # bounded provider/query planning
+    │   │   ├── evidence.ts      # relevance, freshness, and coverage filters
+    │   │   ├── policy.ts        # finance-domain and misuse policy
+    │   │   ├── state.ts         # untrusted state canonicalization
+    │   │   ├── conversation-attributes.ts # criteria, horizon, and jurisdiction detection
     │   │   ├── citations.ts     # source-ID validation and safe link expansion
+    │   │   ├── entity-catalog.ts # aliases, groups, and non-US listings
     │   │   ├── entities.ts      # US quote-safe and web-only entity resolution
-    │   │   ├── intent.ts        # deterministic intent and pleasantry handling
+    │   │   ├── intent.ts        # deterministic route decisions
     │   │   ├── regular-prompt.ts    # evidence-bound intent-aware prompt
     │   │   ├── tavily.ts        # bounded server-side Tavily fetch wrapper
+    │   │   ├── telemetry.ts     # structured StockSage request telemetry
     │   │   ├── types.ts         # validated chat contracts
     │   │   ├── prompt.ts        # loads the Deep Research system prompt
     │   │   ├── analysis-prompt.ts   # the deep-analysis instructions

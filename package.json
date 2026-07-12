@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "tsx --conditions=react-server --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "smoke:stocksage": "tsx --conditions=react-server scripts/stocksage-smoke.ts",
     "ops:qstash": "tsx scripts/setup-qstash.ts"
   },
   "dependencies": {

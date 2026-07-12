@@ -1,8 +1,9 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
+import { z } from "zod";
 import {
-  hasLangflow,
+  hasDeepResearch,
   LANGFLOW_API_KEY,
   LANGFLOW_BASE_URL,
   LANGFLOW_CHAT_LLM_ID,
@@ -13,12 +14,20 @@ import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
 import { runLangflowFlow } from "@/lib/langflow";
 import { getChatQuotes, type ChatQuote } from "@/lib/market-data";
 import { sanitizeExternalCitations } from "./citations";
+import {
+  parseDeepResearchSnapshot,
+  type DeepResearchSnapshot,
+} from "./deep-snapshot";
+import { runIdempotentDeepWork } from "./deep-store";
+import { validateDeepResearchResult } from "./deep-validation";
 import { STOCKSAGE_DEEP_SYSTEM } from "./prompt";
-import type {
-  ChatReply,
-  ChatRequest,
-  FinanceEntity,
-} from "./types";
+import type { DeepResearchReply } from "./types";
+
+const FlowSchema = z.object({
+  data: z.object({
+    nodes: z.array(z.object({ id: z.string().optional() })).default([]),
+  }),
+});
 
 function percent(value: number | null): string {
   if (value === null || Number.isNaN(value)) return "not available";
@@ -35,7 +44,7 @@ function liveData(quotes: ChatQuote[]): string {
   }).format(new Date());
   const lines = quotes.map(
     (quote) =>
-      `${quote.ticker}: $${quote.price.toFixed(2)}, day ${percent(quote.dayPct)}, 1W ${percent(quote.weekPct)}, 1M ${percent(quote.monthPct)}, 1Y ${percent(quote.yearPct)}`
+      `${quote.ticker}: as of ${quote.asOf}, $${quote.price.toFixed(2)}, day ${percent(quote.dayPct)}, 1W ${percent(quote.weekPct)}, 1M ${percent(quote.monthPct)}, 1Y ${percent(quote.yearPct)}`
   );
   return [`Today is ${today} in US Eastern time.`, ...lines].join("\n");
 }
@@ -51,8 +60,8 @@ const fetchChatNodeIds = unstable_cache(
       }
     );
     if (!response.ok) throw new Error(`Flow fetch failed: ${response.status}`);
-    const flow = await response.json();
-    const nodes: Array<{ id?: unknown }> = flow?.data?.nodes ?? [];
+    const flow = FlowSchema.parse(await response.json());
+    const nodes = flow.data.nodes;
     const idByPrefix = (prefix: string) =>
       nodes.find(
         (node) =>
@@ -85,25 +94,26 @@ async function resolveNodeIds(): Promise<{
   }
 }
 
-export async function answerDeepChat(
-  request: ChatRequest,
-  entities: FinanceEntity[]
-): Promise<ChatReply> {
-  if (!hasLangflow || !LANGFLOW_FLOW_ID) {
+async function executeDeepResearch(
+  snapshot: DeepResearchSnapshot
+): Promise<DeepResearchReply> {
+  if (!hasDeepResearch || !LANGFLOW_FLOW_ID) {
     return {
-      text: "Deep Research isn’t configured right now. Select regular mode for a standard StockSage answer.",
-      live: false,
+      workId: snapshot.workId,
+      status: "failure",
+      text: "Research deeper isn’t configured right now.",
     };
   }
-  if (await isOpen("langflow")) {
+  if (await isOpen("langflow-deep")) {
     return {
-      text: "Deep Research is temporarily unavailable. Please try again shortly or use regular mode.",
-      live: false,
+      workId: snapshot.workId,
+      status: "failure",
+      text: "Research deeper is temporarily unavailable. Please try again shortly.",
       retryable: true,
     };
   }
 
-  const usTickers = entities
+  const usTickers = snapshot.entities
     .filter((entity) => entity.market === "us" && entity.ticker)
     .map((entity) => entity.ticker as string)
     .slice(0, 4);
@@ -111,22 +121,28 @@ export async function answerDeepChat(
     getChatQuotes(usTickers).catch(() => []),
     resolveNodeIds(),
   ]);
-  const history = request.history
-    .map((turn) => `${turn.role === "ai" ? "StockSage" : "User"}: ${turn.text}`)
-    .join("\n");
-  const focus = entities
+  const focus = snapshot.entities
     .map((entity) => entity.ticker ?? entity.name)
     .join(", ");
+  const input = [
+    `Original question: ${snapshot.question}`,
+    `Regular answer: ${snapshot.regularAnswer}`,
+    `As of: ${snapshot.asOf}`,
+    `Entities: ${focus || "none"}`,
+    `Criteria: ${snapshot.criteria.join(", ") || "not specified"}`,
+    `Horizon: ${snapshot.horizon ?? "not specified"}`,
+    `Jurisdiction: ${snapshot.jurisdiction ?? "not specified"}`,
+    `Prior evidence identifiers: ${snapshot.evidenceIds.join(", ") || "none"}`,
+  ].join("\n");
 
   try {
     const text = await runLangflowFlow({
       flowId: LANGFLOW_FLOW_ID,
-      input: request.message,
-      sessionId: request.sessionId,
+      input,
+      sessionId: snapshot.workId,
       tweaks: {
         [nodeIds.promptId]: {
           live_data: liveData(quotes),
-          history,
           focus_tickers: focus,
         },
         [nodeIds.llmId]: {
@@ -135,16 +151,56 @@ export async function answerDeepChat(
       },
       timeoutMs: 35_000,
     });
-    await recordSuccess("langflow");
+    await recordSuccess("langflow-deep");
     const sanitized = sanitizeExternalCitations(text);
-    return { ...sanitized, live: true };
-  } catch (error) {
-    await recordFailure("langflow");
-    console.error("[chat] Deep Research Langflow request failed:", error);
+    const validationError = validateDeepResearchResult({
+      snapshot,
+      text: sanitized.text,
+      citationUrls: sanitized.citationUrls,
+    });
+    if (validationError) {
+      return {
+        workId: snapshot.workId,
+        status: "failure",
+        text: validationError,
+        retryable: true,
+      };
+    }
     return {
-      text: "Deep Research couldn’t complete this request. Please try again shortly or switch to regular mode.",
-      live: false,
+      workId: snapshot.workId,
+      status: "success",
+      ...sanitized,
+    };
+  } catch (error) {
+    await recordFailure("langflow-deep");
+    console.error(
+      `[stocksage] ${JSON.stringify({
+        event: "deep_failure",
+        provider: "langflow-deep",
+        reason: error instanceof Error ? error.name : "unknown",
+      })}`
+    );
+    return {
+      workId: snapshot.workId,
+      status: "failure",
+      text: "Research deeper couldn’t complete this request. The regular answer remains available.",
       retryable: true,
     };
   }
+}
+
+export async function runDeepResearch(
+  token: unknown
+): Promise<DeepResearchReply> {
+  const snapshot = parseDeepResearchSnapshot(token);
+  if (!snapshot) {
+    return {
+      workId: "invalid",
+      status: "failure",
+      text: "This research request is invalid or expired.",
+    };
+  }
+  return runIdempotentDeepWork(snapshot.workId, () =>
+    executeDeepResearch(snapshot)
+  );
 }
