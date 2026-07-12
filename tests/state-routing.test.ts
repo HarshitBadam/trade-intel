@@ -86,6 +86,59 @@ test("retains a comparison set for generic follow-ups", () => {
   );
 });
 
+test("anchored pronoun keeps the prior subject beside a named one", () => {
+  const spacex = resolveConversationState(
+    "whats up with spacex lately",
+    undefined,
+    []
+  );
+  const compared = resolveConversationState(
+    "compare its situation to tesla",
+    spacex.state,
+    []
+  );
+  assert.equal(compared.reasonCode, "anchored_reference_resolved");
+  assert.deepEqual(
+    compared.entities.map((entity) => entity.ticker ?? entity.name),
+    ["SpaceX", "TSLA"]
+  );
+
+  const idiom = resolveConversationState(
+    "is tesla worth it right now?",
+    spacex.state,
+    []
+  );
+  assert.deepEqual(
+    idiom.entities.map((entity) => entity.ticker ?? entity.name),
+    ["TSLA"]
+  );
+});
+
+test("starts Fortune ranking as a new topic after a comparison", () => {
+  const pair = resolveConversationState(
+    "Compare Apple and Microsoft",
+    undefined,
+    []
+  );
+  const fortune = resolveConversationState(
+    "Rank the Fortune 500 companies",
+    pair.state,
+    []
+  );
+  assert.deepEqual(
+    fortune.entities.map((entity) => entity.name),
+    ["Fortune 500"]
+  );
+  assert.equal(
+    routeMessage({
+      message: "Rank the Fortune 500 companies",
+      entities: fortune.entities,
+      state: fortune.state,
+    }).route,
+    "current_finance"
+  );
+});
+
 test("applies explicit entity corrections", () => {
   const initial = resolveConversationState(
     "Compare CBA and NAB",

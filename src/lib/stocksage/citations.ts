@@ -117,12 +117,38 @@ function markdownUrl(value: string): string {
   return value.replace(/\(/g, "%28").replace(/\)/g, "%29");
 }
 
+function normalizeCitationSyntax(text: string): string {
+  return text
+    .replace(
+      /[【(]((?:S\d{1,3})(?:\s*,\s*S\d{1,3})*)[】)]/g,
+      "[$1]"
+    )
+    .replace(/[【\[]\s*Validated Quote\s*[】\]]/gi, "");
+}
+
+function normalizeBareSourceIds(
+  text: string,
+  sources: EvidenceSource[]
+): string {
+  const known = new Set(sources.map((source) => source.id));
+  return text.replace(
+    /(^|[^\[\w])(S\d{1,3})(?![\w\]])/g,
+    (match, prefix: string, id: string) =>
+      known.has(id) ? `${prefix}[${id}]` : match
+  );
+}
+
 export function validCitationUrls(
   text: string,
   sources: EvidenceSource[]
 ): string[] {
   const ids = new Set(
-    [...stripMarkdownLinks(text).matchAll(/\b(S\d{1,3})\b/g)].map(
+    [
+      ...normalizeBareSourceIds(
+        stripMarkdownLinks(normalizeCitationSyntax(text)),
+        sources
+      ).matchAll(/\b(S\d{1,3})\b/g),
+    ].map(
       (match) => match[1]
     )
   );
@@ -137,6 +163,16 @@ export function stripUntrustedLinks(text: string): string {
     .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+([.,;:])/g, "$1")
     .trim();
+}
+
+export function stripTickerCitationMarkers(
+  text: string,
+  tickers: string[]
+): string {
+  const known = new Set(tickers.map((ticker) => ticker.toUpperCase()));
+  return text.replace(/\[([A-Z][A-Z0-9.-]{0,9})\]/g, (match, ticker) =>
+    known.has(ticker.toUpperCase()) ? "" : match
+  );
 }
 
 export function sanitizeExternalCitations(text: string): {
@@ -170,7 +206,10 @@ export function expandValidCitations(
   sources: EvidenceSource[]
 ): string {
   const byId = new Map(sources.map((source) => [source.id, source]));
-  return stripMarkdownLinks(text)
+  return normalizeBareSourceIds(
+    stripMarkdownLinks(normalizeCitationSyntax(text)),
+    sources
+  )
     .replace(
       /\[((?:S\d{1,3})(?:\s*,\s*S\d{1,3})+)\]/g,
       (_match, group: string) =>

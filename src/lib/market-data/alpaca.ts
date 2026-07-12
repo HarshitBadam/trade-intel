@@ -9,12 +9,10 @@ import {
 import { slidingLimiter } from "./limiter";
 
 const DATA_BASE = "https://data.alpaca.markets";
+const REQUEST_TIMEOUT_MS = 8_000;
 
 const acquire = slidingLimiter(180, 60_000);
 
-// SIP historical data is free only for windows ending >=15 min ago (a request
-// touching more recent SIP data 403s without Algo Trader Plus). Pad to 16 min
-// to stay clear of the boundary; IEX has no such restriction.
 const SIP_MIN_DELAY_MS = 16 * 60 * 1000;
 
 function barsFeedChain(): string[] {
@@ -40,6 +38,7 @@ async function alpacaFetch(path: string): Promise<Response> {
   return fetch(`${DATA_BASE}${path}`, {
     cache: "no-store",
     headers: authHeaders(),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 }
 
@@ -77,9 +76,6 @@ function barsQuery(
   return params.toString();
 }
 
-// Pages a SINGLE given feed to completion for one symbol. Returns bars plus a
-// `forbidden` flag (set on a 403) so the caller can decide whether to downgrade
-// to another feed — this keeps the feed-selection policy out of the paging loop.
 async function fetchBarsForFeed(
   symbol: string,
   timeframe: AlpacaTimeframe,
@@ -97,9 +93,6 @@ async function fetchBarsForFeed(
       `/v2/stocks/${encodeURIComponent(symbol)}/bars?${qs}`
     );
     if (!res.ok) {
-      // A 403 means "not entitled to this feed" — surface it so the caller can
-      // fall back to another feed. Any other status is a real failure and throws
-      // so the caller's cache doesn't pin it.
       if (res.status === 403) return { bars: out, forbidden: true };
       throw new Error(`alpaca bars failed for ${symbol}: ${res.status}`);
     }
@@ -113,9 +106,6 @@ async function fetchBarsForFeed(
   return { bars: out, forbidden: false };
 }
 
-// Historical bars for ONE symbol. Prefers SIP (full-market volume) and
-// downgrades to IEX on a 403 (no SIP entitlement). Throws on any other non-OK
-// status so the caller's cache doesn't pin the failure.
 export async function getAlpacaBars(
   symbol: string,
   timeframe: AlpacaTimeframe,
@@ -142,11 +132,6 @@ export async function getAlpacaBars(
   return [];
 }
 
-// Stitches a live IEX tail onto the SIP base so a sub-daily series reaches ~now
-// instead of stopping ~16 min back (SIP is free only for windows ending >=15 min ago).
-// IEX has no such clamp, so we fill ONLY the trailing minutes SIP withholds — SIP
-// stays the accurate base for volume/history. Best-effort: a failed tail returns the
-// SIP base unchanged.
 export async function getAlpacaBarsLive(
   symbol: string,
   timeframe: AlpacaTimeframe,
@@ -156,16 +141,11 @@ export async function getAlpacaBarsLive(
 ): Promise<AlpacaBar[]> {
   const base = await getAlpacaBars(symbol, timeframe, startISO, endISO, limitPerPage);
 
-  // Only SIP is clamped. If the configured feed is already IEX the base is real-time,
-  // and with no base bars there's no gap to reason about.
   if (ALPACA_HISTORICAL_FEED !== "sip" || base.length === 0) return base;
 
   const lastMs = Date.parse(base[base.length - 1].t);
   if (!Number.isFinite(lastMs)) return base;
 
-  // Only bridge a genuine live SIP-clamp gap: last bar 5 min–3 h behind now.
-  // Fresher than 5 min means SIP is effectively live already; older than 3 h
-  // means the market is closed and IEX would return nothing useful.
   const age = Date.now() - lastMs;
   if (age < 5 * 60 * 1000 || age > 3 * 60 * 60 * 1000) return base;
 
@@ -178,9 +158,6 @@ export async function getAlpacaBarsLive(
       "iex",
       limitPerPage
     );
-    // Append only strictly-newer bars. NOTE: these final bars carry IEX volume
-    // (~2.5% of market) rather than SIP full-market volume — acceptable for just
-    // the last few live minutes.
     const merged = base.slice();
     for (const b of tail) {
       if (Date.parse(b.t) > lastMs) merged.push(b);
@@ -192,8 +169,6 @@ export async function getAlpacaBarsLive(
   }
 }
 
-// Multi-symbol bars. The endpoint sorts by symbol first, then timestamp, so a
-// single symbol can fill the page limit — we page until exhausted and merge by symbol.
 export async function getAlpacaMultiBars(
   symbols: string[],
   timeframe: AlpacaTimeframe,
@@ -253,8 +228,6 @@ export type AlpacaBarLite = {
   n?: number;
 };
 
-// A snapshot bundles the latest trade/quote plus today's and yesterday's daily
-// bar — everything needed to derive a live quote in a single multi-symbol request.
 export type AlpacaSnapshot = {
   latestTrade?: { p?: number };
   minuteBar?: AlpacaBarLite;
@@ -262,8 +235,6 @@ export type AlpacaSnapshot = {
   prevDailyBar?: AlpacaBarLite;
 };
 
-// Latest snapshots for many symbols in one request (chunked to keep URLs sane).
-// Throws on a non-OK status so the caller can fall back.
 export async function getAlpacaSnapshots(
   symbols: string[]
 ): Promise<Record<string, AlpacaSnapshot>> {
@@ -283,8 +254,6 @@ export async function getAlpacaSnapshots(
       throw new Error(`alpaca snapshots failed: ${res.status}`);
     }
     const data = (await res.json()) as Record<string, unknown>;
-    // Most deployments key the map directly by symbol; tolerate a `snapshots`
-    // envelope just in case.
     const map = (
       data && typeof data === "object" && "snapshots" in data
         ? (data as { snapshots: Record<string, AlpacaSnapshot> }).snapshots

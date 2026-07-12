@@ -26,6 +26,7 @@ function providers(counts: Record<string, number>): RetrievalProviders {
           price: 210,
           asOf: "2026-07-10",
           dayPct: 1.25,
+          fewDaysPct: 1.6,
           weekPct: 2,
           monthPct: 3,
           yearPct: 15,
@@ -184,8 +185,12 @@ test("eight-entity comparison plans evidence for every entity", () => {
       criteria: ["valuation", "risk"],
     },
   });
-  assert.equal(plan.queries.length, 8);
-  assert.ok(plan.queries.every((query) => query.provider === "tavily"));
+  assert.equal(plan.queries.length, 9);
+  assert.equal(plan.queries[0]?.provider, "quotes");
+  assert.equal(
+    plan.queries.filter((query) => query.provider === "tavily").length,
+    8
+  );
   assert.deepEqual(
     plan.requiredEntityIds,
     entities.map((entity) => entity.id)
@@ -216,6 +221,7 @@ test("fallback exposes verified source links without raw source content", () => 
     resolution.entities,
     {
       quotes: [],
+      fundamentals: [],
       sources: [
         {
           id: "S1",
@@ -238,7 +244,7 @@ test("fallback exposes verified source links without raw source content", () => 
   assert.deepEqual(fallback.citationUrls, ["https://example.com/source"]);
 });
 
-test("historical questions avoid current quote retrieval", () => {
+test("trailing historical questions use validated period returns", () => {
   const resolution = resolveConversationState(
     "How did Apple perform last year?",
     undefined,
@@ -252,9 +258,13 @@ test("historical questions avoid current quote retrieval", () => {
   });
   assert.deepEqual(
     plan.queries.map((query) => query.provider),
-    ["astra", "tavily"]
+    ["quotes", "astra", "tavily"]
   );
-  assert.ok(plan.queries.every((query) => query.freshnessDays === 400));
+  assert.ok(
+    plan.queries
+      .filter((query) => query.provider !== "quotes")
+      .every((query) => query.freshnessDays === 400)
+  );
 });
 
 test("pronoun current query is grounded with the resolved company", async () => {

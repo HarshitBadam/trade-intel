@@ -10,6 +10,90 @@ function normalized(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+const EXCLUDED_EVIDENCE_HOSTS = [
+  "facebook.com",
+  "instagram.com",
+  "reddit.com",
+  "tiktok.com",
+  "x.com",
+  "twitter.com",
+  "youtube.com",
+];
+const WEAK_METRIC_HOSTS = [
+  "247wallst.com",
+  "50pros.com",
+  "alphaspread.com",
+  "hireinsouth.com",
+  "macroaxis.com",
+  "sharewise.com",
+];
+const HIGH_AUTHORITY_HOSTS = [
+  "sec.gov",
+  "fortune.com",
+  "fortunemedia.mediaroom.com",
+  "reuters.com",
+  "apnews.com",
+  "bloomberg.com",
+  "investor.",
+  "ir.",
+];
+
+function hostname(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function hostMatches(host: string, candidates: string[]): boolean {
+  return candidates.some(
+    (candidate) =>
+      host === candidate ||
+      host.endsWith(`.${candidate}`) ||
+      host.includes(candidate)
+  );
+}
+
+function evidenceAuthority(input: EvidenceInput): number {
+  const host = hostname(input.url);
+  if (hostMatches(host, HIGH_AUTHORITY_HOSTS)) return 4;
+  if (
+    hostMatches(host, [
+      "cnbc.com",
+      "finance.yahoo.com",
+      "morningstar.com",
+      "nasdaq.com",
+      "nyse.com",
+      "wsj.com",
+    ])
+  ) {
+    return 3;
+  }
+  if (input.kind === "astra") return 2;
+  return 1;
+}
+
+function acceptableAuthority(input: EvidenceInput): boolean {
+  const host = hostname(input.url);
+  if (!host || hostMatches(host, EXCLUDED_EVIDENCE_HOSTS)) return false;
+  const criteria = input.criteria ?? [];
+  if (criteria.includes("revenue ranking")) {
+    return hostMatches(host, ["fortune.com", "fortunemedia.mediaroom.com"]);
+  }
+  if (
+    criteria.some((criterion) =>
+      ["earnings", "valuation", "growth", "risk", "performance"].includes(
+        criterion
+      )
+    ) &&
+    hostMatches(host, WEAK_METRIC_HOSTS)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 const GENERIC_ENTITY_TERMS = new Set([
   "class",
   "common",
@@ -27,8 +111,9 @@ const GENERIC_ENTITY_TERMS = new Set([
 function entityTerms(entity: FinanceEntity): string[] {
   const name = normalized(entity.name);
   const terms = [name, normalized(entity.ticker ?? "")].filter(
-    (term) => term.length >= 3
+    (term) => term.length >= 3 || (name.length === 2 && term === name)
   );
+  if (name === "fortune 100") terms.push("fortune 500");
   if (name.includes(" ")) {
     terms.push(
       ...name
@@ -42,8 +127,48 @@ function entityTerms(entity: FinanceEntity): string[] {
 }
 
 function mentionsEntity(input: EvidenceInput, entity: FinanceEntity): boolean {
-  const haystack = normalized(`${input.title} ${input.excerpt} ${input.url}`);
-  return entityTerms(entity).some((term) => haystack.includes(term));
+  let host = "";
+  try {
+    host = new URL(input.url).hostname;
+  } catch {
+    host = "";
+  }
+  const haystack = normalized(
+    `${input.title} ${host} ${input.excerpt.slice(0, 280)}`
+  );
+  return entityTerms(entity).some((term) =>
+    term.length <= 2
+      ? new RegExp(`(?:^| )${term}(?: |$)`).test(haystack)
+      : haystack.includes(term)
+  );
+}
+
+function balanceByEntity(
+  inputs: EvidenceInput[],
+  requiredEntityIds: string[]
+): EvidenceInput[] {
+  if (requiredEntityIds.length < 2) return inputs;
+  const selected: EvidenceInput[] = [];
+  const seen = new Set<string>();
+  const queues = requiredEntityIds.map((entityId) =>
+    inputs.filter((input) => input.entityIds?.includes(entityId))
+  );
+  for (let index = 0; queues.some((queue) => index < queue.length); index += 1) {
+    for (const queue of queues) {
+      const input = queue[index];
+      if (!input) continue;
+      const key = input.url;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      selected.push(input);
+    }
+  }
+  for (const input of inputs) {
+    if (seen.has(input.url)) continue;
+    seen.add(input.url);
+    selected.push(input);
+  }
+  return selected;
 }
 
 const CRITERION_TERMS: Record<string, RegExp> = {
@@ -55,6 +180,8 @@ const CRITERION_TERMS: Record<string, RegExp> = {
   earnings:
     /\b(?:earnings|revenue|net income|net loss|profitability|operating margin|eps|financial results|quarterly results)\b/i,
   dividends: /\b(?:dividend|yield|income)\b/i,
+  size: /\b(?:market cap|capitali[sz]ation|assets|revenue|largest|biggest|size|valued at)\b/i,
+  "revenue ranking": /\b(?:fortune|rank(?:ed|ing)?|revenue|sales)\b/i,
   "current developments": /\b(?:update|news|today|recent|report|announce|earnings|price|shares?|stock|rose|fell|guidance|regulat|lawsuit)\b/i,
 };
 
@@ -75,7 +202,13 @@ function freshEnough(
   freshnessDays: number | undefined
 ): boolean {
   if (!freshnessDays) return true;
-  if (!input.publishedAt) return false;
+  if (!input.publishedAt) {
+    const asOfYear = new Date(plan.asOf).getUTCFullYear();
+    return (
+      input.criteria?.includes("revenue ranking") === true &&
+      new RegExp(`\\b${asOfYear}\\b`).test(`${input.title} ${input.excerpt}`)
+    );
+  }
   const published = Date.parse(input.publishedAt);
   const asOf = Date.parse(plan.asOf);
   if (!Number.isFinite(published) || !Number.isFinite(asOf)) return false;
@@ -106,6 +239,7 @@ export function filterEvidence(args: {
   );
   const accepted = args.inputs.flatMap((input) => {
     if (input.score !== undefined && input.score < 0.15) return [];
+    if (!acceptableAuthority(input)) return [];
     const freshnessDays = input.queryId
       ? freshnessByQuery.get(input.queryId)
       : undefined;
@@ -127,7 +261,17 @@ export function filterEvidence(args: {
     if ((input.criteria?.length ?? 0) > 0 && criteria.length === 0) return [];
     return [{ ...input, criteria }];
   });
-  return createEvidenceSources(accepted, 8);
+  const ranked = [...accepted].sort(
+    (left, right) =>
+      evidenceAuthority(right) - evidenceAuthority(left) ||
+      (right.score ?? 0) - (left.score ?? 0)
+  );
+  const balanced = balanceByEntity(ranked, args.plan.requiredEntityIds);
+  const limit = Math.min(
+    12,
+    Math.max(8, args.plan.requiredEntityIds.length)
+  );
+  return createEvidenceSources(balanced, limit);
 }
 
 export function evidenceCoverage(args: {

@@ -7,10 +7,7 @@ const rawPolygon = Boolean(POLYGON_API_KEY);
 
 export const ALPACA_API_KEY_ID = process.env.ALPACA_API_KEY_ID;
 export const ALPACA_API_SECRET_KEY = process.env.ALPACA_API_SECRET_KEY;
-// Free plan only permits IEX for snapshots (SIP requires Algo Trader Plus).
 export const ALPACA_FEED = process.env.ALPACA_FEED ?? "iex";
-// IEX covers ~2.5% of US volume; SIP (100%) is free on Basic for bars >=15 min old.
-// Set to "iex" only if the account lacks SIP historical access.
 export const ALPACA_HISTORICAL_FEED = process.env.ALPACA_HISTORICAL_FEED ?? "sip";
 const rawAlpaca = Boolean(ALPACA_API_KEY_ID && ALPACA_API_SECRET_KEY);
 
@@ -45,13 +42,16 @@ const rawLangflowAnalyze = Boolean(
   LANGFLOW_BASE_URL && LANGFLOW_API_KEY && LANGFLOW_ANALYZE_FLOW_ID
 );
 
-// Two models share one Groq account so each gets its own per-model daily bucket:
-// 8B (14,400 RPD) for batch analysis; 70B (1,000 RPD) for interactive chat.
 export const GROQ_API_KEY = process.env.GROQ_API_KEY;
 export const GROQ_ANALYSIS_MODEL =
   process.env.GROQ_ANALYSIS_MODEL ?? "llama-3.1-8b-instant";
 export const GROQ_CHAT_MODEL =
-  process.env.GROQ_CHAT_MODEL ?? "llama-3.3-70b-versatile";
+  process.env.GROQ_CHAT_MODEL ?? "meta-llama/llama-4-scout-17b-16e-instruct";
+export const GROQ_FALLBACK_MODEL =
+  process.env.GROQ_FALLBACK_MODEL ?? "llama-3.3-70b-versatile";
+export const GROQ_TRIAGE_MODEL =
+  process.env.GROQ_TRIAGE_MODEL ??
+  "meta-llama/llama-4-scout-17b-16e-instruct";
 const rawGroq = Boolean(GROQ_API_KEY);
 
 export const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
@@ -85,7 +85,7 @@ export const STOCKSAGE_DEEP_SNAPSHOT_SECRET =
   process.env.AUTH_SECRET ??
   process.env.NEXTAUTH_SECRET;
 export const hasDeepResearch = Boolean(
-  hasLangflow && STOCKSAGE_DEEP_SNAPSHOT_SECRET
+  hasGroq && (hasTavily || hasAstra) && STOCKSAGE_DEEP_SNAPSHOT_SECRET
 );
 
 if (

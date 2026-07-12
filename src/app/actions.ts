@@ -17,19 +17,36 @@ export type {
 } from "@/lib/stocksage/types";
 
 export async function getSummary(request: unknown): Promise<ChatReply> {
-  const access = await guard("chat", { limit: 10, windowSec: 60 });
+  const parsed = parseChatRequest(request);
+  if (!parsed.ok) {
+    return {
+      text: parsed.error,
+      live: false,
+      kind: "error",
+      errorCode: "invalid_request",
+    };
+  }
+  const access = await guard("chat", { limit: 24, windowSec: 60 });
   if (!access.ok) {
     if (access.reason === "unauthorized") {
-      return { text: "Please sign in to chat with StockSage.", live: false };
+      return {
+        text: "Please sign in to continue your StockSage conversation.",
+        live: false,
+        kind: "error",
+        errorCode: "unauthorized",
+        state: parsed.value.state,
+      };
     }
     return {
-      text: `You're sending messages too quickly. Try again in ${access.retryAfterSec}s.`,
+      text: `Let’s pause for ${access.retryAfterSec}s, then you can continue from the same conversation.`,
       live: false,
+      kind: "error",
+      errorCode: "rate_limited",
+      retryable: true,
+      state: parsed.value.state,
     };
   }
 
-  const parsed = parseChatRequest(request);
-  if (!parsed.ok) return { text: parsed.error, live: false };
   return answerChat(parsed.value);
 }
 

@@ -1,20 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getSummary, researchDeeper } from "@/app/actions";
-import { LegalDialog } from "@/components/legal/LegalModal";
-import type { ConversationState } from "@/lib/stocksage/types";
-import {
-  ChatMessage,
-  type ChatMessageModel,
-} from "./ChatMessage";
-import styles from "./FloatingWidget.module.css";
+import type {
+  ChatRequest,
+  ChatTurn,
+  ConversationState,
+} from "@/lib/stocksage/types";
+import type { ChatMessageModel } from "./ChatMessage";
+import { FloatingWidgetView } from "./FloatingWidgetView";
 
 const initialMessages: ChatMessageModel[] = [
   {
     id: "welcome",
     sender: "ai",
-    text: "Welcome to StockSage, your AI markets assistant. Ask me about a public company, market, or finance concept.",
+    text: "Hey — I’m StockSage. Ask me about a company, compare a few investments, or talk through what’s moving a market.",
   },
 ];
 
@@ -30,6 +28,20 @@ function localId(): string {
     : `message-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function chatHistory(messages: ChatMessageModel[]): ChatTurn[] {
+  return messages
+    .filter((message) => message.id !== "welcome" && !message.error)
+    .map((message) => ({
+      role: message.sender,
+      text:
+        message.sender === "ai" &&
+        message.deepState?.status === "success" &&
+        message.deepState.text
+          ? `${message.text}\n\nDeeper research:\n${message.deepState.text}`
+          : message.text,
+    }));
+}
+
 export function FloatingWidget({
   isExpanded: propIsExpanded,
   onClose,
@@ -42,19 +54,30 @@ export function FloatingWidget({
   const [isThinking, setIsThinking] = useState(false);
   const [showLegal, setShowLegal] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const conversationStateRef = useRef<ConversationState | undefined>(undefined);
   const sessionIdRef = useRef<string>(localId());
+  const requestInFlightRef = useRef(false);
+  const researchInFlightRef = useRef(new Set<string>());
+  const retryRequestsRef = useRef(new Map<string, ChatRequest>());
   const isExpanded = propIsExpanded ?? isExpandedInternal;
 
-  const handleOpen = () => {
+  const handleOpen = useCallback(() => {
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     if (onOpen) onOpen();
     else setIsExpandedInternal(true);
-  };
+  }, [onOpen]);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (onClose) onClose();
     setIsExpandedInternal(false);
-  };
+    requestAnimationFrame(() => previousFocusRef.current?.focus());
+  }, [onClose]);
 
   useEffect(() => {
     document.body.style.overflow = isExpanded ? "hidden" : "unset";
@@ -64,57 +87,133 @@ export function FloatingWidget({
   }, [isExpanded]);
 
   useEffect(() => {
+    if (!isExpanded) return;
+    inputRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") handleClose();
+      if (event.key !== "Tab") return;
+      const focusable = [
+        ...(dialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), a[href]'
+        ) ?? []),
+      ];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [handleClose, isExpanded]);
+
+  useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking]);
 
-  const sendMessage = async () => {
-    const text = inputValue.trim();
-    if (!text || isThinking) return;
-    const history = messages
-      .filter((message) => message.id !== "welcome")
-      .map((message) => ({ role: message.sender, text: message.text }));
-    setInputValue("");
-    setMessages((previous) => [
-      ...previous,
-      { id: localId(), sender: "user", text },
-    ]);
+  const submitRequest = async (
+    request: ChatRequest,
+    appendUserMessage: boolean
+  ) => {
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
+    if (appendUserMessage) {
+      setMessages((previous) => [
+        ...previous,
+        { id: localId(), sender: "user", text: request.message },
+      ]);
+    }
     setIsThinking(true);
     try {
-      const reply = await getSummary({
-        message: text,
-        sessionId: sessionIdRef.current,
-        history,
-        state: conversationStateRef.current,
-      });
-      conversationStateRef.current = reply.state;
+      const reply = await getSummary(request);
+      if (reply.state) conversationStateRef.current = reply.state;
+      const messageId = reply.responseId ?? localId();
+      if (reply.kind === "error") {
+        if (reply.retryable) retryRequestsRef.current.set(messageId, request);
+        setMessages((previous) => [
+          ...previous,
+          {
+            id: messageId,
+            sender: "ai",
+            text: reply.text,
+            error: true,
+            retryable: reply.retryable,
+          },
+        ]);
+        return;
+      }
+      if (reply.retryable) {
+        retryRequestsRef.current.set(messageId, request);
+      }
       setMessages((previous) => [
         ...previous,
         {
-          id: reply.responseId ?? localId(),
+          id: messageId,
           sender: "ai",
           text: reply.text,
           citationUrls: reply.citationUrls,
           deepResearch: reply.deepResearch,
           deepState: reply.deepResearch ? { status: "idle" } : undefined,
+          retryable: reply.retryable,
         },
       ]);
     } catch {
+      const messageId = localId();
+      retryRequestsRef.current.set(messageId, request);
       setMessages((previous) => [
         ...previous,
         {
-          id: localId(),
+          id: messageId,
           sender: "ai",
-          text: "Something went wrong while fetching an answer. Please try again.",
+          text: "I lost the connection while answering. Your conversation is still here.",
+          error: true,
+          retryable: true,
         },
       ]);
     } finally {
+      requestInFlightRef.current = false;
       setIsThinking(false);
     }
   };
 
+  const sendMessage = () => {
+    const text = inputValue.trim();
+    if (!text || requestInFlightRef.current) return;
+    const request: ChatRequest = {
+      message: text,
+      sessionId: sessionIdRef.current,
+      history: chatHistory(messages),
+      state: conversationStateRef.current,
+    };
+    setInputValue("");
+    void submitRequest(request, true);
+  };
+
+  const retryMessage = (messageId: string) => {
+    const request = retryRequestsRef.current.get(messageId);
+    if (!request || requestInFlightRef.current) return;
+    retryRequestsRef.current.delete(messageId);
+    setMessages((previous) =>
+      previous.filter((message) => message.id !== messageId)
+    );
+    void submitRequest(request, false);
+  };
+
   const runResearch = async (messageId: string) => {
     const target = messages.find((message) => message.id === messageId);
-    if (!target?.deepResearch || target.deepState?.status === "pending") return;
+    if (
+      !target?.deepResearch ||
+      target.deepState?.status === "pending" ||
+      researchInFlightRef.current.has(messageId)
+    ) {
+      return;
+    }
+    researchInFlightRef.current.add(messageId);
     setMessages((previous) =>
       previous.map((message) =>
         message.id === messageId
@@ -160,134 +259,28 @@ export function FloatingWidget({
             : message
         )
       );
+    } finally {
+      researchInFlightRef.current.delete(messageId);
     }
   };
 
   return (
-    <>
-      {!isExpanded && (
-        <div className="pointer-events-auto fixed bottom-6 right-6 z-10">
-          <div
-            onClick={handleOpen}
-            className="glass-card w-[200px] cursor-pointer rounded-lg border border-border bg-card p-4 text-card-foreground shadow-lg transition-shadow hover:shadow-xl"
-          >
-            <h3 className="mb-2 font-semibold">StockSage</h3>
-            <div className="text-sm text-muted-foreground">
-              Get Stock Insights
-            </div>
-          </div>
-        </div>
-      )}
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/30 backdrop-blur-xl"
-            onClick={handleClose}
-          >
-            <motion.div
-              initial={{
-                width: "200px",
-                height: "76px",
-                position: "absolute",
-                bottom: "24px",
-                right: "24px",
-              }}
-              animate={{
-                width: "calc(100% - 64px)",
-                height: "calc(100% - 64px)",
-                position: "absolute",
-                bottom: "32px",
-                right: "32px",
-              }}
-              exit={{
-                width: "200px",
-                height: "76px",
-                position: "absolute",
-                bottom: "24px",
-                right: "24px",
-              }}
-              transition={{ type: "spring", damping: 25, stiffness: 120 }}
-              className="absolute origin-bottom-right overflow-y-auto rounded-xl border border-white/50 bg-white/80 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-card/85"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="flex h-full flex-col p-6">
-                <div className="mx-auto flex h-full w-full max-w-7xl flex-col">
-                  <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-xl font-bold">StockSage</h2>
-                    <button
-                      onClick={handleClose}
-                      className="rounded-full p-2 transition-colors hover:bg-muted"
-                      aria-label="Close StockSage"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-y-scroll">
-                    <div className={styles.chatContent}>
-                      {messages.map((message) => (
-                        <ChatMessage
-                          key={message.id}
-                          message={message}
-                          onResearch={runResearch}
-                        />
-                      ))}
-                      {isThinking && (
-                        <div className="flex max-w-full justify-start">
-                          <div className="max-w-xs animate-pulse rounded-lg p-3 text-muted-foreground">
-                            Thinking…
-                          </div>
-                        </div>
-                      )}
-                      <div ref={chatEndRef} />
-                    </div>
-                  </div>
-                  <div className="mt-auto flex gap-4">
-                    <form
-                      className="flex w-full items-center rounded-lg bg-muted p-2 outline outline-1 outline-border"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        sendMessage();
-                      }}
-                    >
-                      <input
-                        type="text"
-                        value={inputValue}
-                        onChange={(event) => setInputValue(event.target.value)}
-                        maxLength={1200}
-                        placeholder="Ask about a company, market, or finance concept"
-                        className="w-full bg-transparent px-2 outline-none"
-                      />
-                    </form>
-                    <button
-                      type="button"
-                      onClick={sendMessage}
-                      disabled={isThinking || !inputValue.trim()}
-                      aria-label="Send message"
-                      className="flex h-12 w-12 shrink-0 items-center justify-center self-center rounded-full bg-foreground text-background shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-                    >
-                      <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
-                    </button>
-                  </div>
-                  <p className="mt-4 text-center text-xs text-muted-foreground">
-                    StockSage is AI and can be wrong or out of date.{" "}
-                    <button
-                      type="button"
-                      onClick={() => setShowLegal(true)}
-                      className="font-medium text-foreground/80 underline-offset-4 hover:underline"
-                    >
-                      Terms &amp; Privacy
-                    </button>
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <LegalDialog open={showLegal} onClose={() => setShowLegal(false)} />
-    </>
+    <FloatingWidgetView
+      isExpanded={isExpanded}
+      handleOpen={handleOpen}
+      handleClose={handleClose}
+      dialogRef={dialogRef}
+      messages={messages}
+      runResearch={runResearch}
+      retryMessage={retryMessage}
+      isThinking={isThinking}
+      chatEndRef={chatEndRef}
+      inputRef={inputRef}
+      inputValue={inputValue}
+      setInputValue={setInputValue}
+      sendMessage={sendMessage}
+      showLegal={showLegal}
+      setShowLegal={setShowLegal}
+    />
   );
 }

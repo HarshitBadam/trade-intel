@@ -30,10 +30,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const fmtDay = (d: Date) => d.toISOString().slice(0, 10);
 const isoTime = (ms: number) => new Date(ms).toISOString();
 
-// Shared price-bar fetcher: Alpaca (real-time IEX, deep history) → Polygon
-// aggregates → nothing (caller handles mock in demo mode). Both providers return
-// `v`/`n`, so the resulting BarPoints always carry volume/trades. Throws when
-// all configured providers fail so unstable_cache doesn't pin the failure.
 async function fetchBarsChain(
   ticker: string,
   alpacaTimeframe: AlpacaTimeframe,
@@ -45,8 +41,6 @@ async function fetchBarsChain(
   let alpacaFailed = false;
   if (hasAlpaca) {
     try {
-      // Sub-daily series pass liveTail to stitch an IEX tail onto the SIP base
-      // so the 1D/fine chart reaches ~now instead of stopping ~16 min back.
       const raw = liveTail
         ? await getAlpacaBarsLive(ticker, alpacaTimeframe, isoTime(fromMs), isoTime(toMs))
         : await getAlpacaBars(ticker, alpacaTimeframe, isoTime(fromMs), isoTime(toMs));
@@ -74,9 +68,7 @@ async function fetchBarsChain(
   return [];
 }
 
-// Daily candles (~2y). Clamped to ~2y so the Polygon fallback stays inside the
-// free tier's aggregate window (a 5y request 403s there); Alpaca is fine either way.
-async function fetchCandles(ticker: string) {
+export async function getCandlesFresh(ticker: string) {
   const to = Date.now();
   const from = to - 2 * 365 * DAY_MS;
   const polygonUrl = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${fmtDay(
@@ -96,11 +88,6 @@ async function fetchCandles(ticker: string) {
     latest_volume: typeof last.volume === "number" ? Math.round(last.volume) : null,
   };
 
-  // The daily bars are SIP, so the headline price lags ~16 min during market hours.
-  // Best-effort override of the scalar price fields with the real-time IEX snapshot,
-  // refreshed each 5-min cache window. chart_data/latest_volume stay SIP-derived
-  // (full-market volume stays accurate); the snapshot's change is measured vs the
-  // previous daily close, matching the day-change semantics.
   if (hasAlpaca) {
     try {
       const snaps = await getAlpacaSnapshots([ticker]);
@@ -118,7 +105,7 @@ async function fetchCandles(ticker: string) {
   return result;
 }
 
-export const getCandlesCached = unstable_cache(fetchCandles, ["candles"], {
+export const getCandlesCached = unstable_cache(getCandlesFresh, ["candles"], {
   revalidate: 300,
   tags: ["candles"],
 });
@@ -155,8 +142,6 @@ export const readAnalysisDocCached = unstable_cache(
   { revalidate: 600, tags: ["news"] }
 );
 
-// 1-minute intraday over the last few sessions, sliced to the latest session for
-// the 1D view. Alpaca (real-time IEX) → Polygon 1-min aggregates.
 async function fetchIntraday(ticker: string): Promise<BarPoint[] | null> {
   const to = Date.now();
   const from = to - 5 * DAY_MS;
@@ -177,8 +162,6 @@ export const getIntradayCached = unstable_cache(fetchIntraday, ["intraday-1m"], 
   tags: ["candles"],
 });
 
-// 15-minute bars power 1W/1M/3M as a dense line. ~92 days is capped so the
-// Polygon fallback stays under its 50k-result cap and inside the free window.
 async function fetchFine(ticker: string): Promise<BarPoint[] | null> {
   const to = Date.now();
   const from = to - 96 * DAY_MS;

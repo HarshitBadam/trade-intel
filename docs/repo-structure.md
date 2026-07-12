@@ -77,7 +77,7 @@ The source tree, annotated. Config and generated files are omitted.
     │   ├── stocksage/
     │   │   ├── chat.ts          # selective request lifecycle orchestration
     │   │   ├── regular.ts       # regular synthesis and safe fallback
-    │   │   ├── deep.ts          # per-response Langflow research
+    │   │   ├── deep.ts          # per-response in-app deeper research
     │   │   ├── deep-snapshot.ts # signed immutable research snapshots
     │   │   ├── deep-store.ts    # idempotent research result reuse
     │   │   ├── deep-validation.ts # deep-report publication checks
@@ -92,6 +92,7 @@ The source tree, annotated. Config and generated files are omitted.
     │   │   ├── entities.ts      # US quote-safe and web-only entity resolution
     │   │   ├── intent.ts        # deterministic route decisions
     │   │   ├── regular-prompt.ts    # evidence-bound intent-aware prompt
+    │   │   ├── synthesis.ts     # isolated Groq model failover and admission
     │   │   ├── tavily.ts        # bounded server-side Tavily fetch wrapper
     │   │   ├── telemetry.ts     # structured StockSage request telemetry
     │   │   ├── types.ts         # validated chat contracts

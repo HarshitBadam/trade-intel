@@ -1,26 +1,26 @@
 # StockSage — Langflow Flows
 
-StockSage keeps two [Langflow](https://www.langflow.org/) flows (v1.10), both
-backed by Groq. The analysis flow remains the primary batch path with a direct
-Groq fallback. The chat flow is reserved for per-response deeper research;
-ordinary chat runs the selective Next.js path and calls Groq directly.
+StockSage keeps two [Langflow](https://www.langflow.org/) flow definitions
+(v1.10), both backed by Groq. The analysis flow remains the optional primary
+batch path with a direct-Groq fallback. The chat flow is retained as a legacy
+development artifact; production chat and Research deeper now run through the
+typed in-app retrieval and model-failover path.
 
 ```
-                ┌──────────────────────── Vercel (Next.js) ────────────────────────┐
-                │  deep analysis (cron / priority)         Deep Research chat        │
-                └─────────┬───────────────────────────────────────┬─────────────────┘
-                          │ POST /run/<analyze_id>                 │ POST /run/<chat_id>
-                          │  (fallback: Groq 8B direct)            │  (eligible response only)
-                          ▼                                        ▼
-        ┌──────────────────────────────┐          ┌──────────────────────────────┐
-        │  stocksage-analysis.json      │          │  stocksage-chat.json          │
-        │  STATELESS: articles → labels │          │  RAG chat (reads Astra news)  │
-        │  Groq llama-3.1-8b-instant    │          │  Groq llama-3.3-70b-versatile │
-        └───────────────┬──────────────┘          └───────────────┬──────────────┘
-                    labels JSON                                   read
-                          ▼                                        ▼
-                Next.js writes to Astra  ◀───────────────────  Astra DB
-                (single writer, D19)                          (prototype_db_v2)
+                ┌──────────── Vercel (Next.js) ────────────┐
+                │  deep analysis (cron / priority)         │
+                └──────────────────┬────────────────────────┘
+                                   │ POST /run/<analyze_id>
+                                   │ fallback: Groq 8B direct
+                                   ▼
+                 ┌────────────────────────────────┐
+                 │ stocksage-analysis.json         │
+                 │ STATELESS: articles → labels    │
+                 │ Groq llama-3.1-8b-instant       │
+                 └──────────────────┬──────────────┘
+                                    ▼
+                         Next.js writes to Astra
+                         (single writer, D19)
 ```
 
 Both LLM lanes use **one Groq account, two models** so each lane gets its own
@@ -76,9 +76,10 @@ reservation against the 6,000 TPM preflight, so `prompt + 2,400 < 6,000`.
 
 ---
 
-## `stocksage-chat.json` — Deep Research chat
+## `stocksage-chat.json` — legacy Deep Research flow
 
-Runs only when the user clicks Research deeper on an eligible completed answer.
+This flow is no longer called by the user-facing Research deeper action. It is
+kept for flow development and migration reference.
 The server verifies a signed immutable snapshot, reuses the same work id on
 repeat requests, and sends bounded question/answer/entity context to this flow.
 It answers from ingested Astra news, a **live Tavily web search**, and market
@@ -121,12 +122,12 @@ Langflow and Groq workloads have isolated circuit breakers
   is set **and** the `langflow-analysis` breaker is closed, run the flow and parse its text; on any
   failure record a breaker failure and fall through to a direct
   `groqChatJSON` on the 8B model through `groq-analysis`.
-- **Deeper research** (`src/lib/stocksage/deep.ts`): if `langflow-deep` is closed, run
-  the existing chat flow. A failure returns a retryable Deep Research error
-  while preserving the regular answer.
-- **Regular chat** (`src/lib/stocksage/regular.ts`): does not call Langflow. It
-  retrieves only planned validated context in Next.js and calls `groqChatText`
-  on the 70B model through `groq-chat`.
+- **Deeper research** (`src/lib/stocksage/deep.ts`): broadens the typed in-app
+  evidence plan and synthesizes through isolated Groq model lanes. A failure
+  returns a retryable Deep Research error while preserving the regular answer.
+- **Regular chat** (`src/lib/stocksage/regular.ts`): retrieves only planned
+  validated context in Next.js and uses 70B, GPT OSS, then 8B synthesis lanes
+  before an attributed deterministic fallback.
 
 The transport itself lives in one place: `src/lib/langflow.ts`
 (`runLangflowFlow`).
@@ -135,10 +136,9 @@ The transport itself lives in one place: `src/lib/langflow.ts`
 
 ## Known trade-offs
 
-- **Two Tavily call sites.** Deep Research retains the existing Tavily component
-  inside the flow. Regular finance chat calls the bounded Next.js Tavily wrapper
-  only when a current/comparison evidence plan selects it, then filters results
-  by entity, criterion, and freshness.
+- **One Tavily wrapper, different plans.** Regular chat uses bounded queries;
+  Research deeper adds focused risk and fundamentals queries. Both paths filter
+  results by entity, criterion, and freshness before synthesis.
 - **New store rows lack vector embeddings.** Next.js now writes analysis rows
   directly (single-writer), and those rows are not embedded the way the retired
   ingestion flow embedded them. So the chat flow's vector RAG recall skews toward

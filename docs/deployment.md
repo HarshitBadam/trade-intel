@@ -29,4 +29,4 @@ news endpoint as a backstop.
 
 ## The Langflow host
 
-StockSage's deeper-research and batch-analysis flows run on a separate Langflow instance (a Hugging Face Space in this setup). Regular chat does not depend on that host. Eligible answers expose Research deeper only when Langflow and a snapshot-signing secret are configured. Work is synchronous in the first version, with Redis-backed result reuse and locking when Upstash is available. Import and secret-setup steps for the flows are in [langflow/README.md](../langflow/README.md).
+StockSage's optional batch-analysis flow runs on a separate Langflow instance (a Hugging Face Space in this setup). Regular chat and Research deeper do not depend on that host; deeper research runs through the app's typed evidence and Groq failover lanes when retrieval, Groq, and a snapshot-signing secret are configured. Work is synchronous, with Redis-backed result reuse and locking when Upstash is available. Import and secret-setup steps for batch orchestration are in [langflow/README.md](../langflow/README.md).

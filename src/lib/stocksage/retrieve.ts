@@ -3,8 +3,10 @@ import "server-only";
 import { hasAstra } from "@/lib/config";
 import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
 import {
+  getChatFundamentals,
   getChatQuotes,
   readTickerArticles,
+  type ChatFundamentals,
   type ChatQuote,
   type StoredArticle,
 } from "@/lib/market-data";
@@ -20,6 +22,7 @@ import type {
 
 export type RegularContext = {
   quotes: ChatQuote[];
+  fundamentals: ChatFundamentals[];
   sources: EvidenceSource[];
   coverage: Record<string, "covered" | "missing">;
   plan: EvidencePlan;
@@ -27,6 +30,7 @@ export type RegularContext = {
 
 export type RetrievalProviders = {
   quotes: (query: EvidenceQuery) => Promise<ChatQuote[]>;
+  fundamentals?: (tickers: string[]) => Promise<ChatFundamentals[]>;
   astra: (
     query: EvidenceQuery,
     entities: FinanceEntity[]
@@ -166,6 +170,7 @@ async function retrieveQuotes(query: EvidenceQuery): Promise<ChatQuote[]> {
 
 export const defaultRetrievalProviders: RetrievalProviders = {
   quotes: retrieveQuotes,
+  fundamentals: getChatFundamentals,
   astra: async (query, entities) => {
     try {
       return await retrieveAstra(query, entities);
@@ -190,23 +195,61 @@ export async function executeEvidencePlan(args: {
   providers?: RetrievalProviders;
 }): Promise<RegularContext> {
   const providers = args.providers ?? defaultRetrievalProviders;
-  const results = await Promise.all(
-    args.plan.queries.map(async (query) => {
-      if (query.provider === "quotes") {
-        return { quotes: await providers.quotes(query), inputs: [] };
-      }
-      if (query.provider === "astra") {
-        return {
-          quotes: [],
-          inputs: await providers.astra(query, args.entities),
-        };
-      }
-      return { quotes: [], inputs: await providers.tavily(query) };
-    })
+  const requestedCriteria = new Set(
+    args.plan.queries.flatMap((query) => query.criteria)
   );
+  const fundamentalTickers = args.entities
+    .filter((entity) => entity.market === "us" && entity.ticker)
+    .map((entity) => entity.ticker as string);
+  const shouldLoadFundamentals = [
+    "earnings",
+    "valuation",
+    "growth",
+    "risk",
+  ].some((criterion) => requestedCriteria.has(criterion));
+  const tavilyQueue = args.plan.queries.filter(
+    (query) => query.provider === "tavily"
+  );
+  const tavilyResults = new Map<string, EvidenceInput[]>();
+  const runTavilyQueue = async (): Promise<void> => {
+    const workers = Array.from(
+      { length: Math.min(2, tavilyQueue.length) },
+      async () => {
+        for (;;) {
+          const query = tavilyQueue.shift();
+          if (!query) return;
+          try {
+            tavilyResults.set(query.id, await providers.tavily(query));
+          } catch {}
+        }
+      }
+    );
+    await Promise.all(workers);
+  };
+  const [results, fundamentals] = await Promise.all([
+    Promise.all(
+      args.plan.queries.map(async (query) => {
+        if (query.provider === "quotes") {
+          return { quotes: await providers.quotes(query), inputs: [] };
+        }
+        if (query.provider === "astra") {
+          return {
+            quotes: [],
+            inputs: await providers.astra(query, args.entities),
+          };
+        }
+        return { quotes: [], inputs: [] };
+      })
+    ),
+    shouldLoadFundamentals && providers.fundamentals
+      ? bounded(providers.fundamentals(fundamentalTickers), [])
+      : Promise.resolve([]),
+    runTavilyQueue(),
+  ]);
+  const tavilyInputs = [...tavilyResults.values()].flat();
   const quotes = results.flatMap((result) => result.quotes);
   const sources = filterEvidence({
-    inputs: results.flatMap((result) => result.inputs),
+    inputs: [...results.flatMap((result) => result.inputs), ...tavilyInputs],
     plan: args.plan,
     entities: args.entities,
   });
@@ -218,14 +261,41 @@ export async function executeEvidencePlan(args: {
     )
     .map((entity) => entity.id);
 
+  const coverage = evidenceCoverage({
+    plan: args.plan,
+    sources,
+    quotedEntityIds,
+  });
+  for (const entity of args.entities) {
+    const item = fundamentals.find(
+      (fundamental) => fundamental.ticker === entity.ticker
+    );
+    if (!item || args.plan.criteria.length === 0) continue;
+    const supported = new Set<string>();
+    if (item.peTtm !== null) supported.add("valuation");
+    if (item.revenueGrowthTtmYoy !== null) supported.add("growth");
+    if (item.beta !== null) supported.add("risk");
+    if (item.earnings?.actualEps != null) supported.add("earnings");
+    if (contextQuoteFor(entity, quotes)) supported.add("performance");
+    if (args.plan.criteria.every((criterion) => supported.has(criterion))) {
+      coverage[entity.id] = "covered";
+    }
+  }
+
   return {
     quotes,
+    fundamentals,
     sources,
-    coverage: evidenceCoverage({
-      plan: args.plan,
-      sources,
-      quotedEntityIds,
-    }),
+    coverage,
     plan: args.plan,
   };
+}
+
+function contextQuoteFor(
+  entity: FinanceEntity,
+  quotes: ChatQuote[]
+): ChatQuote | undefined {
+  return entity.ticker
+    ? quotes.find((quote) => quote.ticker === entity.ticker)
+    : undefined;
 }

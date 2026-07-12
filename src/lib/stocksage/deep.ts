@@ -1,162 +1,190 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
-import { z } from "zod";
+import { hasDeepResearch } from "@/lib/config";
 import {
-  hasDeepResearch,
-  LANGFLOW_API_KEY,
-  LANGFLOW_BASE_URL,
-  LANGFLOW_CHAT_LLM_ID,
-  LANGFLOW_CHAT_PROMPT_ID,
-  LANGFLOW_FLOW_ID,
-} from "@/lib/config";
-import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
-import { runLangflowFlow } from "@/lib/langflow";
-import { getChatQuotes, type ChatQuote } from "@/lib/market-data";
-import { sanitizeExternalCitations } from "./citations";
+  expandValidCitations,
+  stripTickerCitationMarkers,
+  validCitationUrls,
+} from "./citations";
 import {
   parseDeepResearchSnapshot,
   type DeepResearchSnapshot,
 } from "./deep-snapshot";
+import { unsupportedFigures } from "./figures";
 import { runIdempotentDeepWork } from "./deep-store";
 import { validateDeepResearchResult } from "./deep-validation";
+import { planEvidence } from "./planning";
 import { STOCKSAGE_DEEP_SYSTEM } from "./prompt";
-import type { DeepResearchReply } from "./types";
-
-const FlowSchema = z.object({
-  data: z.object({
-    nodes: z.array(z.object({ id: z.string().optional() })).default([]),
-  }),
-});
+import { executeEvidencePlan } from "./retrieve";
+import { synthesizeWithFallback } from "./synthesis";
+import type {
+  ConversationState,
+  DeepResearchReply,
+  EvidenceSource,
+  FinanceEntity,
+} from "./types";
 
 function percent(value: number | null): string {
   if (value === null || Number.isNaN(value)) return "not available";
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
-function liveData(quotes: ChatQuote[]): string {
-  const today = new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "America/New_York",
-  }).format(new Date());
-  const lines = quotes.map(
-    (quote) =>
-      `${quote.ticker}: as of ${quote.asOf}, $${quote.price.toFixed(2)}, day ${percent(quote.dayPct)}, 1W ${percent(quote.weekPct)}, 1M ${percent(quote.monthPct)}, 1Y ${percent(quote.yearPct)}`
-  );
-  return [`Today is ${today} in US Eastern time.`, ...lines].join("\n");
+function quoteBlock(context: Awaited<ReturnType<typeof executeEvidencePlan>>): string {
+  if (context.quotes.length === 0) return "No validated quote is available.";
+  return context.quotes
+    .map(
+      (quote) =>
+        `${quote.ticker}: as of ${quote.asOf}, $${quote.price.toFixed(2)}, day ${percent(quote.dayPct)}, 1W ${percent(quote.weekPct)}, 1M ${percent(quote.monthPct)}, 1Y ${percent(quote.yearPct)}`
+    )
+    .join("\n");
 }
 
-const fetchChatNodeIds = unstable_cache(
-  async (): Promise<{ promptId: string; llmId: string }> => {
-    const response = await fetch(
-      `${LANGFLOW_BASE_URL}/api/v1/flows/${LANGFLOW_FLOW_ID}`,
-      {
-        headers: { "x-api-key": LANGFLOW_API_KEY as string },
-        cache: "no-store",
-        signal: AbortSignal.timeout(8_000),
-      }
-    );
-    if (!response.ok) throw new Error(`Flow fetch failed: ${response.status}`);
-    const flow = FlowSchema.parse(await response.json());
-    const nodes = flow.data.nodes;
-    const idByPrefix = (prefix: string) =>
-      nodes.find(
-        (node) =>
-          typeof node.id === "string" && node.id.startsWith(prefix)
-      )?.id;
-    const promptId = idByPrefix("StockSageRagPrompt");
-    const llmId = idByPrefix("GroqModel");
-    if (typeof promptId !== "string" || typeof llmId !== "string") {
-      throw new Error("Chat flow is missing expected nodes");
-    }
-    return { promptId, llmId };
-  },
-  ["langflow-chat-node-ids"],
-  { revalidate: 1800 }
-);
+function sourceBlock(sources: EvidenceSource[]): string {
+  return sources
+    .map(
+      (source) =>
+        `[${source.id}] ${source.outlet} | ${source.publishedAt ?? "date not supplied"} | ${source.title}\nExcerpt: ${source.excerpt}`
+          .slice(0, 520)
+    )
+    .join("\n\n");
+}
 
-async function resolveNodeIds(): Promise<{
-  promptId: string;
-  llmId: string;
-}> {
-  const fallback = {
-    promptId: LANGFLOW_CHAT_PROMPT_ID,
-    llmId: LANGFLOW_CHAT_LLM_ID,
+function snapshotContext(snapshot: DeepResearchSnapshot): {
+  entities: FinanceEntity[];
+  state: ConversationState;
+} {
+  const entities = snapshot.entities.map((entity) => ({
+    ...entity,
+    query: entity.ticker ?? entity.name,
+    jurisdiction: snapshot.jurisdiction,
+  }));
+  return {
+    entities,
+    state: {
+      version: 1,
+      revision: snapshot.stateRevision,
+      entities,
+      explicitEntitySet: entities.map((entity) => entity.id),
+      criteria: snapshot.criteria,
+      horizon: snapshot.horizon,
+      jurisdiction: snapshot.jurisdiction,
+    },
   };
-  try {
-    return await fetchChatNodeIds();
-  } catch (error) {
-    console.error("[chat] Deep Research node resolution failed:", error);
-    return fallback;
-  }
 }
 
 async function executeDeepResearch(
   snapshot: DeepResearchSnapshot
 ): Promise<DeepResearchReply> {
-  if (!hasDeepResearch || !LANGFLOW_FLOW_ID) {
+  if (!hasDeepResearch) {
     return {
       workId: snapshot.workId,
       status: "failure",
       text: "Research deeper isn’t configured right now.",
     };
   }
-  if (await isOpen("langflow-deep")) {
-    return {
-      workId: snapshot.workId,
-      status: "failure",
-      text: "Research deeper is temporarily unavailable. Please try again shortly.",
-      retryable: true,
-    };
-  }
-
-  const usTickers = snapshot.entities
-    .filter((entity) => entity.market === "us" && entity.ticker)
-    .map((entity) => entity.ticker as string)
-    .slice(0, 4);
-  const [quotes, nodeIds] = await Promise.all([
-    getChatQuotes(usTickers).catch(() => []),
-    resolveNodeIds(),
-  ]);
-  const focus = snapshot.entities
-    .map((entity) => entity.ticker ?? entity.name)
-    .join(", ");
-  const input = [
-    `Original question: ${snapshot.question}`,
-    `Regular answer: ${snapshot.regularAnswer}`,
-    `As of: ${snapshot.asOf}`,
-    `Entities: ${focus || "none"}`,
-    `Criteria: ${snapshot.criteria.join(", ") || "not specified"}`,
-    `Horizon: ${snapshot.horizon ?? "not specified"}`,
-    `Jurisdiction: ${snapshot.jurisdiction ?? "not specified"}`,
-    `Prior evidence identifiers: ${snapshot.evidenceIds.join(", ") || "none"}`,
-  ].join("\n");
 
   try {
-    const text = await runLangflowFlow({
-      flowId: LANGFLOW_FLOW_ID,
-      input,
-      sessionId: snapshot.workId,
-      tweaks: {
-        [nodeIds.promptId]: {
-          live_data: liveData(quotes),
-          focus_tickers: focus,
-        },
-        [nodeIds.llmId]: {
-          system_message: STOCKSAGE_DEEP_SYSTEM,
-        },
-      },
-      timeoutMs: 35_000,
+    const { entities, state } = snapshotContext(snapshot);
+    const route = entities.length > 1 ? "comparison" : "current_finance";
+    const retrievalMessage = `${snapshot.question}\nResearch context: catalysts, outlook, and material risks.`;
+    const plan = planEvidence({
+      route,
+      message: retrievalMessage,
+      entities,
+      state,
     });
-    await recordSuccess("langflow-deep");
-    const sanitized = sanitizeExternalCitations(text);
+    if (entities.length === 1) {
+      const entity = entities[0];
+      const tickers = entity.ticker ? [entity.ticker] : [];
+      plan.queries.push(
+        {
+          id: "tavily-deep-risks",
+          provider: "tavily",
+          query: `${entity.query} latest investor risks regulation litigation competition`,
+          entityIds: [entity.id],
+          tickers,
+          criteria: ["risk"],
+          freshnessDays: 120,
+          topic: "news",
+          limit: 4,
+        },
+        {
+          id: "tavily-deep-fundamentals",
+          provider: "tavily",
+          query: `${entity.query} latest earnings investor relations guidance outlook`,
+          entityIds: [entity.id],
+          tickers,
+          criteria: ["earnings", "outlook"],
+          freshnessDays: 180,
+          topic: "general",
+          limit: 4,
+        }
+      );
+    }
+    const context = await executeEvidencePlan({ plan, entities });
+    if (context.sources.length === 0) {
+      return {
+        workId: snapshot.workId,
+        status: "failure",
+        text: "I couldn’t retrieve enough verifiable evidence for deeper research. The regular answer is still available.",
+        retryable: true,
+      };
+    }
+    const user = `ORIGINAL QUESTION
+${snapshot.question}
+
+REGULAR ANSWER
+${snapshot.regularAnswer}
+
+AS OF
+${plan.asOf}
+
+VALIDATED QUOTES
+${quoteBlock(context)}
+
+RETRIEVED SOURCES
+${sourceBlock(context.sources)}
+
+ENTITIES
+${entities.map((entity) => entity.ticker ?? entity.name).join(", ") || "none"}
+
+CRITERIA
+${snapshot.criteria.join(", ") || "not specified"}
+
+HORIZON
+${snapshot.horizon ?? "not specified"}`;
+    const text = await synthesizeWithFallback({
+      system: `${STOCKSAGE_DEEP_SYSTEM}
+
+Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw URL or invent an ID. The server will turn valid IDs into links.`,
+      user,
+      maxTokens: 1100,
+      temperature: 0.35,
+      timeoutMs: 25_000,
+      totalTimeoutMs: 32_000,
+      event: "deep_synthesis",
+      accept: (candidate) =>
+        validCitationUrls(candidate, context.sources).length > 0 &&
+        unsupportedFigures(candidate, user).length === 0,
+      correction: (draft) => {
+        const invented = unsupportedFigures(draft, user);
+        return `Rewrite that answer. ${
+          invented.length > 0
+            ? `These figures are not in the quotes or sources you were given, so remove them without substituting other numbers from memory: ${invented.join(", ")}. `
+            : ""
+        }Every claim taken from RETRIEVED SOURCES must end with its ID like [S1]. Keep the same structure and depth.`;
+      },
+    });
+    const cleaned = stripTickerCitationMarkers(
+      text,
+      context.quotes.map((quote) => quote.ticker)
+    );
+    const citationUrls = validCitationUrls(cleaned, context.sources);
+    const expanded = expandValidCitations(cleaned, context.sources);
     const validationError = validateDeepResearchResult({
       snapshot,
-      text: sanitized.text,
-      citationUrls: sanitized.citationUrls,
+      text: expanded,
+      citationUrls,
     });
     if (validationError) {
       return {
@@ -169,14 +197,14 @@ async function executeDeepResearch(
     return {
       workId: snapshot.workId,
       status: "success",
-      ...sanitized,
+      text: expanded,
+      citationUrls,
     };
   } catch (error) {
-    await recordFailure("langflow-deep");
     console.error(
       `[stocksage] ${JSON.stringify({
         event: "deep_failure",
-        provider: "langflow-deep",
+        provider: "direct-research",
         reason: error instanceof Error ? error.name : "unknown",
       })}`
     );

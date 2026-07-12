@@ -17,6 +17,7 @@ async function main() {
           price: 210,
           asOf: "2026-07-10",
           dayPct: 1,
+          fewDaysPct: 1.5,
           weekPct: 2,
           monthPct: 3,
           yearPct: 12,

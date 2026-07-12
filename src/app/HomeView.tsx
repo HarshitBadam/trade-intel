@@ -181,18 +181,20 @@ export default function HomeView({ initial }: HomeViewProps) {
 
         <div className="flex flex-col gap-6">
           <Overview title="Top Sentiment Shifts" shifts={shiftRows} />
-          <div
-            className="rounded-lg h-1/2 bg-card glass-card shadow-md flex flex-col items-start justify-center p-4 cursor-pointer"
+          <button
+            type="button"
+            className="glass-card flex h-1/2 w-full flex-col items-start justify-center rounded-lg bg-card p-4 text-left shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={handleWidgetOpen}
+            aria-haspopup="dialog"
           >
             <div className="text-4xl font-bold siri-text w-full">
               Ask StockSage.
             </div>
             <div className="text-sm text-muted-foreground mt-3">
-              Your AI-powered market assistant for real-time stock insights and
-              sentiment analysis.
+              Compare companies, unpack a market move, or keep digging with
+              follow-up questions.
             </div>
-          </div>
+          </button>
         </div>
 
         {gainerCard ? (

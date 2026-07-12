@@ -26,6 +26,8 @@ export type ChatRequest = {
 export type ChatReply = {
   text: string;
   live: boolean;
+  kind?: "answer" | "error";
+  errorCode?: "unauthorized" | "rate_limited" | "invalid_request";
   retryable?: boolean;
   citationUrls?: string[];
   responseId?: string;
@@ -106,6 +108,7 @@ export type DomainReasonCode =
   | "out_of_scope"
   | "prohibited_gambling"
   | "prohibited_financial_misconduct"
+  | "prohibited_external_action"
   | "prohibited_crypto_promotion"
   | "crypto_risk_only"
   | "ambiguous_crypto"
