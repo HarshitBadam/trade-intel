@@ -1,4 +1,4 @@
-import { Telescope } from "lucide-react";
+import { RotateCcw, Telescope } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { DeepResearchOffer } from "@/lib/stocksage/types";
 
@@ -17,6 +17,8 @@ export type ChatMessageModel = {
   citationUrls?: string[];
   deepResearch?: DeepResearchOffer;
   deepState?: DeepMessageState;
+  error?: boolean;
+  retryable?: boolean;
 };
 
 function CitationChip({
@@ -72,7 +74,6 @@ function tidyCitations(text: string): string {
   return text
     .replace(wrapped, "$1")
     .replace(trailingDate, "$1")
-    .replace(/[ \t]{2,}/g, " ")
     .replace(/[ \t]+([.,;:])/g, "$1");
 }
 
@@ -101,9 +102,11 @@ function MarkdownAnswer({
 export function ChatMessage({
   message,
   onResearch,
+  onRetry,
 }: {
   message: ChatMessageModel;
   onResearch: (messageId: string) => void;
+  onRetry: (messageId: string) => void;
 }) {
   const deep = message.deepState;
   const canResearch =
@@ -115,32 +118,49 @@ export function ChatMessage({
       className={`flex max-w-full ${
         message.sender === "user" ? "justify-end" : "justify-start"
       }`}
+      role={message.error ? "alert" : undefined}
     >
       <div
         className={`w-fit rounded-lg p-3 text-foreground ${
           message.sender === "user"
             ? "max-w-xl bg-muted"
-            : "max-w-3xl"
+            : message.error
+              ? "max-w-3xl border border-border bg-muted/50"
+              : "max-w-3xl"
         }`}
       >
         {message.sender === "ai" ? (
-          <div className="space-y-2 text-sm leading-relaxed [&_em]:italic [&_ol]:list-decimal [&_ol]:pl-4 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:pl-4">
+          <div className="space-y-2 text-sm leading-relaxed [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_h2]:mt-3 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_p]:my-1.5 [&_em]:italic [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5">
             <MarkdownAnswer
               text={message.text}
               citationUrls={message.citationUrls}
             />
+            {message.retryable && (
+              <button
+                type="button"
+                onClick={() => onRetry(message.id)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground/75 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Try again
+              </button>
+            )}
             {canResearch && (
               <button
                 type="button"
                 onClick={() => onResearch(message.id)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground/75 transition-colors hover:bg-muted hover:text-foreground"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground/75 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Telescope className="h-3.5 w-3.5" />
                 {deep?.status === "failure" ? "Retry research" : "Research deeper"}
               </button>
             )}
             {deep?.status === "pending" && (
-              <div className="rounded-md border border-border bg-muted/40 p-2 text-xs text-muted-foreground">
+              <div
+                className="rounded-md border border-border bg-muted/40 p-2 text-xs text-muted-foreground"
+                role="status"
+                aria-live="polite"
+              >
                 {deep.progress}…
               </div>
             )}

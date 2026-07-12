@@ -10,6 +10,9 @@ const CRITERIA = new Set([
   "growth",
   "risk",
   "outlook",
+  "earnings",
+  "news",
+  "size",
 ]);
 const JURISDICTIONS = new Set([
   "Australia",
@@ -34,7 +37,7 @@ export function sanitizeConversationState(
   const ids = new Set(entities.map((entity) => entity.id));
   const horizon =
     previous.horizon &&
-    /^(?:today|yesterday|this (?:week|month|quarter|year)|last (?:week|month|quarter|year)|(?:past|last|next|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|[135][ -]?year)$/i.test(
+    /^(?:today|yesterday|this (?:week|month|quarter|year)|last (?:few days|week|month|quarter|year)|(?:past|last|next|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|[135][ -]?year)$/i.test(
       previous.horizon
     )
       ? previous.horizon

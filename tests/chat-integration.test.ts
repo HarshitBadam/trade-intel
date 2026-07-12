@@ -1,3 +1,4 @@
+import "./no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { answerChat } from "../src/lib/stocksage/chat";
@@ -16,6 +17,7 @@ function setup() {
               price: 210,
               asOf: "2026-07-10",
               dayPct: -0.5,
+              fewDaysPct: 0.4,
               weekPct: 1,
               monthPct: 2,
               yearPct: 12,
@@ -113,6 +115,24 @@ test("prior finance state does not authorize later off-topic abuse", async () =>
       { retrievalProviders: providers }
     );
     assert.match(reply.text, /financial markets/i);
+    assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0 });
+  }
+});
+
+test("unrelated new topics clear inherited comparison state", async () => {
+  const initialSetup = setup();
+  const comparison = await answerChat(
+    request("Compare Apple and Microsoft"),
+    { retrievalProviders: initialSetup.providers }
+  );
+  for (const message of ["What is the weather today?", "Tell me a joke"]) {
+    const { calls, providers } = setup();
+    const reply = await answerChat(
+      request(message, { state: comparison.state }),
+      { retrievalProviders: providers }
+    );
+    assert.match(reply.text, /financial markets/i);
+    assert.deepEqual(reply.state?.entities, []);
     assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0 });
   }
 });

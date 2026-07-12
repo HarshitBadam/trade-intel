@@ -1,0 +1,17 @@
+for (const key of [
+  "GROQ_API_KEY",
+  "TAVILY_API_KEY",
+  "ASTRA_DB_APPLICATION_TOKEN",
+  "ASTRA_DB_API_ENDPOINT",
+  "LANGFLOW_API_KEY",
+  "POLYGON_API_KEY",
+  "ALPACA_API_KEY_ID",
+  "ALPACA_API_SECRET_KEY",
+  "FINNHUB_API_KEY",
+  "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
+]) {
+  delete process.env[key];
+}
+
+export {};

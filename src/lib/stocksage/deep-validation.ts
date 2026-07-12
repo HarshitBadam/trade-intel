@@ -16,12 +16,16 @@ const GENERIC_NAME_PARTS = new Set([
 ]);
 
 function entityTerms(name: string, ticker?: string): string[] {
-  const words = name
+  const normalizedName = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const words = normalizedName
     .split(" ")
     .filter(
-      (word) => word.length >= 3 && !GENERIC_NAME_PARTS.has(word)
+      (word) =>
+        (word.length >= 3 || normalizedName.length === 2) &&
+        !GENERIC_NAME_PARTS.has(word)
     );
   return [...new Set([ticker?.toLowerCase(), ...words].filter(Boolean))] as string[];
 }

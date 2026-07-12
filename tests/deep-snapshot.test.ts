@@ -6,9 +6,8 @@ import type { DeepResearchSnapshot } from "../src/lib/stocksage/deep-snapshot";
 test("deep snapshot is signed, bounded, immutable, and tamper resistant", async () => {
   process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET =
     "test-only-snapshot-secret-with-sufficient-length";
-  process.env.LANGFLOW_BASE_URL = "https://langflow.example.com";
-  process.env.LANGFLOW_FLOW_ID = "flow-test";
-  process.env.LANGFLOW_API_KEY = "test-key";
+  process.env.GROQ_API_KEY = "test-groq-key";
+  process.env.TAVILY_API_KEY = "test-tavily-key";
   const {
     createDeepResearchOffer,
     parseDeepResearchSnapshot,

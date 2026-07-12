@@ -5,6 +5,11 @@ import { hasUpstash } from "./config";
 export type Provider =
   | "polygon"
   | "groq-chat"
+  | "groq-fallback"
+  | "groq-chat-small"
+  | "groq-deep"
+  | "groq-deep-fallback"
+  | "groq-deep-small"
   | "groq-analysis"
   | "langflow-deep"
   | "langflow-analysis"
@@ -19,6 +24,7 @@ const OPEN_S = OPEN_MS / 1000;
 
 type MemState = { fails: number; openUntil: number };
 const memory = new Map<Provider, MemState>();
+const cooldownMemory = new Map<Provider, number>();
 
 function memState(provider: Provider): MemState {
   let state = memory.get(provider);
@@ -90,11 +96,51 @@ export async function isOpen(provider: Provider): Promise<boolean> {
   const state = memState(provider);
   if (state.openUntil > Date.now()) return true;
   if (state.openUntil !== 0) {
-    // Cooldown elapsed — half-open: reset the streak so re-tripping requires
-    // a fresh run of failures rather than inheriting the old count.
     state.openUntil = 0;
     state.fails = 0;
   }
+  return false;
+}
+
+export async function recordCooldown(
+  provider: Provider,
+  durationMs: number
+): Promise<void> {
+  const ttlSeconds = Math.max(
+    1,
+    Math.min(60 * 60, Math.ceil(durationMs / 1000))
+  );
+  if (hasUpstash) {
+    try {
+      await (await redis()).set(`breaker:${provider}:cooldown`, 1, {
+        ex: ttlSeconds,
+      });
+      return;
+    } catch (error) {
+      console.error(
+        `[breaker] Upstash cooldown failed for ${provider}, using memory:`,
+        error
+      );
+    }
+  }
+  cooldownMemory.set(provider, Date.now() + ttlSeconds * 1000);
+}
+
+export async function isCoolingDown(provider: Provider): Promise<boolean> {
+  if (hasUpstash) {
+    try {
+      const value = await (await redis()).get(`breaker:${provider}:cooldown`);
+      return value !== null && value !== undefined;
+    } catch (error) {
+      console.error(
+        `[breaker] Upstash cooldown check failed for ${provider}, using memory:`,
+        error
+      );
+    }
+  }
+  const until = cooldownMemory.get(provider) ?? 0;
+  if (until > Date.now()) return true;
+  cooldownMemory.delete(provider);
   return false;
 }
 
@@ -114,4 +160,5 @@ export function breakerBackend(): "upstash" | "memory" {
 
 export function resetBreakerMemory(): void {
   memory.clear();
+  cooldownMemory.clear();
 }
