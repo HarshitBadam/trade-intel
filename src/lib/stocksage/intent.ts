@@ -1,26 +1,21 @@
+import {
+  ABUSE_AT_BOT,
+  CASUAL_ACKNOWLEDGEMENT,
+  FAREWELL,
+  FRUSTRATION,
+  HELP,
+  SOCIAL,
+} from "./social-patterns";
 import type {
   ChatRoute,
   ConversationState,
   FinanceEntity,
   RouteDecision,
 } from "./types";
-
-const SOCIAL =
-  /^(?:(?:hey|hi|hello|hiya|howdy|sup|g'?day|good\s+(?:morning|afternoon|evening))(?:\s+again)?(?:,\s*i'?m back)?(?:[,\s]+(?:boss|bro|mate|dude|there|sage|stocksage))?|i'?m back|how are you|how'?s it going(?:[,\s]+(?:boss|bro|mate|dude))?|what'?s up(?:[,\s]+(?:boss|bro|mate|dude))?|nice to meet you|aight(?:\s+gucci)?(?:\s+then)?|cool|sounds good|okay|ok|thx|thanks?(?:,\s*that helps|\s+(?:boss|bro|mate|dude))?|thank you(?:\s+(?:boss|bro|mate|dude))?|cheers(?:\s+(?:boss|bro|mate|dude))?|much appreciated|that helps|got it|gotcha)[\s,.!?…-]*$/i;
-const FAREWELL =
-  /^(?:bye|goodbye|see you)(?:[\s,]+(?:for now|later|soon|again|then|boss|bro|mate|dude|thanks|thank you))*[\s,.!?…-]*$/i;
-const CASUAL_ACKNOWLEDGEMENT =
-  /^(?:thx|thanks?|thank you|cheers)(?:\s+(?:boss|bro|mate|dude))?(?:,?\s+that helps)?[\s,.!?…-]*$/i;
-const FRUSTRATION =
-  /\b(?:fuck|shit|damn)\b.*\b(?:annoying|frustrating|useless|broken)\b/i;
-const ABUSE_AT_BOT =
-  /\b(?:you'?re?|ur|u r|you)\b.{0,40}\b(?:useless|worthless|garbage|trash|pathetic|stupid|dumb|shit|crap)\b|\b(?:piece of (?:shit|crap)|dumbass|dumb ass)\b.{0,20}\b(?:bot|ai|assistant|app)\b/i;
-const HELP =
-  /^(?:help|help me|what can you(?: actually)? (?:do|help me with)|how can you help|how do i use (?:this|stocksage)|what should i ask)[\s,.!?…-]*$/i;
 const COMPARISON =
   /\b(?:compare|comapre|comparison|rank|ranking|order|big\s*(?:4|four)|versus|vs\.?|better (?:stock|investment)|which (?:one|company|stock)|relative to|against)\b/i;
 const TIME_SENSITIVE =
-  /\b(?:latest|today|yesterday|now|current|currently|recent|news|update|earnings|guidance|(?:is|are)\b.{0,60}\b(?:public|private|listed)|public\s*\/\s*private status|publicly traded|this (?:week|month|quarter|year)|last (?:few days|week|month|quarter|year)|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}|(?:stock|share) price|trading at|market move|what (?:changed|happened)|what(?:'?s(?: is)?| is) up with|how (?:is|are|did|has)\b.{0,80}\b(?:doing|performing|moved|changed)|market conditions?|legal|lawsuit|regulatory|regulator)\b/i;
+  /\b(?:latest|today|yesterday|now|current|currently|recent(?:ly)?|lately|news|update|earnings|guidance|(?:is|are)\b.{0,60}\b(?:public|private|listed)|public\s*\/\s*private status|publicly traded|this (?:week|month|quarter|year)|last (?:few days|week|month|quarter|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}|(?:stock|share) price|trading at|market move|what (?:changed|happened|moved)|what(?:'?s(?: is)?| is) up with|how (?:is|are|did|has)\b.{0,80}\b(?:doing|performing|moved|changed)|anything notable|market conditions?|legal|lawsuit|regulatory|regulator)\b/i;
 const CODE =
   /\b(?:python|javascript|typescript|java|c\+\+|code|script|function|loop|syntax|compile|runtime|output|console\.log|print\s*\(|for\s+\w+\s+in\s+range)\b/i;
 const STABLE_FINANCE =
@@ -209,18 +204,21 @@ export function immediateReply(
   if (FRUSTRATION.test(message)) {
     return "Yeah, fair—that was frustrating. Want to retry the last market question or switch topics?";
   }
+  if (FAREWELL.test(message)) {
+    return "Catch you next time — stay sharp out there.";
+  }
   if (/thx|thank|cheers|appreciated|that helps|got it/i.test(message)) {
     return /got it|gotcha/i.test(message)
       ? "Got it. What should we look at next?"
       : "Anytime. Want to look at anything else?";
   }
-  if (/bye|goodbye|see you|aight|gucci/i.test(message)) {
-    return "Catch you next time.";
+  if (/\b(?:aight|gucci|all good)\b/i.test(message)) {
+    return "All good. Give me a shout when you want to look at something.";
   }
   if (/i'?m back|hey again/i.test(message)) {
     return "Welcome back. What are we digging into?";
   }
-  if (/^sup\b/i.test(message)) {
+  if (/^(?:sup|yo)\b|what'?s (?:up|good|new)/i.test(message)) {
     return "Hey — what are we looking at?";
   }
   return "Hey! What are you looking into?";

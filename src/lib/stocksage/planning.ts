@@ -25,7 +25,7 @@ function isPriceOnly(message: string): boolean {
 }
 
 function historicalPeriod(message: string): boolean {
-  return /\b(?:yesterday|last (?:few days|week|month|quarter|year)|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2})\b/i.test(
+  return /\b(?:yesterday|last (?:few days|week|month|quarter|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2})\b/i.test(
     message
   );
 }
@@ -45,13 +45,19 @@ function evidenceFreshnessDays(message: string): number | undefined {
   if (/\blast quarter\b/i.test(message)) return 120;
   if (/\blast month\b/i.test(message)) return 45;
   if (/\blast week\b/i.test(message)) return 14;
-  if (/\blast few days\b/i.test(message)) return 7;
+  if (
+    /\blast few days\b|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|\bthe other day\b/i.test(
+      message
+    )
+  ) {
+    return 7;
+  }
   if (/\byesterday\b/i.test(message)) return 3;
   return historicalPeriod(message) ? undefined : 14;
 }
 
 function supportsTrailingQuote(message: string): boolean {
-  return /\b(?:today|yesterday|last (?:few days|week|month|year)|over the last (?:few days|week|month|year)|[135]\s*[- ]?year)\b/i.test(
+  return /\b(?:today|yesterday|last (?:few days|week|month|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|over the last (?:few days|week|month|year)|[135]\s*[- ]?year)\b/i.test(
     message
   );
 }

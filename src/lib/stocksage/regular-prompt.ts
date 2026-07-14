@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { ChatFundamentals, ChatQuote } from "@/lib/market-data";
+import { PRIVATE_COMPANY_NAMES } from "./entity-catalog";
 import type { EvidenceSource, FinanceEntity } from "./types";
 
 export type AnswerKind =
@@ -60,9 +61,11 @@ function subjectBlock(entities: FinanceEntity[]): string {
     .map(
       (entity) =>
         `${entity.name}${entity.ticker ? ` (${entity.ticker})` : ""}${
-          entity.market === "web"
-            ? " — no validated US quote feed; rely on sources"
-            : ""
+          PRIVATE_COMPANY_NAMES.has(entity.name)
+            ? " — privately held (a partnership or private company), not listed on any exchange; the public cannot buy its shares. Say this plainly if listing or investability comes up"
+            : entity.market === "web"
+              ? " — no validated US quote feed; rely on sources"
+              : ""
         }`
     )
     .join("\n");
@@ -99,9 +102,10 @@ const SOCIAL_GUIDE = `This message is social — a greeting, thanks, goodbye, ba
 - If they're saying thanks or signing off, close warmly and stop; no pitch.
 - If they ask what you can do: markets, companies, comparisons, and what's moving prices — said conversationally, not as a feature list.
 - If they're venting or swearing casually, roll with it, unbothered; light humour is fine. If they're abusive or use slurs, set one calm boundary without lecturing and leave the door open to get back to markets.
+- If they ask for actual help with something outside finance (dating advice, homework, code, a poem), don't do it — one friendly sentence that it's outside your lane, nothing more.
 - Don't fabricate market commentary here and don't tack a sales pitch onto a hello.`;
 
-const OFF_TOPIC_GUIDE = `The request falls outside StockSage's lane (financial markets, companies, and the economy). Say so in one friendly, plain sentence — no policy language, no apology theater. If there's a natural finance angle nearby, offer it in the same breath; if there isn't, just leave it at the one sentence. Never pretend you did the off-topic task (ran code, checked scores, wrote the essay).`;
+const OFF_TOPIC_GUIDE = `The request falls outside StockSage's lane (financial markets, companies, and the economy). Say so in one friendly, plain sentence — no policy language, no apology theater. If there's a natural finance angle nearby, offer it in the same breath; if there isn't, just leave it at the one sentence. Never perform any part of the off-topic task: no code output or predicted output, no formulas or derivations, no answers to the homework, no scores, no poem. Declining while supplying the result is a failure. Your reply must contain no numbers and no equations.`;
 
 const PROHIBITED_GUIDE = `You must decline this request. Do it like a good analyst would: one short sentence on what you don't do, no moralizing, then — only if it exists — the adjacent thing you can genuinely help with. Two sentences maximum.
 - Betting or gambling picks/strategy → can't help bet; can analyze a listed operator's financials or regulatory risk.

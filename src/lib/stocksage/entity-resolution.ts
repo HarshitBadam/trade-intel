@@ -96,6 +96,8 @@ export function resolveGroup(text: string): FinanceEntity[] {
     .map(fromAlias);
 }
 
+const EXCHANGE_CONTEXT_TICKERS = new Set(["ASX", "LSE", "TSX", "HKEX", "TSE", "NSE", "BSE", "NYSE", "AX"]);
+
 export function resolveText(text: string): FinanceEntity[] {
   const clean = text.replace(/\bhey\s*,?\s*sage\b/gi, " ");
   const output: FinanceEntity[] = [];
@@ -145,7 +147,11 @@ export function resolveText(text: string): FinanceEntity[] {
     });
   }
 
-  for (const ticker of resolveTickers(clean, 8)) {
+  const withoutListingSyntax = clean
+    .replace(prefixed, " ")
+    .replace(suffixed, " ");
+  for (const ticker of resolveTickers(withoutListingSyntax, 8)) {
+    if (EXCHANGE_CONTEXT_TICKERS.has(ticker)) continue;
     if (webTickers.has(ticker) || !isInUniverse(ticker)) continue;
     const marker = "\\b(?:australian|australia|asx|non-us|foreign)\\b";
     const symbol = `\\b${escaped(ticker)}\\b`;
