@@ -48,13 +48,24 @@ const GUARANTEE =
 const LIFE_EVENT_STAKE =
   /\b(?:sold my house|selling my house|house (?:proceeds|money|sale)|inheritance|life savings|retirement (?:savings|fund)|superannuation|my super\b|redundancy (?:pay(?:out)?)?|mortgage refinance|divorce settlement)\b/i;
 const ALL_IN =
-  /\b(?:all[- ]in|everything (?:into|on|in)\b|entire (?:savings|portfolio|position)|whole (?:savings|portfolio)|bet (?:everything|it all)|(?:one|a single) concentrated bet|remaining savings)\b/i;
+  /\b(?:all[- ]in|everything (?:into|on|in)\b|(?:put|dump(?:ed)?|threw|poured) (?:it|them) all (?:into|on|in)\b|entire (?:savings|portfolio|position)|whole (?:savings|portfolio)|bet (?:everything|it all)|(?:one|a single) concentrated bet|remaining savings)\b/i;
 const PERSONAL_POSITION_DIRECTIVE =
   /\bshould i (?:sell|buy|hold|dump|exit|double down|go all[- ]in)\b|\b(?:sell|dump)\s+(?:all\s+)?my (?:entire\s+)?(?:position|shares?|holdings?|stock)\b/i;
 const CASINO_OR_SPORTSBOOK =
   /\b(?:sportsbook|casino|poker|roulette|blackjack|parlay|bookie|odds|lock)\b/i;
 const INVESTING_CONTEXT =
   /\b(?:stocks?|tickers?|shares?|etfs?|index|indices|portfolio|invest(?:ing|ment)?|equit(?:y|ies)|market|returns?|profits?|positions?|holdings?|perform(?:s|ing|ance)?)\b/i;
+// "put it all into NVDA" carries investing context via the bare ticker alone.
+const TICKER_MENTION =
+  /(?:^|\s)\$?[A-Z]{2,5}(?:\.[A-Z]{1,3})?(?=[\s,.!?]|$)/;
+
+function investingContext(text: string, entities: FinanceEntity[]): boolean {
+  return (
+    INVESTING_CONTEXT.test(text) ||
+    entities.length > 0 ||
+    TICKER_MENTION.test(text)
+  );
+}
 
 const guaranteeResponse =
   "I can’t guarantee any return — up or down — and you should be wary of anyone who does. Single-stock outcomes are genuinely uncertain. What I can do is lay out the current evidence, the key risks, and what would need to go right or wrong.";
@@ -76,6 +87,30 @@ const cryptoPromotionResponse =
   "I can’t provide token hype, pump calls, or guaranteed-return picks. I can discuss crypto-related market exposure, regulation, or portfolio risk.";
 const cryptoExecutionResponse =
   "I can’t execute crypto trades or provide wallet and transfer instructions. I can compare market exposure, regulation, custody risks, or portfolio implications.";
+
+const HARD_FLOOR_CODES = new Set([
+  "explicit_self_harm",
+  "prohibited_external_action",
+  "prohibited_financial_misconduct",
+  "prohibited_crypto_promotion",
+  "prohibited_gambling",
+  "high_stakes_finance",
+]);
+
+// Safety outcomes that must never depend on LLM availability. Runs before
+// triage; soft outcomes (out_of_scope, clarify, social) fall through to the
+// model, which judges them better.
+export function hardSafetyFloor(
+  message: string,
+  entities: FinanceEntity[]
+): DomainPolicyDecision | null {
+  const decision = evaluateDomainPolicy(message, entities);
+  return decision.action === "respond" &&
+    HARD_FLOOR_CODES.has(decision.reasonCode) &&
+    decision.response
+    ? decision
+    : null;
+}
 
 export function evaluateDomainPolicy(
   message: string,
@@ -139,7 +174,7 @@ export function evaluateDomainPolicy(
       response: cryptoPromotionResponse,
     };
   }
-  if (GUARANTEE.test(text) && (INVESTING_CONTEXT.test(text) || entities.length > 0)) {
+  if (GUARANTEE.test(text) && investingContext(text, entities)) {
     return {
       action: "respond",
       reasonCode: "high_stakes_finance",
@@ -148,7 +183,7 @@ export function evaluateDomainPolicy(
   }
   if (
     (LIFE_EVENT_STAKE.test(text) || ALL_IN.test(text)) &&
-    (INVESTING_CONTEXT.test(text) || entities.length > 0) &&
+    investingContext(text, entities) &&
     !CASINO_OR_SPORTSBOOK.test(text)
   ) {
     return {

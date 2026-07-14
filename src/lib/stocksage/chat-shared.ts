@@ -23,6 +23,7 @@ export function immediateResponse(args: {
   route: string;
   reasonCode: string;
   startedAt: number;
+  retryable?: boolean;
 }): ChatReply {
   logStockSage({
     event: "request_complete",
@@ -37,5 +38,6 @@ export function immediateResponse(args: {
     kind: "answer",
     responseId: randomUUID(),
     state: args.state,
+    ...(args.retryable !== undefined ? { retryable: args.retryable } : {}),
   };
 }

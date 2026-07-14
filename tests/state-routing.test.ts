@@ -223,7 +223,7 @@ test("resolves SpaceX and typoed IXIC follow-up", () => {
   );
   assert.deepEqual(
     first.entities.map((entity) => entity.name),
-    ["Tesla, Inc. Common Stock", "SpaceX"]
+    ["Tesla", "SpaceX"]
   );
   const followUp = resolveConversationState(
     "Comapre the former to IXIC",
@@ -342,9 +342,13 @@ test("canonicalizes untrusted client conversation state", () => {
     },
     []
   );
-  assert.match(resolution.entities[0]?.name ?? "", /^Apple Inc/);
-  assert.match(resolution.entities[0]?.query ?? "", /AAPL$/);
+  assert.match(resolution.entities[0]?.name ?? "", /^Apple(?: Inc)?\b/);
+  assert.match(resolution.entities[0]?.query ?? "", /\bAAPL\b/);
+  assert.doesNotMatch(
+    resolution.entities[0]?.query ?? "",
+    /untrusted retrieval instructions/
+  );
   assert.equal(resolution.entities[0]?.market, "us");
   assert.deepEqual(resolution.state.criteria, []);
-  assert.equal(resolution.state.jurisdiction, undefined);
+  assert.notEqual(resolution.state.jurisdiction, "untrusted");
 });

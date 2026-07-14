@@ -119,7 +119,7 @@ test("prior finance state does not authorize later off-topic abuse", async () =>
   }
 });
 
-test("unrelated new topics clear inherited comparison state", async () => {
+test("unrelated new topics never wipe inherited comparison state", async () => {
   const initialSetup = setup();
   const comparison = await answerChat(
     request("Compare Apple and Microsoft"),
@@ -132,7 +132,10 @@ test("unrelated new topics clear inherited comparison state", async () => {
       { retrievalProviders: providers }
     );
     assert.match(reply.text, /financial markets/i);
-    assert.deepEqual(reply.state?.entities, []);
+    assert.deepEqual(
+      reply.state?.entities.map((entity) => entity.ticker),
+      ["AAPL", "MSFT"]
+    );
     assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0 });
   }
 });

@@ -2,11 +2,18 @@ import "server-only";
 
 import { z } from "zod";
 import {
+  CEREBRAS_CHAT_MODEL,
+  GEMINI_CHAT_MODEL,
   GROQ_ANALYSIS_MODEL,
   GROQ_TRIAGE_MODEL,
-  hasGroq,
+  hasAnySynthesisLlm,
 } from "@/lib/config";
-import { groqChatJSON, groqErrorSummary } from "@/lib/groq";
+import {
+  hasVendor,
+  llmChatJSON,
+  llmErrorSummary,
+  type LlmVendor,
+} from "@/lib/llm";
 import {
   isCoolingDown,
   recordCooldown,
@@ -119,17 +126,20 @@ function activeSubjects(state: ConversationState | undefined): string {
     .join(", ");
 }
 
-const TRIAGE_LANES: { model: string; provider: Provider }[] = [
-  { model: GROQ_TRIAGE_MODEL, provider: "groq-chat" },
-  { model: GROQ_ANALYSIS_MODEL, provider: "groq-analysis" },
-];
+const TRIAGE_LANES: { vendor: LlmVendor; model: string; provider: Provider }[] =
+  [
+    { vendor: "groq", model: GROQ_TRIAGE_MODEL, provider: "groq-chat" },
+    { vendor: "cerebras", model: CEREBRAS_CHAT_MODEL, provider: "cerebras-chat" },
+    { vendor: "gemini", model: GEMINI_CHAT_MODEL, provider: "gemini-chat" },
+    { vendor: "groq", model: GROQ_ANALYSIS_MODEL, provider: "groq-analysis" },
+  ];
 
 export async function triageWithLLM(args: {
   message: string;
   history: ChatTurn[];
   state?: ConversationState;
 }): Promise<Triage | null> {
-  if (!hasGroq) return null;
+  if (!hasAnySynthesisLlm) return null;
   const user = `ACTIVE SUBJECTS FROM EARLIER TURNS: ${activeSubjects(args.state)}
 
 CONVERSATION SO FAR:
@@ -139,15 +149,17 @@ NEW MESSAGE:
 ${args.message.slice(0, 1200)}`;
 
   for (const lane of TRIAGE_LANES) {
+    if (!hasVendor(lane.vendor)) continue;
     if (await isCoolingDown(lane.provider)) continue;
     try {
-      const raw = await groqChatJSON<unknown>({
+      const raw = await llmChatJSON<unknown>({
+        vendor: lane.vendor,
         model: lane.model,
         system: TRIAGE_SYSTEM,
         user,
         maxTokens: 350,
         temperature: 0,
-        timeoutMs: 6_500,
+        timeoutMs: 4_500,
       });
       const parsed = TriageSchema.safeParse(raw);
       if (!parsed.success) continue;
@@ -166,7 +178,7 @@ ${args.message.slice(0, 1200)}`;
         note: value.note ?? undefined,
       };
     } catch (error) {
-      const summary = groqErrorSummary(error);
+      const summary = llmErrorSummary(error);
       if (summary.status === 429) {
         await recordCooldown(lane.provider, summary.retryAfterMs ?? 30_000);
       }

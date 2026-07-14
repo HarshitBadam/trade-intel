@@ -9,9 +9,10 @@ import {
 } from "./entities";
 import { detectJurisdiction } from "./conversation-attributes";
 import { immediateReply } from "./intent";
+import { CASUAL_ACKNOWLEDGEMENT, FAREWELL } from "./social-patterns";
 import { planEvidence } from "./planning";
 import { unsupportedFigures } from "./figures";
-import { evaluateDomainPolicy, OUT_OF_SCOPE_RESPONSE } from "./policy";
+import { OUT_OF_SCOPE_RESPONSE } from "./policy";
 import { buildChatSystemPrompt, type AnswerKind } from "./regular-prompt";
 import { answerRegularChat, historyMessages } from "./regular";
 import { executeEvidencePlan } from "./retrieve";
@@ -31,6 +32,10 @@ import type {
   RouteDecision,
 } from "./types";
 
+// A farewell or acknowledgement must land as a close, not a re-engagement.
+const INVITATION =
+  /\b(?:what (?:are we|do you want|would you like)|want to (?:look|dig|check)|anything else|let me know|what's next|shall we|what can i)\b/i;
+
 async function conversationalReply(args: {
   kind: Exclude<AnswerKind, "finance">;
   request: ChatRequest;
@@ -45,12 +50,27 @@ async function conversationalReply(args: {
       args.request.message,
     ].join("\n");
     const offTopic = args.kind === "off_topic";
+    const social = args.kind === "social";
+    const closing =
+      social &&
+      (FAREWELL.test(args.request.message) ||
+        CASUAL_ACKNOWLEDGEMENT.test(args.request.message) ||
+        /^\s*(?:aight|gucci|all good|no worries|cool|sounds good)\b[\s\w,]*[.!…]*\s*$/i.test(
+          args.request.message
+        ));
     const text = await synthesizeWithFallback({
-      system: buildChatSystemPrompt({ kind: args.kind, note: args.note }),
+      system: buildChatSystemPrompt({
+        kind: args.kind,
+        note: closing
+          ? [args.note, "the user is wrapping up — close warmly and stop"]
+              .filter(Boolean)
+              .join("; ")
+          : args.note,
+      }),
       history: historyMessages(args.request),
       user: args.request.message,
-      maxTokens: args.kind === "social" ? 150 : 170,
-      temperature: args.kind === "social" ? 0.7 : 0.5,
+      maxTokens: social ? 150 : 170,
+      temperature: social ? 0.7 : 0.5,
       timeoutMs: 8_000,
       totalTimeoutMs: 12_000,
       event: "social_synthesis",
@@ -60,6 +80,11 @@ async function conversationalReply(args: {
         !/\b(?:according to (?:some |recent )?(?:reports?|news|sources)|news shows|reports? (?:say|show|suggest))\b/i.test(
           candidate
         ) &&
+        (!social || candidate.length <= 360) &&
+        (!closing ||
+          (candidate.length <= 200 &&
+            !candidate.includes("?") &&
+            !INVITATION.test(candidate))) &&
         (!offTopic ||
           (candidate.length <= 400 &&
             !/[=`{}]|\d|\bformula\b|\boutput\b|\bwould (?:print|return|be)\b/i.test(
@@ -67,7 +92,9 @@ async function conversationalReply(args: {
             ))),
       correction: offTopic
         ? "Rewrite that reply as one friendly sentence saying this is outside StockSage's lane, plus at most one finance pivot. It must contain no numbers, formulas, code, outputs, derivations, or any partial answer to the request itself."
-        : "Rewrite that reply without quoting any prices, percentages, dollar figures, or claims attributed to news and reports — you don't have market data in front of you for this turn.",
+        : closing
+          ? "The user is signing off or wrapping up. Rewrite as one short, warm send-off in their register — no question, no invitation to continue, no pitch. Just close."
+          : "Rewrite that reply without quoting any prices, percentages, dollar figures, or claims attributed to news and reports — you don't have market data in front of you for this turn.",
     });
     const trimmed = text.trim();
     if (trimmed) return trimmed;
@@ -108,28 +135,7 @@ export async function answerWithTriage(
     });
   }
 
-  const floor = evaluateDomainPolicy(request.message, base.entities);
-  if (
-    floor.action === "respond" &&
-    floor.reasonCode === "high_stakes_finance" &&
-    floor.response
-  ) {
-    const resolved = resolveConversationState(
-      request.message,
-      request.state,
-      request.history
-    );
-    return immediateResponse({
-      text: floor.response,
-      state: resolved.state,
-      route: "refused",
-      reasonCode: floor.reasonCode,
-      startedAt,
-    });
-  }
-  const hardProhibited =
-    floor.action === "respond" && /^prohibited_/.test(floor.reasonCode);
-  const category = hardProhibited ? "prohibited" : triage.category;
+  const category = triage.category;
 
   if (
     category === "social" ||
@@ -149,7 +155,7 @@ export async function answerWithTriage(
           ) ?? "Hey! What are you looking into?"
         : category === "off_topic"
           ? OUT_OF_SCOPE_RESPONSE
-          : floor.response ?? PROHIBITED_FALLBACK;
+          : PROHIBITED_FALLBACK;
     const note =
       category === "prohibited"
         ? [
@@ -169,7 +175,7 @@ export async function answerWithTriage(
       text,
       state: base,
       route: category,
-      reasonCode: hardProhibited ? floor.reasonCode : `llm_triage_${category}`,
+      reasonCode: `llm_triage_${category}`,
       startedAt,
     });
   }

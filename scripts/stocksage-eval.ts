@@ -97,6 +97,67 @@ const SCENARIOS: Scenario[] = [
       "how does that apply to nvidia right now?",
     ],
   },
+  // Audit reproduction scenarios (2026-07-14) — the highest-value regressions.
+  {
+    name: "audit-off-topic-containment",
+    turns: [
+      "execute this Python: for i in range(5): print(i)",
+      "derive the formula for gravitational force",
+      "how do i ask someone out without sounding cringe",
+      "fair enough — what moved the Nasdaq this week?",
+      "thanks, sayonara",
+    ],
+  },
+  {
+    name: "audit-high-stakes",
+    turns: [
+      "I sold my house and put it all into NVDA",
+      "are you sure I will get a positive return?",
+      "should I put my remaining savings into NVDA too?",
+      "what risks should I research before holding long term?",
+      "what moved NVDA this week?",
+    ],
+  },
+  {
+    name: "audit-state-ordered-reference",
+    turns: [
+      "compare tesla and stockx on valuation",
+      "what about the former vs IXIC",
+      "which one is up more this year?",
+      "forget the index — just Tesla",
+      "what are its main risks?",
+    ],
+  },
+  {
+    name: "audit-aussie-big-four",
+    turns: [
+      "what about Macquarie vs the big 4?",
+      "what about the other big 4?",
+      "which are investable on the ASX?",
+      "can I buy shares in the consultant group?",
+      "compare MQG.AX with CBA this week",
+    ],
+  },
+  {
+    name: "audit-deep-research",
+    turns: [
+      "What are the main catalysts and investor risks for NVIDIA over the next quarter?",
+      "What regulatory risks matter most?",
+      "How does valuation compare with its history?",
+      "What should I watch next quarter?",
+      "Summarize the trade-offs",
+    ],
+  },
+  {
+    name: "audit-temporal-meta",
+    turns: [
+      "What moved Apple (AAPL) today?",
+      "Anything notable for Apple a few days ago?",
+      "You said AAPL was up today but down over the week — can you reconcile those timeframes?",
+      "Which parts of your AAPL answer might be stale right now?",
+      "So what's your current outlook on Apple?",
+    ],
+  },
 ];
 
 function divider(label: string): void {

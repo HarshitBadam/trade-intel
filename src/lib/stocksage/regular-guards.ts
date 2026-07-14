@@ -92,6 +92,34 @@ export function violatesStyle(text: string, hasSources: boolean): string | null 
   return null;
 }
 
+const CRITERION_EVIDENCE: Record<string, RegExp> = {
+  performance:
+    /\b(?:perform(?:ance|ed|ing)?|returns?|gain(?:ed|s)?|fell|rose|dropped|climbed|moved?|rall(?:y|ied)|slid|up|down)\b|[+-]?\d+(?:\.\d+)?%/i,
+  valuation:
+    /\b(?:valuation|p\/?e\b|price[- ]to[- ]earnings|multiple|valued|overvalued|undervalued|expensive|cheap|premium|discount)\b/i,
+  earnings:
+    /\b(?:earnings|eps\b|profit|revenue|guidance|beat|missed|quarter(?:ly)? results)\b/i,
+  growth: /\b(?:growth|growing|grew|expand(?:ing|ed)?|accelerat|decelerat)\b/i,
+  risk: /\b(?:risks?|risky|riskier|volatil|downside|exposure|safe(?:st|r|ty)?|defensive|cyclical|beta|concentrat)\b/i,
+  dividends: /\b(?:dividends?|yields?|payouts?|buybacks?|distributions?)\b/i,
+  outlook:
+    /\b(?:outlook|expects?|expectations?|ahead|catalysts?|going forward|next (?:quarter|year)|bull(?:ish)? case|bear(?:ish)? case|headwinds?|tailwinds?)\b/i,
+  size: /\b(?:market cap(?:itali[sz]ation)?|size|bigger|biggest|larger|largest|smaller|revenue|scale)\b/i,
+};
+
+const GAP_ADMISSION =
+  /\b(?:couldn'?t|can'?t|could not|cannot|unable to|wasn'?t able to)\s+(?:verify|pull|confirm|get|find|check)\b|\bdon'?t have\b|\bno (?:current|verified|fresh|recent)\b|\bwhat i(?:'|’)?d check\b|\bwithout (?:current|verified)\b|\bcouldn'?t verify\b/i;
+
+// A requested criterion must be substantively addressed or its gap named;
+// an answer that talks around the asked dimension fails publication.
+export function missingCriteria(text: string, criteria: string[]): string[] {
+  if (GAP_ADMISSION.test(text)) return [];
+  return criteria.filter((criterion) => {
+    const pattern = CRITERION_EVIDENCE[criterion];
+    return pattern ? !pattern.test(text) : false;
+  });
+}
+
 function shingleWords(text: string): string[] {
   return text
     .toLowerCase()

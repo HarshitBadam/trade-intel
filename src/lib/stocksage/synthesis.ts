@@ -1,17 +1,21 @@
 import "server-only";
 
 import {
+  CEREBRAS_CHAT_MODEL,
+  GEMINI_CHAT_MODEL,
   GROQ_ANALYSIS_MODEL,
   GROQ_CHAT_MODEL,
   GROQ_FALLBACK_MODEL,
-  hasGroq,
+  hasAnySynthesisLlm,
 } from "@/lib/config";
 import {
-  groqChatText,
-  groqErrorSummary,
-  shouldTripGroqCircuit,
-  type GroqMessage,
-} from "@/lib/groq";
+  hasVendor,
+  llmChatText,
+  llmErrorSummary,
+  shouldTripLlmCircuit,
+  type LlmMessage,
+  type LlmVendor,
+} from "@/lib/llm";
 import {
   isCoolingDown,
   isOpen,
@@ -25,7 +29,7 @@ import { rateLimit } from "@/lib/rate-limit";
 type SynthesisArgs = {
   system: string;
   user: string;
-  history?: GroqMessage[];
+  history?: LlmMessage[];
   maxTokens: number;
   temperature?: number;
   timeoutMs?: number;
@@ -71,27 +75,48 @@ async function acquireLane(
 }
 
 type Candidate = {
+  vendor: LlmVendor;
   model: string;
   provider: Provider;
   quotaProvider: Provider;
   budgetPerMinute: number;
+  // Cerebras free tier caps context at ~8K tokens; skip it for oversized prompts.
+  maxPromptChars?: number;
 };
 
 function candidatesFor(args: SynthesisArgs): Candidate[] {
   const deep = args.event === "deep_synthesis";
-  const primary: Candidate = {
+  const groqPrimary: Candidate = {
+    vendor: "groq",
     model: GROQ_CHAT_MODEL,
     provider: deep ? "groq-deep" : "groq-chat",
     quotaProvider: "groq-chat",
     budgetPerMinute: 12,
   };
-  const fallback: Candidate = {
+  const cerebras: Candidate = {
+    vendor: "cerebras",
+    model: CEREBRAS_CHAT_MODEL,
+    provider: deep ? "cerebras-deep" : "cerebras-chat",
+    quotaProvider: "cerebras-chat",
+    budgetPerMinute: 10,
+    maxPromptChars: 20_000,
+  };
+  const gemini: Candidate = {
+    vendor: "gemini",
+    model: GEMINI_CHAT_MODEL,
+    provider: deep ? "gemini-deep" : "gemini-chat",
+    quotaProvider: "gemini-chat",
+    budgetPerMinute: 8,
+  };
+  const groqFallback: Candidate = {
+    vendor: "groq",
     model: GROQ_FALLBACK_MODEL,
     provider: deep ? "groq-deep-fallback" : "groq-fallback",
     quotaProvider: "groq-fallback",
     budgetPerMinute: 4,
   };
-  const small: Candidate = {
+  const groqSmall: Candidate = {
+    vendor: "groq",
     model: GROQ_ANALYSIS_MODEL,
     provider: deep ? "groq-deep-small" : "groq-chat-small",
     quotaProvider: "groq-analysis",
@@ -99,24 +124,44 @@ function candidatesFor(args: SynthesisArgs): Candidate[] {
   };
   const ordered =
     args.lane === "light"
-      ? [primary, small, fallback]
-      : [primary, fallback, small];
+      ? [groqPrimary, gemini, cerebras, groqSmall, groqFallback]
+      : [groqPrimary, cerebras, gemini, groqFallback, groqSmall];
   return ordered.filter(
     (candidate, index, list) =>
-      list.findIndex((other) => other.model === candidate.model) === index
+      hasVendor(candidate.vendor) &&
+      list.findIndex(
+        (other) =>
+          other.vendor === candidate.vendor && other.model === candidate.model
+      ) === index
+  );
+}
+
+function promptChars(args: SynthesisArgs): number {
+  return (
+    args.system.length +
+    args.user.length +
+    (args.history ?? []).reduce((sum, turn) => sum + turn.content.length, 0)
   );
 }
 
 export async function synthesizeWithFallback(
   args: SynthesisArgs
 ): Promise<string> {
-  if (!hasGroq) throw new Error("Groq synthesis is not configured");
+  if (!hasAnySynthesisLlm) throw new Error("No synthesis LLM is configured");
 
   let lastError: unknown;
   const deadline = Date.now() + (args.totalTimeoutMs ?? 30_000);
+  const inputChars = promptChars(args);
 
   for (const candidate of candidatesFor(args)) {
-    const release = await acquireLane(candidate.model, deadline - Date.now());
+    if (
+      candidate.maxPromptChars !== undefined &&
+      inputChars > candidate.maxPromptChars
+    ) {
+      continue;
+    }
+    const laneKey = `${candidate.vendor}:${candidate.model}`;
+    const release = await acquireLane(laneKey, deadline - Date.now());
     if (!release) break;
     try {
       const remainingMs = deadline - Date.now();
@@ -128,20 +173,21 @@ export async function synthesizeWithFallback(
         continue;
       }
       const admission = await rateLimit(
-        `stocksage-model-${candidate.model.replace(/[^a-z0-9]+/gi, "-")}`,
+        `stocksage-model-${laneKey.replace(/[^a-z0-9]+/gi, "-")}`,
         "shared-synthesis-budget",
         candidate.budgetPerMinute,
         60
       );
       if (!admission.success) continue;
       const base = {
+        vendor: candidate.vendor,
         model: candidate.model,
         system: args.system,
         messages: args.history,
         maxTokens: args.maxTokens,
         temperature: args.temperature ?? 0.5,
       };
-      const text = await groqChatText({
+      const text = await llmChatText({
         ...base,
         user: args.user,
         timeoutMs: Math.min(args.timeoutMs ?? 20_000, remainingMs),
@@ -154,7 +200,7 @@ export async function synthesizeWithFallback(
           typeof args.correction === "function"
             ? args.correction(text)
             : args.correction;
-        const revised = await groqChatText({
+        const revised = await llmChatText({
           ...base,
           messages: [
             ...(args.history ?? []),
@@ -179,14 +225,14 @@ export async function synthesizeWithFallback(
       continue;
     } catch (error) {
       lastError = error;
-      const summary = groqErrorSummary(error);
+      const summary = llmErrorSummary(error);
       if (summary.status === 429) {
         await recordCooldown(
           candidate.quotaProvider,
           summary.retryAfterMs ?? 60_000
         );
       }
-      if (shouldTripGroqCircuit(error)) {
+      if (shouldTripLlmCircuit(error)) {
         await recordFailure(candidate.provider);
       }
       console.error(

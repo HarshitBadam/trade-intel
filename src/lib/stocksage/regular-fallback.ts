@@ -42,6 +42,43 @@ function casualName(name: string): string {
   );
 }
 
+// Quote timestamps can arrive as full ISO instants; users should see
+// market-session wording, never "2026-07-13T04:00:00.000Z".
+function humanAsOf(asOf: string): string {
+  if (!asOf.includes("T")) return asOf;
+  const parsed = new Date(asOf);
+  if (Number.isNaN(parsed.getTime())) return asOf.split("T")[0];
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "America/New_York",
+  }).format(parsed);
+}
+
+const JUDGMENT_REQUEST =
+  /\b(?:which|who)\b[^.!?]{0,60}\b(?:safest|safer|best|better|riskier|cheapest|strongest|biggest|winner)\b|\b(?:safest|outlook)\b|\bshould i\b|\bwhich (?:one|is|looks)\b/i;
+
+const CRITERION_LABEL: Record<string, string> = {
+  performance: "recent performance",
+  valuation: "valuation",
+  earnings: "earnings",
+  growth: "growth",
+  risk: "relative risk",
+  dividends: "dividends",
+  outlook: "the outlook",
+  size: "relative size",
+  news: "the latest news",
+};
+
+function askedDimension(message: string, criteria: string[]): string | null {
+  const labels = criteria
+    .map((criterion) => CRITERION_LABEL[criterion])
+    .filter(Boolean);
+  if (labels.length > 0) return labels.join(" and ");
+  if (JUDGMENT_REQUEST.test(message)) return "a judgment call like that";
+  return null;
+}
+
 export function buildFallbackReply(
   request: ChatRequest,
   decision: RouteDecision,
@@ -74,7 +111,7 @@ export function buildFallbackReply(
           ? "not available"
           : `${period.value >= 0 ? "+" : ""}${period.value.toFixed(2)}%`;
       lines.push(
-        `- **${quote.ticker}** — $${quote.price.toFixed(2)} as of ${quote.asOf}; ${change} ${period.label}.`
+        `- **${quote.ticker}** — $${quote.price.toFixed(2)} as of ${humanAsOf(quote.asOf)}; ${change} ${period.label}.`
       );
     }
   }
@@ -212,10 +249,25 @@ export function buildFallbackReply(
       retryable: true,
     };
   }
-  lines.push(
-    "",
-    "That’s the verified picture I can stand behind right now — ask again in a bit and I should be able to take it further."
-  );
+  // Shape the fallback to the question: if the user asked for a judgment or a
+  // specific dimension, own the gap up front instead of presenting a data dump
+  // as though it were the answer.
+  const dimension = askedDimension(request.message, context.plan.criteria);
+  if (dimension) {
+    lines.unshift(
+      `I can’t give you a verified call on ${dimension} this second — my analysis engine is briefly behind. Here’s what I can stand behind right now:`,
+      ""
+    );
+    lines.push(
+      "",
+      `Ask again in a moment and I’ll take a proper run at ${dimension}.`
+    );
+  } else {
+    lines.push(
+      "",
+      "That’s the verified picture I can stand behind right now — ask again in a bit and I should be able to take it further."
+    );
+  }
   const text = lines.join("\n");
   return {
     text: expandValidCitations(text, context.sources),

@@ -29,6 +29,48 @@ function hasExplicitConversationReference(message: string): boolean {
   );
 }
 
+const DEGRADED_RESPONSE =
+  "I'm briefly over capacity and I'd rather not wing an answer without checking the data. Ask me again in a few seconds — nothing about our conversation is lost.";
+
+// Production path when every triage lane is unavailable: keep the analyst
+// voice, preserve state, and never guess at routing. Greetings and farewells
+// are closed-class, so they still get a deterministic reply.
+export function answerDegraded(
+  request: ChatRequest,
+  startedAt: number
+): ChatReply {
+  const resolution = resolveConversationState(
+    request.message,
+    request.state,
+    request.history
+  );
+  const decision = routeMessage({
+    message: request.message,
+    entities: resolution.entities,
+    state: resolution.state,
+  });
+  if (decision.route === "social" || decision.route === "safety_support") {
+    const immediate = immediateReply(decision, request.message);
+    if (immediate) {
+      return immediateResponse({
+        text: immediate,
+        state: resolution.state,
+        route: decision.route,
+        reasonCode: decision.reasonCode,
+        startedAt,
+      });
+    }
+  }
+  return immediateResponse({
+    text: DEGRADED_RESPONSE,
+    state: resolution.state,
+    route: "general",
+    reasonCode: "all_llm_lanes_unavailable",
+    startedAt,
+    retryable: true,
+  });
+}
+
 export async function answerWithHeuristics(
   request: ChatRequest,
   dependencies: ChatDependencies,
