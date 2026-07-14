@@ -11,6 +11,7 @@ import { buildFallbackReply } from "./regular-fallback";
 import { historyMessages } from "./regular-history";
 import {
   coversEveryEntity,
+  missingCriteria,
   opensOnSubject,
   repeatedPriorPhrase,
   violatesStyle,
@@ -63,6 +64,10 @@ export async function answerRegularChat(
       decision.route !== "stable_finance";
     const requireCoverage =
       decision.route === "comparison" && entities.length >= 2;
+    const requestedCriteria =
+      decision.route === "stable_finance"
+        ? []
+        : (options.criteria ?? state.criteria ?? []);
     const system = buildChatSystemPrompt({
       kind: "finance",
       entities,
@@ -119,6 +124,7 @@ export async function answerRegularChat(
               opensOnSubject(candidate, entities))) &&
           (!guardFigures ||
             unsupportedFigures(candidate, figureCorpus).length === 0) &&
+          missingCriteria(candidate, requestedCriteria).length === 0 &&
           violatesStyle(candidate, context.sources.length > 0) === null;
         if (!sound) return false;
         if (
@@ -140,8 +146,15 @@ export async function answerRegularChat(
           requireCoverage && !opensOnSubject(draft, entities)
             ? `You started with the wrong companies. This question is about exactly: ${names} — nobody else. Open with one of them. `
             : "";
+        const unmetCriteria = missingCriteria(draft, requestedCriteria);
+        const criteriaGap =
+          unmetCriteria.length > 0
+            ? `The user specifically asked about ${unmetCriteria.join(
+                " and "
+              )}, and your draft never addressed it. Address it with the data you were given, or say plainly in one clause what you couldn't verify — do not answer a different question. `
+            : "";
         const repeated = repeatedPriorPhrase(draft, priorReplies, entities);
-        return `Rewrite that answer. ${offSubject}${
+        return `Rewrite that answer. ${offSubject}${criteriaGap}${
           invented.length > 0
             ? `These figures are not in the data you were given, so they must go: ${invented.join(", ")}. Do not replace them with other numbers from memory — state only figures present in the data, and where a figure is missing, say what you'd check instead. `
             : ""

@@ -1,14 +1,19 @@
 import "server-only";
 
-import { baseConversationState } from "./entities";
+import { hasAnySynthesisLlm } from "@/lib/config";
+import {
+  baseConversationState,
+  resolveConversationState,
+} from "./entities";
 import { EXPLICIT_SELF_HARM, normalizeMessage } from "./intent";
-import { answerWithHeuristics } from "./chat-heuristics";
+import { answerDegraded, answerWithHeuristics } from "./chat-heuristics";
 import { answerWithTriage } from "./chat-triage";
 import {
   immediateResponse,
   SELF_HARM_RESPONSE,
   type ChatDependencies,
 } from "./chat-shared";
+import { hardSafetyFloor } from "./policy";
 import { triageWithLLM } from "./triage";
 import type { ChatReply, ChatRequest } from "./types";
 
@@ -30,6 +35,24 @@ export async function answerChat(
     });
   }
 
+  const base = baseConversationState(request.state, request.history);
+  const floor = hardSafetyFloor(normalized, base.entities);
+  if (floor?.response) {
+    const resolved = resolveConversationState(
+      normalized,
+      request.state,
+      request.history
+    );
+    return immediateResponse({
+      text: floor.response,
+      state: resolved.state,
+      route:
+        floor.reasonCode === "explicit_self_harm" ? "safety_support" : "refused",
+      reasonCode: floor.reasonCode,
+      startedAt,
+    });
+  }
+
   const triage = await (dependencies.triage ?? triageWithLLM)({
     message: normalized,
     history: request.history,
@@ -38,6 +61,13 @@ export async function answerChat(
   if (triage) {
     return answerWithTriage(scoped, triage, dependencies, startedAt);
   }
+  // LLM lanes exist but all failed: give one honest, retryable, state-preserving
+  // reply instead of impersonating the product with regex routing.
+  if (hasAnySynthesisLlm && !dependencies.triage) {
+    return answerDegraded(scoped, startedAt);
+  }
+  // No LLM configured at all (offline dev/tests): deterministic brain is the
+  // only brain, so use it fully.
   return answerWithHeuristics(scoped, dependencies, startedAt);
 }
 

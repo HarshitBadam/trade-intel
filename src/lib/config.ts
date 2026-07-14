@@ -54,6 +54,16 @@ export const GROQ_TRIAGE_MODEL =
   "meta-llama/llama-4-scout-17b-16e-instruct";
 const rawGroq = Boolean(GROQ_API_KEY);
 
+export const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
+export const CEREBRAS_CHAT_MODEL =
+  process.env.CEREBRAS_CHAT_MODEL ?? "gpt-oss-120b";
+const rawCerebras = Boolean(CEREBRAS_API_KEY);
+
+export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+export const GEMINI_CHAT_MODEL =
+  process.env.GEMINI_CHAT_MODEL ?? "gemini-2.5-flash";
+const rawGemini = Boolean(GEMINI_API_KEY);
+
 export const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 const rawTavily = Boolean(TAVILY_API_KEY);
 
@@ -77,6 +87,9 @@ export const hasAlpaca = rawAlpaca && liveAllowed;
 export const hasFinnhub = rawFinnhub && liveAllowed;
 export const hasAstra = rawAstra && liveAllowed;
 export const hasGroq = rawGroq && liveAllowed;
+export const hasCerebras = rawCerebras && liveAllowed;
+export const hasGemini = rawGemini && liveAllowed;
+export const hasAnySynthesisLlm = hasGroq || hasCerebras || hasGemini;
 export const hasLangflow = rawLangflow && liveAllowed;
 export const hasLangflowAnalyze = rawLangflowAnalyze && liveAllowed;
 export const hasTavily = rawTavily && liveAllowed;
@@ -85,7 +98,7 @@ export const STOCKSAGE_DEEP_SNAPSHOT_SECRET =
   process.env.AUTH_SECRET ??
   process.env.NEXTAUTH_SECRET;
 export const hasDeepResearch = Boolean(
-  hasGroq && (hasTavily || hasAstra) && STOCKSAGE_DEEP_SNAPSHOT_SECRET
+  hasAnySynthesisLlm && (hasTavily || hasAstra) && STOCKSAGE_DEEP_SNAPSHOT_SECRET
 );
 
 if (
@@ -95,6 +108,8 @@ if (
     rawFinnhub ||
     rawAstra ||
     rawGroq ||
+    rawCerebras ||
+    rawGemini ||
     rawLangflow ||
     rawTavily) &&
   !enforceAuth

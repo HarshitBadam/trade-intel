@@ -261,8 +261,36 @@ export function filterEvidence(args: {
     if ((input.criteria?.length ?? 0) > 0 && criteria.length === 0) return [];
     return [{ ...input, criteria }];
   });
-  const ranked = [...accepted].sort(
+  // Relevance gate: when the user asked for specific criteria, sources that
+  // address none of them are tangential — keep one only where dropping it
+  // would leave an entity with no evidence at all. A named gap beats a
+  // confident citation of an unrelated article.
+  const planCriteria = args.plan.criteria.filter(
+    (criterion) => criterion in CRITERION_TERMS
+  );
+  const relevant =
+    planCriteria.length === 0
+      ? accepted
+      : (() => {
+          const onCriterion = accepted.filter(
+            (input) => matchedCriteria(input, planCriteria).length > 0
+          );
+          const coveredEntities = new Set(
+            onCriterion.flatMap((input) => input.entityIds ?? [])
+          );
+          const coverageFillers = accepted.filter(
+            (input) =>
+              matchedCriteria(input, planCriteria).length === 0 &&
+              (input.entityIds ?? []).some(
+                (entityId) => !coveredEntities.has(entityId)
+              )
+          );
+          return [...onCriterion, ...coverageFillers];
+        })();
+  const ranked = [...relevant].sort(
     (left, right) =>
+      matchedCriteria(right, planCriteria).length -
+        matchedCriteria(left, planCriteria).length ||
       evidenceAuthority(right) - evidenceAuthority(left) ||
       (right.score ?? 0) - (left.score ?? 0)
   );

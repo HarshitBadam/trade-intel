@@ -1,6 +1,12 @@
 import "server-only";
 
-import { hasDeepResearch } from "@/lib/config";
+import {
+  hasDeepResearch,
+  hasLangflow,
+  LANGFLOW_FLOW_ID,
+} from "@/lib/config";
+import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
+import { runLangflowFlow } from "@/lib/langflow";
 import {
   expandValidCitations,
   stripTickerCitationMarkers,
@@ -70,6 +76,60 @@ function snapshotContext(snapshot: DeepResearchSnapshot): {
       jurisdiction: snapshot.jurisdiction,
     },
   };
+}
+
+// Deep research is the one surface where the hosted Langflow flow fits:
+// low-volume, opt-in, latency-tolerant, and idempotent, with the direct
+// multi-provider path as fallback. Output must pass the same acceptance
+// checks as direct synthesis or it is discarded.
+async function langflowDeepSynthesis(args: {
+  system: string;
+  user: string;
+  accept: (text: string) => boolean;
+}): Promise<string | null> {
+  if (!hasLangflow || !LANGFLOW_FLOW_ID) return null;
+  if (await isOpen("langflow-deep")) return null;
+  try {
+    const text = await runLangflowFlow({
+      flowId: LANGFLOW_FLOW_ID,
+      input: `${args.system}\n\n${args.user}`,
+      timeoutMs: 25_000,
+    });
+    const trimmed = text.trim();
+    if (!trimmed || !args.accept(trimmed)) {
+      console.error(
+        `[stocksage] ${JSON.stringify({
+          event: "deep_synthesis",
+          provider: "langflow-deep",
+          name: "SynthesisValidationError",
+        })}`
+      );
+      return null;
+    }
+    await recordSuccess("langflow-deep");
+    console.info(
+      `[stocksage] ${JSON.stringify({
+        event: "deep_synthesis",
+        provider: "langflow-deep",
+        status: "success",
+      })}`
+    );
+    return trimmed;
+  } catch (error) {
+    await recordFailure("langflow-deep");
+    console.error(
+      `[stocksage] ${JSON.stringify({
+        event: "deep_synthesis",
+        provider: "langflow-deep",
+        name: error instanceof Error ? error.name : "unknown",
+        detail:
+          error instanceof Error
+            ? error.message.slice(0, 200)
+            : String(error).slice(0, 200),
+      })}`
+    );
+    return null;
+  }
 }
 
 async function executeDeepResearch(
@@ -156,28 +216,33 @@ ${snapshot.criteria.join(", ") || "not specified"}
 HORIZON
 ${snapshot.horizon ?? "not specified"}`;
     stage = "synthesis";
-    const text = await synthesizeWithFallback({
-      system: `${STOCKSAGE_DEEP_SYSTEM}
+    const system = `${STOCKSAGE_DEEP_SYSTEM}
 
-Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw URL or invent an ID. The server will turn valid IDs into links.`,
-      user,
-      maxTokens: 1100,
-      temperature: 0.35,
-      timeoutMs: 25_000,
-      totalTimeoutMs: 32_000,
-      event: "deep_synthesis",
-      accept: (candidate) =>
-        validCitationUrls(candidate, context.sources).length > 0 &&
-        unsupportedFigures(candidate, user).length === 0,
-      correction: (draft) => {
-        const invented = unsupportedFigures(draft, user);
-        return `Rewrite that answer. ${
-          invented.length > 0
-            ? `These figures are not in the quotes or sources you were given, so remove them without substituting other numbers from memory: ${invented.join(", ")}. `
-            : ""
-        }Every claim taken from RETRIEVED SOURCES must end with its ID like [S1]. Keep the same structure and depth.`;
-      },
-    });
+Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw URL or invent an ID. The server will turn valid IDs into links.`;
+    const accept = (candidate: string) =>
+      validCitationUrls(candidate, context.sources).length > 0 &&
+      unsupportedFigures(candidate, user).length === 0;
+    const langflowText = await langflowDeepSynthesis({ system, user, accept });
+    const text =
+      langflowText ??
+      (await synthesizeWithFallback({
+        system,
+        user,
+        maxTokens: 1100,
+        temperature: 0.35,
+        timeoutMs: 25_000,
+        totalTimeoutMs: 32_000,
+        event: "deep_synthesis",
+        accept,
+        correction: (draft) => {
+          const invented = unsupportedFigures(draft, user);
+          return `Rewrite that answer. ${
+            invented.length > 0
+              ? `These figures are not in the quotes or sources you were given, so remove them without substituting other numbers from memory: ${invented.join(", ")}. `
+              : ""
+          }Every claim taken from RETRIEVED SOURCES must end with its ID like [S1]. Keep the same structure and depth.`;
+        },
+      }));
     stage = "citation_validation";
     const cleaned = stripTickerCitationMarkers(
       text,
