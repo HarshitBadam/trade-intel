@@ -16,6 +16,12 @@ export function detectCriteria(message: string): string[] {
 }
 
 export function detectHorizon(message: string): string | undefined {
+  if (/\b(?:a\s+)?(?:few|couple(?:\s+of)?)\s+days\s+(?:ago|back)\b/i.test(message)) {
+    return "last few days";
+  }
+  if (/\b(?:the other day|recently|lately)\b/i.test(message)) {
+    return "last few days";
+  }
   const match = message.match(
     /\b(?:today|yesterday|this (?:week|month|quarter|year)|last (?:few days|week|month|quarter|year)|(?:past|last|next|over)\s+\d+\s+(?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between\s+\d{4}-\d{2}-\d{2}\s+and\s+\d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}|[135]\s*[- ]?year)\b/i
   );

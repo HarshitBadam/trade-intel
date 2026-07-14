@@ -23,12 +23,42 @@ import type {
 
 const PLURAL_REFERENCE = /\b(?:they|their|them|those|these|both)\b/i;
 const SINGULAR_REFERENCE =
-  /\b(?:it|its|that one|this one|the company|the stock|the shares|what about|how about)\b/i;
+  /\b(?:it|its|that one|this one|the company|the stock|the shares|what about|how about|wb)\b/i;
 const ORDERED_REFERENCE = /\b(?:former|latter|first one|second one)\b/i;
 const COMPARISON_FOLLOW_UP =
-  /\b(?:which (?:one|is)|what about|how about|better|safer|less risky|more risky|rank|order|all of them|former two|latter two|today|yesterday|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|over (?:the )?last|past \d+|between)\b/i;
+  /\b(?:which (?:one|is|looks)|what about|how about|wb|better|safe(?:st|r)|less risky|more risky|rank|order|all of them|former two|latter two|today|yesterday|(?:a\s+)?few days ago|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|over (?:the )?last|past \d+|between)\b/i;
 const CONTEXTUAL_FOLLOW_UP =
-  /^(?:and\s+)?(?:today|yesterday|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|what (?:changed|happened)|how (?:did|has|is|are)|why\b|rank\b|order\b|all of them\b|only the (?:former|latter) two\b)/i;
+  /^(?:(?:and|so|ok(?:ay)?|\.{2,})\s+)?(?:today|yesterday|(?:a\s+)?few days ago|anything notable|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|what (?:changed|happened|moved)|what(?:'?s| is) (?:your|the) (?:current\s+)?outlook|which (?:one|is|looks|parts?)|(?:can you )?reconcile|how (?:did|has|is|are|was)|why\b|rank\b|order\b|all of them\b|only the (?:former|latter) two\b)/i;
+const REMOVAL =
+  /\b(?:forget|drop|remove|ignore|skip|leave out|without)\s+(?:about\s+)?(.+?)(?=\s*(?:[—–-]{1,2}|,|\.|;|!|\?|$))/i;
+const RESET = /^(?:reset|start (?:over|fresh|again)|clear (?:the )?(?:context|conversation|slate)|new topic)[\s,.!?]*$/i;
+const AUSTRALIAN_BANK_TICKERS = new Set(["CBA", "NAB", "ANZ", "WBC"]);
+const CONSULTING_NAMES = new Set(["Deloitte", "PwC", "EY", "KPMG"]);
+const INDEX_TICKERS = new Set(["IXIC", "GSPC", "DJI"]);
+
+function removalTargets(
+  phrase: string,
+  base: FinanceEntity[]
+): FinanceEntity[] {
+  const resolved = resolveText(phrase);
+  if (resolved.length > 0) return resolved;
+  if (/\b(?:index(?:es)?|indices)\b/i.test(phrase)) {
+    return base.filter(
+      (entity) =>
+        (entity.ticker && INDEX_TICKERS.has(entity.ticker)) ||
+        /\b(?:composite|index|500)\b/i.test(entity.name)
+    );
+  }
+  if (/\bbanks?\b/i.test(phrase)) {
+    return base.filter(
+      (entity) => entity.ticker && AUSTRALIAN_BANK_TICKERS.has(entity.ticker)
+    );
+  }
+  if (/\bconsult|accountants?|firms\b/i.test(phrase)) {
+    return base.filter((entity) => CONSULTING_NAMES.has(entity.name));
+  }
+  return [];
+}
 
 export function emptyConversationState(): ConversationState {
   return {
@@ -81,6 +111,13 @@ export function resolveConversationState(
   const base = previous
     ? sanitizeConversationState(previous, canonicalizeEntity)
     : stateFromHistory(history);
+  if (RESET.test(message)) {
+    return {
+      state: { ...emptyConversationState(), revision: base.revision + 1 },
+      entities: [],
+      reasonCode: "state_reset",
+    };
+  }
   let direct = resolveText(message);
   const fortuneReplacement =
     /\b(?:wb|what about)\s+(?:the\s+)?100\b/i.test(message) &&
@@ -95,11 +132,17 @@ export function resolveConversationState(
   const replacementCorrection = message.match(
     /\bnot\s+(.+?)(?:,|\s+but\s+|\s+instead\s+)(.+?)(?:[.!?]|$)/i
   );
-  const removed = meantCorrection
+  let removed = meantCorrection
     ? resolveText(meantCorrection[2])
     : replacementCorrection
       ? resolveText(replacementCorrection[1])
       : [];
+  if (removed.length === 0) {
+    const removalMatch = message.match(REMOVAL);
+    if (removalMatch) {
+      removed = removalTargets(removalMatch[1], base.entities);
+    }
+  }
   let correctedBase = base.entities;
   let correctedExplicitSet = base.explicitEntitySet;
   if (removed.length > 0) {
@@ -120,23 +163,25 @@ export function resolveConversationState(
       ...new Map(correctedBase.map((entity) => [entity.id, entity])).values(),
     ];
     const replacementIds = direct.map((entity) => entity.id);
-    correctedExplicitSet = base.explicitEntitySet.flatMap((id) =>
-      removedIds.has(id) ? replacementIds : [id]
-    );
+    correctedExplicitSet = [
+      ...new Set(
+        base.explicitEntitySet.flatMap((id) =>
+          removedIds.has(id) ? replacementIds : [id]
+        )
+      ),
+    ];
   }
   let grouped = resolveGroup(message);
-  let groupAnchors: FinanceEntity[] = [];
+  let groupSwitch = false;
   if (
     grouped.length === 0 &&
     /\b(?:other|another)\s+big\s*(?:4|four)\b/i.test(message)
   ) {
-    const australian = new Set(["CBA", "NAB", "ANZ", "WBC"]);
-    const consulting = new Set(["Deloitte", "PwC", "EY", "KPMG"]);
     const hasAustralian = base.entities.some(
-      (entity) => entity.ticker && australian.has(entity.ticker)
+      (entity) => entity.ticker && AUSTRALIAN_BANK_TICKERS.has(entity.ticker)
     );
     const hasConsulting = base.entities.some((entity) =>
-      consulting.has(entity.name)
+      CONSULTING_NAMES.has(entity.name)
     );
     const target = hasAustralian
       ? CANONICAL_GROUPS.find(
@@ -148,11 +193,7 @@ export function resolveConversationState(
           )
         : undefined;
     if (target) {
-      groupAnchors = base.entities.filter((entity) =>
-        hasAustralian
-          ? !entity.ticker || !australian.has(entity.ticker)
-          : !consulting.has(entity.name)
-      );
+      groupSwitch = true;
       grouped = target.members
         .map((member) =>
           WEB_ALIASES.find(
@@ -267,7 +308,7 @@ export function resolveConversationState(
           referencesPlural ||
           (referencesSingular &&
             direct.length === 0 &&
-            groupAnchors.length === 0)
+            grouped.length === 0)
       ? referencesSingular
         ? comparisonFollowUp
           ? base.entities
@@ -278,11 +319,11 @@ export function resolveConversationState(
     ? base.entities.flatMap((entity) =>
         entity.name === "Fortune 500" ? direct : [entity]
       )
-    : [...referenced, ...groupAnchors, ...anchor, ...direct, ...grouped];
+    : [...referenced, ...anchor, ...direct, ...grouped];
   const entities = [
     ...new Map(merged.map((entity) => [entity.id, entity])).values(),
   ].slice(0, 8);
-  const explicit = [...groupAnchors, ...anchor, ...direct, ...grouped];
+  const explicit = [...anchor, ...direct, ...grouped];
   const retainComparisonContext =
     (Boolean(orderedMatch) && !subsetMatch) ||
     (direct.length === 0 &&
@@ -291,8 +332,7 @@ export function resolveConversationState(
       !fortuneReplacement);
   const criteria = detectCriteria(message);
   const startsNewTopic =
-    (direct.length > 0 ||
-      (grouped.length > 0 && groupAnchors.length === 0)) &&
+    (direct.length > 0 || (grouped.length > 0 && !groupSwitch)) &&
     anchor.length === 0 &&
     !orderedMatch &&
     !subsetMatch &&

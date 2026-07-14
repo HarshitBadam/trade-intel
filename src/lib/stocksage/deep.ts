@@ -83,6 +83,7 @@ async function executeDeepResearch(
     };
   }
 
+  let stage = "setup";
   try {
     const { entities, state } = snapshotContext(snapshot);
     const route = entities.length > 1 ? "comparison" : "current_finance";
@@ -121,6 +122,7 @@ async function executeDeepResearch(
         }
       );
     }
+    stage = "retrieval";
     const context = await executeEvidencePlan({ plan, entities });
     if (context.sources.length === 0) {
       return {
@@ -153,6 +155,7 @@ ${snapshot.criteria.join(", ") || "not specified"}
 
 HORIZON
 ${snapshot.horizon ?? "not specified"}`;
+    stage = "synthesis";
     const text = await synthesizeWithFallback({
       system: `${STOCKSAGE_DEEP_SYSTEM}
 
@@ -175,6 +178,7 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
         }Every claim taken from RETRIEVED SOURCES must end with its ID like [S1]. Keep the same structure and depth.`;
       },
     });
+    stage = "citation_validation";
     const cleaned = stripTickerCitationMarkers(
       text,
       context.quotes.map((quote) => quote.ticker)
@@ -205,9 +209,19 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
       `[stocksage] ${JSON.stringify({
         event: "deep_failure",
         provider: "direct-research",
+        stage,
         reason: error instanceof Error ? error.name : "unknown",
+        detail:
+          error instanceof Error
+            ? error.message.slice(0, 300)
+            : String(error).slice(0, 300),
       })}`
     );
+    if (error instanceof Error && error.stack) {
+      console.error(
+        `[stocksage] deep_failure stack: ${error.stack.split("\n").slice(0, 6).join(" | ")}`
+      );
+    }
     return {
       workId: snapshot.workId,
       status: "failure",

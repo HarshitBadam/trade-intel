@@ -64,7 +64,11 @@ export function buildFallbackReply(
           ? { label: "over the last month", value: quote.monthPct }
           : /\blast week|\bover the last week\b/i.test(request.message)
             ? { label: "over the last week", value: quote.weekPct }
-            : { label: "in the latest session", value: quote.dayPct };
+            : /\blast few days\b|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|\bthe other day\b/i.test(
+                  request.message
+                )
+              ? { label: "over the last few sessions", value: quote.fewDaysPct }
+              : { label: "in the latest session", value: quote.dayPct };
       const change =
         period.value === null
           ? "not available"

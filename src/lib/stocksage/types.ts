@@ -112,6 +112,7 @@ export type DomainReasonCode =
   | "prohibited_crypto_promotion"
   | "crypto_risk_only"
   | "ambiguous_crypto"
+  | "high_stakes_finance"
   | "explicit_self_harm";
 
 export type DomainPolicyDecision = {

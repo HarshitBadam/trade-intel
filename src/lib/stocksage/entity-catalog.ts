@@ -7,7 +7,28 @@ export type WebAlias = {
   market?: "us" | "web";
 };
 
+export const PRIVATE_COMPANY_NAMES = new Set([
+  "Deloitte",
+  "PwC",
+  "EY",
+  "KPMG",
+  "SpaceX",
+  "StockX",
+]);
+
 export const WEB_ALIASES: WebAlias[] = [
+  { name: "Apple", query: "Apple AAPL stock financial news", ticker: "AAPL", aliases: ["apple"], market: "us", jurisdiction: "United States" },
+  { name: "Microsoft", query: "Microsoft MSFT stock financial news", ticker: "MSFT", aliases: ["microsoft"], market: "us", jurisdiction: "United States" },
+  { name: "Nvidia", query: "Nvidia NVDA stock financial news", ticker: "NVDA", aliases: ["nvidia"], market: "us", jurisdiction: "United States" },
+  { name: "Alphabet", query: "Alphabet Google GOOGL stock financial news", ticker: "GOOGL", aliases: ["alphabet", "google"], market: "us", jurisdiction: "United States" },
+  { name: "Amazon", query: "Amazon AMZN stock financial news", ticker: "AMZN", aliases: ["amazon"], market: "us", jurisdiction: "United States" },
+  { name: "Meta Platforms", query: "Meta Platforms META stock financial news", ticker: "META", aliases: ["meta platforms", "meta", "facebook"], market: "us", jurisdiction: "United States" },
+  { name: "Tesla", query: "Tesla TSLA stock financial news", ticker: "TSLA", aliases: ["tesla"], market: "us", jurisdiction: "United States" },
+  { name: "JPMorgan Chase", query: "JPMorgan Chase JPM stock financial news", ticker: "JPM", aliases: ["jpmorgan chase", "jpmorgan", "jp morgan"], market: "us", jurisdiction: "United States" },
+  { name: "Goldman Sachs", query: "Goldman Sachs GS stock financial news", ticker: "GS", aliases: ["goldman sachs", "goldman"], market: "us", jurisdiction: "United States" },
+  { name: "S&P 500", query: "S&P 500 GSPC market index", ticker: "GSPC", aliases: ["s&p 500", "s&p500", "sp500", "s and p 500", "the s&p"] },
+  { name: "Dow Jones Industrial Average", query: "Dow Jones Industrial Average DJI market index", ticker: "DJI", aliases: ["dow jones", "the dow"] },
+  { name: "StockX", query: "StockX private company sneaker resale marketplace financial news", aliases: ["stockx", "stock x"], jurisdiction: "United States" },
   { name: "Commonwealth Bank", query: "Commonwealth Bank Australia ASX", ticker: "CBA", aliases: ["commonwealth bank", "commbank", "cba"], jurisdiction: "Australia" },
   { name: "National Australia Bank", query: "National Australia Bank ASX", ticker: "NAB", aliases: ["national australia bank", "nab"], jurisdiction: "Australia" },
   { name: "Macquarie Group", query: "Macquarie Group Australia ASX", ticker: "MQG", aliases: ["macquarie group", "macquarie"], jurisdiction: "Australia" },
@@ -20,7 +41,7 @@ export const WEB_ALIASES: WebAlias[] = [
   { name: "CSL Limited", query: "CSL Limited Australia ASX", ticker: "CSL", aliases: ["csl limited", "csl"] },
   { name: "Atlassian", query: "Atlassian company financial news", ticker: "TEAM", aliases: ["atlassian"] },
   { name: "SpaceX", query: "SpaceX company financial news", aliases: ["spacex", "space x"] },
-  { name: "Nasdaq Composite", query: "Nasdaq Composite IXIC market index", ticker: "IXIC", aliases: ["nasdaq composite", "ixic"] },
+  { name: "Nasdaq Composite", query: "Nasdaq Composite IXIC market index", ticker: "IXIC", aliases: ["nasdaq composite", "ixic", "nasdaq"] },
   { name: "Fortune 500", query: "Fortune 500 companies revenue ranking", aliases: ["fortune 500"] },
   { name: "Fortune 100", query: "Fortune 100 companies revenue ranking", aliases: ["fortune 100"] },
   { name: "Deloitte", query: "Deloitte global financial performance", aliases: ["deloitte"] },
@@ -57,18 +78,24 @@ export type CanonicalGroup = {
 
 export const CANONICAL_GROUPS: CanonicalGroup[] = [
   {
-    id: "australian-big-four",
-    version: 1,
-    aliases:
-      /\b(?:(?:australian|aussie|asx)\s+big\s*(?:4|four)(?:\s+(?:australian|aussie))?\s+banks?|big\s*(?:4|four)(?:\s+(?:australian|aussie|asx))?\s+banks?)\b/i,
-    members: ["CBA", "NAB", "ANZ", "WBC"],
-  },
-  {
     id: "professional-services-big-four",
     version: 1,
     aliases:
-      /\b(?:(?:consulting|accounting|professional services)\s+big\s*(?:4|four)|big\s*(?:4|four)\s+(?:consulting|accounting|professional services))\b/i,
+      /\b(?:(?:consulting|consultancy|accounting|audit|professional services)\s+big\s*(?:4|four)|big\s*(?:4|four)\s+(?:consulting|consultanc(?:y|ies)|consultants?|accounting|accountants?|audit(?:ors?)?|professional services|firms))\b/i,
     members: ["Deloitte", "PwC", "EY", "KPMG"],
+  },
+  {
+    id: "australian-big-four",
+    version: 1,
+    aliases:
+      /(?<!(?:other|another)\s)\b(?:(?:australian|aussie|asx)\s+)?big\s*(?:4|four)(?:\s+(?:(?:australian|aussie|asx)\s+)?banks?)?\b/i,
+    members: ["CBA", "NAB", "ANZ", "WBC"],
+  },
+  {
+    id: "magnificent-seven",
+    version: 1,
+    aliases: /\b(?:mag\s*7|magnificent\s+(?:7|seven))\b/i,
+    members: ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA"],
   },
 ];
 

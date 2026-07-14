@@ -44,6 +44,7 @@ async function conversationalReply(args: {
         .map((turn) => turn.text),
       args.request.message,
     ].join("\n");
+    const offTopic = args.kind === "off_topic";
     const text = await synthesizeWithFallback({
       system: buildChatSystemPrompt({ kind: args.kind, note: args.note }),
       history: historyMessages(args.request),
@@ -58,9 +59,15 @@ async function conversationalReply(args: {
         unsupportedFigures(candidate, figureCorpus).length === 0 &&
         !/\b(?:according to (?:some |recent )?(?:reports?|news|sources)|news shows|reports? (?:say|show|suggest))\b/i.test(
           candidate
-        ),
-      correction:
-        "Rewrite that reply without quoting any prices, percentages, dollar figures, or claims attributed to news and reports — you don't have market data in front of you for this turn.",
+        ) &&
+        (!offTopic ||
+          (candidate.length <= 400 &&
+            !/[=`{}]|\d|\bformula\b|\boutput\b|\bwould (?:print|return|be)\b/i.test(
+              candidate
+            ))),
+      correction: offTopic
+        ? "Rewrite that reply as one friendly sentence saying this is outside StockSage's lane, plus at most one finance pivot. It must contain no numbers, formulas, code, outputs, derivations, or any partial answer to the request itself."
+        : "Rewrite that reply without quoting any prices, percentages, dollar figures, or claims attributed to news and reports — you don't have market data in front of you for this turn.",
     });
     const trimmed = text.trim();
     if (trimmed) return trimmed;
@@ -102,6 +109,24 @@ export async function answerWithTriage(
   }
 
   const floor = evaluateDomainPolicy(request.message, base.entities);
+  if (
+    floor.action === "respond" &&
+    floor.reasonCode === "high_stakes_finance" &&
+    floor.response
+  ) {
+    const resolved = resolveConversationState(
+      request.message,
+      request.state,
+      request.history
+    );
+    return immediateResponse({
+      text: floor.response,
+      state: resolved.state,
+      route: "refused",
+      reasonCode: floor.reasonCode,
+      startedAt,
+    });
+  }
   const hardProhibited =
     floor.action === "respond" && /^prohibited_/.test(floor.reasonCode);
   const category = hardProhibited ? "prohibited" : triage.category;
@@ -252,7 +277,7 @@ export async function answerWithTriage(
   );
   const synthesisMs = Date.now() - synthesisStartedAt;
   const deep =
-    decision.deepEligible && reply.live
+    decision.deepEligible && reply.live && !reply.retryable
       ? createDeepResearchOffer({
           question: request.message,
           reply,

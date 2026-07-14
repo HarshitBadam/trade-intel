@@ -19,11 +19,11 @@ import type { ChatReply, ChatRequest } from "./types";
 
 function hasExplicitConversationReference(message: string): boolean {
   return (
-    /\b(?:it|its|that|they|their|them|those|these|both|former|latter|what about|how about|which one|all of them)\b/i.test(
+    /\b(?:it|its|that|they|their|them|those|these|both|former|latter|what about|how about|wb|which (?:one|is|looks)|all of them)\b/i.test(
       message
     ) ||
     /\b(?:a|the)\s+\w+(?:er)?\s+one(?:s)?\b/i.test(message) ||
-    /^(?:and\s+)?(?:why|what (?:changed|happened)|today|yesterday|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year))\b/i.test(
+    /^(?:(?:and|so|ok(?:ay)?)\s+)?(?:why|what (?:changed|happened|moved)|today|yesterday|(?:a\s+)?few days ago|anything notable|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year))\b/i.test(
       message
     )
   );
@@ -59,19 +59,9 @@ export async function answerWithHeuristics(
     request.history.length > 0 &&
     hasExplicitConversationReference(request.message);
   if (policy.action !== "allow" && !inheritsScope) {
-    const responseState =
-      policy.reasonCode === "out_of_scope"
-        ? {
-            version: 1 as const,
-            revision: resolution.state.revision,
-            entities: [],
-            explicitEntitySet: [],
-            criteria: [],
-          }
-        : resolution.state;
     return immediateResponse({
       text: policy.response ?? "Please ask a financial-market question.",
-      state: responseState,
+      state: resolution.state,
       route:
         policy.action === "clarify"
           ? "clarify"
@@ -120,7 +110,8 @@ export async function answerWithHeuristics(
     context
   );
   const synthesisMs = Date.now() - synthesisStartedAt;
-  const deepEligible = decision.deepEligible && reply.live;
+  const deepEligible =
+    decision.deepEligible && reply.live && !reply.retryable;
   const deep = deepEligible
     ? createDeepResearchOffer({
         question: request.message,
