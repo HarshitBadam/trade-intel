@@ -36,9 +36,9 @@ const SnapshotSchema = z.object({
         market: z.enum(["us", "web"]),
       })
     )
-    .max(8),
+    .max(12),
   criteria: z.array(z.string().max(60)).max(8),
-  horizon: z.string().max(60).optional(),
+  horizon: z.string().max(120).optional(),
   jurisdiction: z.string().max(40).optional(),
   asOf: z.string().datetime(),
   stateVersion: z.literal(1),

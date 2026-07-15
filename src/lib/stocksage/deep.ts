@@ -17,6 +17,10 @@ import {
   type DeepResearchSnapshot,
 } from "./deep-snapshot";
 import { unsupportedFigures } from "./figures";
+import {
+  hasSmuggledOffTopicTask,
+  performsSmuggledTask,
+} from "./regular-guards";
 import { runIdempotentDeepWork } from "./deep-store";
 import { validateDeepResearchResult } from "./deep-validation";
 import { planEvidence } from "./planning";
@@ -219,9 +223,15 @@ ${snapshot.horizon ?? "not specified"}`;
     const system = `${STOCKSAGE_DEEP_SYSTEM}
 
 Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw URL or invent an ID. The server will turn valid IDs into links.`;
+    // The same no-leakage bar as regular synthesis: when the original
+    // question smuggled an off-topic task alongside the finance ask, deep
+    // output must not perform it either (leaks propagate through the
+    // REGULAR ANSWER block otherwise).
+    const smuggled = hasSmuggledOffTopicTask(snapshot.question);
     const accept = (candidate: string) =>
       validCitationUrls(candidate, context.sources).length > 0 &&
-      unsupportedFigures(candidate, user).length === 0;
+      unsupportedFigures(candidate, user).length === 0 &&
+      !(smuggled && performsSmuggledTask(candidate));
     const langflowText = await langflowDeepSynthesis({ system, user, accept });
     const text =
       langflowText ??
@@ -239,6 +249,10 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
           return `Rewrite that answer. ${
             invented.length > 0
               ? `These figures are not in the quotes or sources you were given, so remove them without substituting other numbers from memory: ${invented.join(", ")}. `
+              : ""
+          }${
+            smuggled && performsSmuggledTask(draft)
+              ? "The original question included an off-topic task (a calculation, code, or similar); research the finance part only and never compute, solve, or restate the off-topic result. "
               : ""
           }Every claim taken from RETRIEVED SOURCES must end with its ID like [S1]. Keep the same structure and depth.`;
         },

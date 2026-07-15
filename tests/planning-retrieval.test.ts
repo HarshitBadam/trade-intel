@@ -10,7 +10,10 @@ import {
   expandValidCitations,
   validCitationUrls,
 } from "../src/lib/stocksage/citations";
-import { buildFallbackReply } from "../src/lib/stocksage/regular";
+import {
+  buildDeterministicRankingReply,
+  buildFallbackReply,
+} from "../src/lib/stocksage/regular";
 import type {
   FinanceEntity,
   RouteDecision,
@@ -265,6 +268,136 @@ test("trailing historical questions use validated period returns", () => {
       .filter((query) => query.provider !== "quotes")
       .every((query) => query.freshnessDays === 400)
   );
+});
+
+test("YTD rankings are deterministically sorted and retain unranked entities", () => {
+  const resolution = resolveConversationState(
+    "Rank AMD, NVDA, GOOGL, AAPL and AMZN by YTD performance",
+    undefined,
+    []
+  );
+  const context = {
+    quotes: [
+      {
+        ticker: "AMD",
+        price: 200,
+        asOf: "2026-07-14",
+        dayPct: 1,
+        fewDaysPct: 2,
+        weekPct: 3,
+        monthPct: 4,
+        yearPct: 100,
+        ytdPct: 155.94,
+      },
+      {
+        ticker: "NVDA",
+        price: 210,
+        asOf: "2026-07-14",
+        dayPct: 1,
+        fewDaysPct: 2,
+        weekPct: 3,
+        monthPct: 4,
+        yearPct: 20,
+        ytdPct: 13.71,
+      },
+      {
+        ticker: "GOOGL",
+        price: 190,
+        asOf: "2026-07-14",
+        dayPct: 1,
+        fewDaysPct: 2,
+        weekPct: 3,
+        monthPct: 4,
+        yearPct: 25,
+        ytdPct: 15.01,
+      },
+      {
+        ticker: "AAPL",
+        price: 220,
+        asOf: "2026-07-14",
+        dayPct: 1,
+        fewDaysPct: 2,
+        weekPct: 3,
+        monthPct: 4,
+        yearPct: 10,
+        ytdPct: -2,
+      },
+    ],
+    fundamentals: [],
+    sources: [],
+    coverage: {},
+    plan: planEvidence({
+      route: "comparison",
+      message: "Rank AMD, NVDA, GOOGL, AAPL and AMZN by YTD performance",
+      entities: resolution.entities,
+      state: resolution.state,
+    }),
+  };
+  const reply = buildDeterministicRankingReply(
+    {
+      message: "Rank AMD, NVDA, GOOGL, AAPL and AMZN by YTD performance",
+      history: [],
+    },
+    resolution.entities,
+    context,
+    resolution.state.horizon
+  );
+  assert.ok(reply);
+  assert.ok(reply.text.indexOf("AMD") < reply.text.indexOf("GOOGL"));
+  assert.ok(reply.text.indexOf("GOOGL") < reply.text.indexOf("NVDA"));
+  assert.ok(reply.text.indexOf("NVDA") < reply.text.indexOf("AAPL"));
+  assert.match(reply.text, /\*\*AMZN\*\* — unranked; YTD figure unavailable/i);
+});
+
+test("fallback renders MTD separately from trailing month in multi-window asks", () => {
+  const resolution = resolveConversationState(
+    "Compare Apple and Microsoft this week vs month-to-date vs trailing month",
+    undefined,
+    []
+  );
+  const context = {
+    quotes: [
+      {
+        ticker: "AAPL",
+        price: 210,
+        asOf: "2026-07-14",
+        dayPct: 1,
+        fewDaysPct: 2,
+        weekPct: 3,
+        monthPct: 4,
+        yearPct: 5,
+        mtdPct: 1.5,
+      },
+    ],
+    fundamentals: [],
+    sources: [],
+    coverage: { "ticker:AAPL": "covered" as const },
+    plan: planEvidence({
+      route: "comparison",
+      message:
+        "Compare Apple and Microsoft this week vs month-to-date vs trailing month",
+      entities: resolution.entities,
+      state: resolution.state,
+    }),
+  };
+  const reply = buildFallbackReply(
+    {
+      message:
+        "Compare Apple and Microsoft this week vs month-to-date vs trailing month",
+      history: [],
+    },
+    {
+      route: "comparison",
+      reasonCode: "degraded_from_data",
+      retrievalRequired: true,
+      deepEligible: false,
+    },
+    resolution.entities,
+    context
+  );
+  assert.match(reply.text, /one week \+3\.00%/i);
+  assert.match(reply.text, /month to date \+1\.50%/i);
+  assert.match(reply.text, /trailing month \+4\.00%/i);
 });
 
 test("pronoun current query is grounded with the resolved company", async () => {

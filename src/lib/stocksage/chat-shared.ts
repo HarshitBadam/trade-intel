@@ -2,13 +2,11 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import type { RetrievalProviders } from "./retrieve";
-import type { triageWithLLM } from "./triage";
 import { logStockSage } from "./telemetry";
 import type { ChatReply, ConversationState } from "./types";
 
 export type ChatDependencies = {
   retrievalProviders?: RetrievalProviders;
-  triage?: typeof triageWithLLM;
 };
 
 export const SELF_HARM_RESPONSE =

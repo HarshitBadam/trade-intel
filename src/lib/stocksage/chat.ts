@@ -5,16 +5,30 @@ import {
   baseConversationState,
   resolveConversationState,
 } from "./entities";
-import { EXPLICIT_SELF_HARM, normalizeMessage } from "./intent";
-import { answerDegraded, answerWithHeuristics } from "./chat-heuristics";
-import { answerWithTriage } from "./chat-triage";
+import {
+  EXPLICIT_SELF_HARM,
+  immediateReply,
+  normalizeMessage,
+  routeMessage,
+} from "./intent";
+import { answerWithHeuristics } from "./chat-heuristics";
+import { answerWithModel } from "./chat-model";
 import {
   immediateResponse,
   SELF_HARM_RESPONSE,
   type ChatDependencies,
 } from "./chat-shared";
-import { hardSafetyFloor } from "./policy";
-import { triageWithLLM } from "./triage";
+import {
+  classifyHighStakes,
+  hardSafetyFloor,
+  pickHighStakesReply,
+} from "./policy";
+import {
+  CASUAL_ACKNOWLEDGEMENT,
+  FAREWELL,
+  HELP,
+  SOCIAL,
+} from "./social-patterns";
 import type { ChatReply, ChatRequest } from "./types";
 
 export async function answerChat(
@@ -43,9 +57,31 @@ export async function answerChat(
       request.state,
       request.history
     );
+    // High-stakes refusals rotate through context-aware variants; the IDs
+    // already shown ride in conversation state so a session never sees the
+    // same body twice.
+    const highStakes =
+      floor.reasonCode === "high_stakes_finance"
+        ? classifyHighStakes(normalized, base.entities)
+        : null;
+    const picked = highStakes
+      ? pickHighStakesReply(
+          highStakes,
+          resolved.state.safetyRepliesUsed ?? []
+        )
+      : null;
+    const state = picked
+      ? {
+          ...resolved.state,
+          safetyRepliesUsed: [
+            ...(resolved.state.safetyRepliesUsed ?? []),
+            picked.id,
+          ].slice(-24),
+        }
+      : resolved.state;
     return immediateResponse({
-      text: floor.response,
-      state: resolved.state,
+      text: picked?.text ?? floor.response,
+      state,
       route:
         floor.reasonCode === "explicit_self_harm" ? "safety_support" : "refused",
       reasonCode: floor.reasonCode,
@@ -53,18 +89,44 @@ export async function answerChat(
     });
   }
 
-  const triage = await (dependencies.triage ?? triageWithLLM)({
+  // Closed-class social turns are deterministic and need neither retrieval
+  // nor synthesis. Resolve state first so a farewell or acknowledgement does
+  // not erase finance context needed by a later follow-up.
+  const socialResolution = resolveConversationState(
+    normalized,
+    request.state,
+    request.history
+  );
+  const socialDecision = routeMessage({
     message: normalized,
-    history: request.history,
-    state: request.state,
+    entities: socialResolution.entities,
+    state: socialResolution.state,
+    clarification: socialResolution.clarification,
   });
-  if (triage) {
-    return answerWithTriage(scoped, triage, dependencies, startedAt);
+  const closedSocial =
+    SOCIAL.test(normalized) ||
+    FAREWELL.test(normalized) ||
+    CASUAL_ACKNOWLEDGEMENT.test(normalized) ||
+    HELP.test(normalized);
+  if (closedSocial && socialDecision.route === "social") {
+    const text = immediateReply(socialDecision, normalized);
+    if (text) {
+      return immediateResponse({
+        text,
+        state: socialResolution.state,
+        route: "social",
+        reasonCode: socialDecision.reasonCode,
+        startedAt,
+      });
+    }
   }
-  // LLM lanes exist but all failed: give one honest, retryable, state-preserving
-  // reply instead of impersonating the product with regex routing.
-  if (hasAnySynthesisLlm && !dependencies.triage) {
-    return answerDegraded(scoped, startedAt);
+
+  // One model call per turn: the model reads the raw conversation, classifies
+  // the turn itself, resolves references itself, and answers with prefetched
+  // data. Deterministic code above this line handles only hard safety; below,
+  // it only decides what data to prefetch.
+  if (hasAnySynthesisLlm) {
+    return answerWithModel(scoped, dependencies, startedAt);
   }
   // No LLM configured at all (offline dev/tests): deterministic brain is the
   // only brain, so use it fully.

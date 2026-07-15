@@ -25,7 +25,7 @@ function isPriceOnly(message: string): boolean {
 }
 
 function historicalPeriod(message: string): boolean {
-  return /\b(?:yesterday|last (?:few days|week|month|quarter|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2})\b/i.test(
+  return /\b(?:yesterday|this (?:week|month|year)|month[- ]to[- ]date|mtd|trailing month|ytd|year[- ]to[- ]date|last (?:few days|week|month|quarter|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2})\b/i.test(
     message
   );
 }
@@ -57,7 +57,7 @@ function evidenceFreshnessDays(message: string): number | undefined {
 }
 
 function supportsTrailingQuote(message: string): boolean {
-  return /\b(?:today|yesterday|last (?:few days|week|month|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|over the last (?:few days|week|month|year)|[135]\s*[- ]?year)\b/i.test(
+  return /\b(?:today|yesterday|this (?:week|month|year)|month[- ]to[- ]date|mtd|trailing month|ytd|year[- ]to[- ]date|last (?:few days|week|month|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|over the last (?:few days|week|month|year)|[135]\s*[- ]?year)\b/i.test(
     message
   );
 }
@@ -203,7 +203,7 @@ export function planEvidence(args: {
     if (
       us.length > 0 &&
       (!historical || supportsTrailingQuote(args.message)) &&
-      args.entities.length <= 8
+      args.entities.length <= 12
     ) {
       queries.push(
         query(
@@ -213,7 +213,7 @@ export function planEvidence(args: {
           us,
           criteria,
           "general",
-          Math.min(8, us.length)
+          Math.min(12, us.length)
         )
       );
     }

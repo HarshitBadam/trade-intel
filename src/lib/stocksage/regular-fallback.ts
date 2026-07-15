@@ -13,6 +13,94 @@ import type {
   RouteDecision,
 } from "./types";
 
+type RankingWindow = {
+  label: string;
+  value: (quote: RegularContext["quotes"][number]) => number | null | undefined;
+};
+
+function requestedRankingWindow(
+  message: string,
+  horizon?: string
+): RankingWindow | null {
+  const text = `${message} ${horizon ?? ""}`;
+  if ((horizon?.split(" vs ").length ?? 0) > 1) return null;
+  if (/\b(?:ytd|year[- ]to[- ]date|this year)\b/i.test(text)) {
+    return { label: "YTD", value: (quote) => quote.ytdPct };
+  }
+  if (/\b(?:month[- ]to[- ]date|mtd|this month)\b/i.test(text)) {
+    return { label: "month to date", value: (quote) => quote.mtdPct };
+  }
+  if (/\b(?:trailing month|last month|over the (?:last|past) month)\b/i.test(text)) {
+    return { label: "trailing month", value: (quote) => quote.monthPct };
+  }
+  if (/\b(?:this week|last week|over the last week)\b/i.test(text)) {
+    return { label: "one week", value: (quote) => quote.weekPct };
+  }
+  if (/\b(?:last few days|few days)\b/i.test(text)) {
+    return { label: "last few sessions", value: (quote) => quote.fewDaysPct };
+  }
+  if (/\b(?:today|latest session)\b/i.test(text)) {
+    return { label: "latest session", value: (quote) => quote.dayPct };
+  }
+  return null;
+}
+
+export function buildDeterministicRankingReply(
+  request: ChatRequest,
+  entities: FinanceEntity[],
+  context: RegularContext,
+  horizon?: string
+): Pick<ChatReply, "text" | "citationUrls" | "retryable"> | null {
+  if (
+    entities.length < 2 ||
+    !/\b(?:rank(?:ing|ed)?|order|which\b.{0,50}\b(?:up|gained|performed)\s+more|best performer|performed best)\b/i.test(
+      request.message
+    )
+  ) {
+    return null;
+  }
+  const window = requestedRankingWindow(request.message, horizon);
+  if (!window) return null;
+  const quoteByTicker = new Map(
+    context.quotes.map((quote) => [quote.ticker, quote])
+  );
+  const rows = entities.map((entity, index) => {
+    const quote = entity.ticker ? quoteByTicker.get(entity.ticker) : undefined;
+    return {
+      entity,
+      index,
+      value: quote ? window.value(quote) : null,
+    };
+  });
+  const ranked = rows
+    .filter(
+      (row) => typeof row.value === "number" && Number.isFinite(row.value)
+    )
+    .map((row) => ({ ...row, value: row.value as number }))
+    .sort(
+      (left, right) =>
+        right.value - left.value || left.index - right.index
+    );
+  if (ranked.length === 0) return null;
+  const missing = rows.filter((row) => !Number.isFinite(row.value));
+  const lines = ranked.map(
+    (row, index) =>
+      `${index + 1}. **${row.entity.ticker ?? casualName(row.entity.name)}** — ${
+        row.value >= 0 ? "+" : ""
+      }${row.value.toFixed(2)}% ${window.label}`
+  );
+  for (const row of missing) {
+    lines.push(
+      `- **${row.entity.ticker ?? casualName(row.entity.name)}** — unranked; ${window.label} figure unavailable.`
+    );
+  }
+  return {
+    text: lines.join("\n"),
+    citationUrls: [],
+    retryable: missing.length > 0 ? true : undefined,
+  };
+}
+
 function safeEvidenceNote(source: EvidenceSource): string | null {
   const clean = source.excerpt
     .replace(/<[^>]+>/g, " ")
@@ -43,14 +131,29 @@ function casualName(name: string): string {
 }
 
 // Quote timestamps can arrive as full ISO instants; users should see
-// market-session wording, never "2026-07-13T04:00:00.000Z".
-function humanAsOf(asOf: string): string {
+// market-session wording, never "2026-07-13T04:00:00.000Z" (FQ-13).
+export function humanAsOf(asOf: string): string {
   if (!asOf.includes("T")) return asOf;
   const parsed = new Date(asOf);
   if (Number.isNaN(parsed.getTime())) return asOf.split("T")[0];
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
+    timeZone: "America/New_York",
+  }).format(parsed);
+}
+
+// Source publish dates can span well over a year back (freshnessDays goes up
+// to 3650), so unlike a quote's as-of date, the year matters for clarity.
+export function humanPublishedAt(value: string): string {
+  if (!value.includes("T")) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value.split("T")[0];
+  const sameYear = parsed.getUTCFullYear() === new Date().getUTCFullYear();
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: sameYear ? undefined : "numeric",
     timeZone: "America/New_York",
   }).format(parsed);
 }
@@ -93,25 +196,38 @@ export function buildFallbackReply(
   if (context.quotes.length > 0) {
     lines.push("### Market snapshot");
     for (const quote of context.quotes) {
-      const period = /\blast (?:year|12 months)|\bover the last year\b/i.test(
-        request.message
-      )
-        ? { label: "over the last year", value: quote.yearPct }
-        : /\blast month|\bover the last month\b/i.test(request.message)
-          ? { label: "over the last month", value: quote.monthPct }
-          : /\blast week|\bover the last week\b/i.test(request.message)
-            ? { label: "over the last week", value: quote.weekPct }
-            : /\blast few days\b|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|\bthe other day\b/i.test(
-                  request.message
-                )
-              ? { label: "over the last few sessions", value: quote.fewDaysPct }
-              : { label: "in the latest session", value: quote.dayPct };
-      const change =
-        period.value === null
-          ? "not available"
-          : `${period.value >= 0 ? "+" : ""}${period.value.toFixed(2)}%`;
+      const periods: { label: string; value: number | null | undefined }[] = [];
+      const addPeriod = (
+        pattern: RegExp,
+        label: string,
+        value: number | null | undefined
+      ): void => {
+        if (pattern.test(request.message)) periods.push({ label, value });
+      };
+      addPeriod(/\bthis week\b|\blast week\b|\bover the last week\b/i, "one week", quote.weekPct);
+      addPeriod(/\b(?:month[- ]to[- ]date|mtd|this month)\b/i, "month to date", quote.mtdPct);
+      addPeriod(/\b(?:trailing month|last month|over the (?:last|past) month)\b/i, "trailing month", quote.monthPct);
+      addPeriod(/\b(?:ytd|year[- ]to[- ]date|this year)\b/i, "YTD", quote.ytdPct);
+      addPeriod(/\blast (?:year|12 months)|\bover the last year\b/i, "trailing year", quote.yearPct);
+      addPeriod(
+        /\blast few days\b|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|\bthe other day\b/i,
+        "last few sessions",
+        quote.fewDaysPct
+      );
+      if (periods.length === 0) {
+        periods.push({ label: "latest session", value: quote.dayPct });
+      }
+      const changes = periods
+        .map((period) => {
+          const change =
+            period.value == null
+              ? "not available"
+              : `${period.value >= 0 ? "+" : ""}${period.value.toFixed(2)}%`;
+          return `${period.label} ${change}`;
+        })
+        .join("; ");
       lines.push(
-        `- **${quote.ticker}** — $${quote.price.toFixed(2)} as of ${humanAsOf(quote.asOf)}; ${change} ${period.label}.`
+        `- **${quote.ticker}** — $${quote.price.toFixed(2)} as of ${humanAsOf(quote.asOf)}; ${changes}.`
       );
     }
   }
@@ -152,7 +268,7 @@ export function buildFallbackReply(
         `- **${names || "Requested topic"}** — ${
           note ? `${note} — ` : ""
         }${source.outlet}${
-          source.publishedAt ? ` (${source.publishedAt})` : ""
+          source.publishedAt ? ` (${humanPublishedAt(source.publishedAt)})` : ""
         } [${source.id}]`
       );
     }

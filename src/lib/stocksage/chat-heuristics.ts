@@ -7,9 +7,7 @@ import { immediateReply, routeMessage } from "./intent";
 import { planEvidence } from "./planning";
 import { evaluateDomainPolicy } from "./policy";
 import { answerRegularChat } from "./regular";
-import {
-  executeEvidencePlan,
-} from "./retrieve";
+import { executeEvidencePlan } from "./retrieve";
 import { logStockSage } from "./telemetry";
 import {
   immediateResponse,
@@ -32,9 +30,10 @@ function hasExplicitConversationReference(message: string): boolean {
 const DEGRADED_RESPONSE =
   "I'm briefly over capacity and I'd rather not wing an answer without checking the data. Ask me again in a few seconds — nothing about our conversation is lost.";
 
-// Production path when every triage lane is unavailable: keep the analyst
-// voice, preserve state, and never guess at routing. Greetings and farewells
-// are closed-class, so they still get a deterministic reply.
+// Production path when every LLM lane is unavailable: keep the analyst
+// voice, preserve state, and never guess at routing. Greetings, farewells,
+// and policy refusals are closed-class, so they still get a deterministic
+// reply instead of the capacity message.
 export function answerDegraded(
   request: ChatRequest,
   startedAt: number
@@ -57,6 +56,30 @@ export function answerDegraded(
         state: resolution.state,
         route: decision.route,
         reasonCode: decision.reasonCode,
+        startedAt,
+      });
+    }
+  }
+  // Off-topic asks have fixed refusals that need no LLM — an outage must not
+  // turn "run this python" into "I'm over capacity". But scope inference is
+  // unreliable mid-conversation ("what should I watch next quarter?" carries
+  // its meaning from state), so only refuse when the turn stands alone and
+  // the refusal is a hard scope call, never a judgment about active context.
+  const standalone =
+    resolution.state.entities.length === 0 &&
+    !hasExplicitConversationReference(request.message);
+  if (standalone) {
+    const policy = evaluateDomainPolicy(request.message, []);
+    if (
+      policy.action === "respond" &&
+      policy.response &&
+      policy.reasonCode === "out_of_scope"
+    ) {
+      return immediateResponse({
+        text: policy.response,
+        state: resolution.state,
+        route: "out_of_scope",
+        reasonCode: policy.reasonCode,
         startedAt,
       });
     }

@@ -88,7 +88,7 @@ export const CANONICAL_GROUPS: CanonicalGroup[] = [
     id: "australian-big-four",
     version: 1,
     aliases:
-      /(?<!(?:other|another)\s)\b(?:(?:australian|aussie|asx)\s+)?big\s*(?:4|four)(?:\s+(?:(?:australian|aussie|asx)\s+)?banks?)?\b/i,
+      /(?<!(?:other|another)\s)\b(?:(?:(?:australian|aussie|asx)\s+)?big\s*(?:4|four)(?:\s+(?:(?:australian|aussie|asx)\s+)?banks?)?|(?:australian|aussie)\s+banks)\b/i,
     members: ["CBA", "NAB", "ANZ", "WBC"],
   },
   {
