@@ -32,6 +32,8 @@ const NAME_TO_TICKER: Record<string, string> = {
   boeing: "BA",
   ford: "F",
   "general motors": "GM",
+  rivian: "RIVN",
+  lucid: "LCID",
   "jpmorgan": "JPM",
   "jp morgan": "JPM",
   visa: "V",

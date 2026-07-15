@@ -244,6 +244,200 @@ test("resolves SpaceX and typoed IXIC follow-up", () => {
   );
 });
 
+test("swap correction replaces one side and keeps the rest of the pair", () => {
+  // tesla vs StockX → the former vs IXIC → swap tesla out for rivian:
+  // Rivian must take Tesla's slot and Nasdaq must survive the swap.
+  const first = resolveConversationState("tesla vs StockX", undefined, []);
+  assert.deepEqual(
+    first.entities.map((entity) => entity.ticker ?? entity.name),
+    ["TSLA", "StockX"]
+  );
+  const pivot = resolveConversationState(
+    "wb the former vs IXIC",
+    first.state,
+    []
+  );
+  assert.deepEqual(
+    pivot.state.entities.map((entity) => entity.ticker),
+    ["TSLA", "IXIC"]
+  );
+  const swapped = resolveConversationState(
+    "actually swap tesla out for rivian",
+    pivot.state,
+    []
+  );
+  assert.equal(swapped.reasonCode, "entity_correction");
+  assert.deepEqual(
+    swapped.state.entities.map((entity) => entity.ticker),
+    ["RIVN", "IXIC"]
+  );
+  assert.deepEqual(swapped.state.explicitEntitySet, [
+    "ticker:RIVN",
+    "ticker:IXIC",
+  ]);
+
+  // Follow-up must inherit the swapped pair, not a collapsed singleton.
+  const followUp = resolveConversationState(
+    "which of the two is more volatile?",
+    swapped.state,
+    []
+  );
+  assert.deepEqual(
+    followUp.entities.map((entity) => entity.ticker),
+    ["RIVN", "IXIC"]
+  );
+  assert.deepEqual(
+    followUp.state.entities.map((entity) => entity.ticker),
+    ["RIVN", "IXIC"]
+  );
+
+  // Re-adding Tesla alongside "the index" resolves both subjects.
+  const back = resolveConversationState(
+    "ok go back to tesla — is it beating the index?",
+    followUp.state,
+    []
+  );
+  const backTickers = back.entities.map((entity) => entity.ticker);
+  assert.ok(backTickers.includes("TSLA"));
+  assert.ok(backTickers.includes("IXIC"));
+});
+
+test("swap-in phrasing removes the named outgoing entity", () => {
+  const pair = resolveConversationState("compare tesla and nvidia", undefined, []);
+  const swapped = resolveConversationState(
+    "swap in rivian for tesla",
+    pair.state,
+    []
+  );
+  assert.equal(swapped.reasonCode, "entity_correction");
+  assert.deepEqual(
+    swapped.state.entities.map((entity) => entity.ticker),
+    ["RIVN", "NVDA"]
+  );
+});
+
+test("removing the whole active group pivots instead of keeping it", () => {
+  const consulting = resolveConversationState(
+    "I mean the consulting Big 4, not the Aussie banks",
+    undefined,
+    []
+  );
+  assert.equal(consulting.state.entities.length, 4);
+  const pivoted = resolveConversationState(
+    "ok forget the consultants. hows the asx been doing",
+    consulting.state,
+    []
+  );
+  assert.deepEqual(pivoted.state.entities, []);
+  assert.equal(pivoted.state.jurisdiction, "Australia");
+});
+
+test("forget-those ASX pivot clears the prior consulting group", () => {
+  const consulting = resolveConversationState(
+    "the consulting Big 4",
+    undefined,
+    []
+  );
+  const pivoted = resolveConversationState(
+    "Forget those—how is the ASX doing today?",
+    consulting.state,
+    []
+  );
+  assert.deepEqual(pivoted.entities, []);
+  assert.deepEqual(pivoted.state.entities, []);
+  assert.equal(pivoted.state.horizon, "today");
+  assert.equal(pivoted.state.jurisdiction, "Australia");
+});
+
+test("expands both MAG7 and Aussie banks in one comparison", () => {
+  const resolution = resolveConversationState(
+    "MAG7 doing better than the Aussie banks this year?",
+    undefined,
+    []
+  );
+  assert.deepEqual(
+    resolution.entities.map((entity) => entity.ticker),
+    [
+      "AAPL",
+      "MSFT",
+      "NVDA",
+      "GOOGL",
+      "AMZN",
+      "META",
+      "TSLA",
+      "CBA",
+      "NAB",
+      "ANZ",
+      "WBC",
+    ]
+  );
+  assert.deepEqual(
+    resolution.state.entities.map((entity) => entity.ticker),
+    resolution.entities.map((entity) => entity.ticker)
+  );
+  assert.equal(resolution.state.horizon, "this year");
+});
+
+test("preserves YTD, MTD, and distinct multi-window horizons", () => {
+  const pair = resolveConversationState(
+    "Compare Apple and Microsoft over the last few days",
+    undefined,
+    []
+  );
+  const ytd = resolveConversationState(
+    "and how have they both done this year",
+    pair.state,
+    []
+  );
+  assert.equal(ytd.state.horizon, "this year");
+  assert.equal(
+    routeMessage({
+      message: "and how have they both done this year",
+      entities: ytd.entities,
+      state: ytd.state,
+    }).route,
+    "comparison"
+  );
+
+  const mtd = resolveConversationState(
+    "how has it moved month to date",
+    resolveConversationState("How is Apple doing?", undefined, []).state,
+    []
+  );
+  assert.equal(mtd.state.horizon, "month to date");
+  assert.equal(
+    routeMessage({
+      message: "how has it moved month to date",
+      entities: mtd.entities,
+      state: mtd.state,
+    }).route,
+    "current_finance"
+  );
+
+  const windows = resolveConversationState(
+    "compare this week vs month-to-date vs trailing month",
+    pair.state,
+    []
+  );
+  assert.equal(
+    windows.state.horizon,
+    "this week vs month to date vs trailing month"
+  );
+});
+
+test("bare comparison connector anchors the prior subject", () => {
+  const nvidia = resolveConversationState(
+    "give me a rundown on nvidia",
+    undefined,
+    []
+  );
+  const versus = resolveConversationState("vs amd?", nvidia.state, []);
+  assert.deepEqual(
+    versus.entities.map((entity) => entity.ticker),
+    ["NVDA", "AMD"]
+  );
+});
+
 test("clarifies ambiguous Big Four and resolves consulting group", () => {
   const ambiguous = resolveConversationState(
     "What about the other Big 4 then?",

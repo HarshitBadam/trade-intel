@@ -15,7 +15,7 @@ import type {
 const COMPARISON =
   /\b(?:compare|comapre|comparison|rank|ranking|order|big\s*(?:4|four)|versus|vs\.?|better (?:stock|investment)|which (?:one|company|stock)|relative to|against)\b/i;
 const TIME_SENSITIVE =
-  /\b(?:latest|today|yesterday|now|current|currently|recent(?:ly)?|lately|news|update|earnings|guidance|(?:is|are)\b.{0,60}\b(?:public|private|listed)|public\s*\/\s*private status|publicly traded|this (?:week|month|quarter|year)|last (?:few days|week|month|quarter|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}|(?:stock|share) price|trading at|market move|what (?:changed|happened|moved)|what(?:'?s(?: is)?| is) up with|how (?:is|are|did|has)\b.{0,80}\b(?:doing|performing|moved|changed)|anything notable|market conditions?|legal|lawsuit|regulatory|regulator)\b/i;
+  /\b(?:latest|today|yesterday|now|current|currently|recent(?:ly)?|lately|news|update|earnings|guidance|(?:is|are)\b.{0,60}\b(?:public|private|listed)|public\s*\/\s*private status|publicly traded|this (?:week|month|quarter|year)|month[- ]to[- ]date|mtd|trailing month|year[- ]to[- ]date|ytd|last (?:few days|week|month|quarter|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}|(?:stock|share) price|trading at|market move|what (?:changed|happened|moved)|what(?:'?s(?: is)?| is) up with|how (?:is|are|did|has|have)\b.{0,80}\b(?:doing|done|performing|moved|changed)|anything notable|market conditions?|legal|lawsuit|regulatory|regulator)\b/i;
 const CODE =
   /\b(?:python|javascript|typescript|java|c\+\+|code|script|function|loop|syntax|compile|runtime|output|console\.log|print\s*\(|for\s+\w+\s+in\s+range)\b/i;
 const STABLE_FINANCE =
@@ -205,15 +205,33 @@ export function immediateReply(
     return "Yeah, fair—that was frustrating. Want to retry the last market question or switch topics?";
   }
   if (FAREWELL.test(message)) {
-    return "Catch you next time — stay sharp out there.";
+    // Deterministic-path farewells still deserve warmth and variety — a bare
+    // "Bye!" after a playful "sayonara" reads cold. No questions or pitches:
+    // a sign-off is a closure.
+    const farewells = [
+      "Catch you next time — stay sharp out there.",
+      "Take it easy — the charts will keep till you're back.",
+      "Sayonara for now — go enjoy the real world for a bit.",
+      "Later! It was a good session — see you around.",
+      "All the best out there. I'll hold the fort.",
+      "Go well — and may your entries be timely.",
+    ];
+    return farewells[Math.floor(Math.random() * farewells.length)];
   }
-  if (/thx|thank|cheers|appreciated|that helps|got it/i.test(message)) {
+  if (
+    /thx|thank|cheers|appreciated|that (?:was|is)(?: actually| really)? helpful|that helps|got it/i.test(
+      message
+    )
+  ) {
     return /got it|gotcha/i.test(message)
       ? "Got it. What should we look at next?"
       : "Anytime. Want to look at anything else?";
   }
   if (/\b(?:aight|gucci|all good)\b/i.test(message)) {
     return "All good. Give me a shout when you want to look at something.";
+  }
+  if (/\bwe good\b/i.test(message)) {
+    return "We’re good — no stress.";
   }
   if (/i'?m back|hey again/i.test(message)) {
     return "Welcome back. What are we digging into?";

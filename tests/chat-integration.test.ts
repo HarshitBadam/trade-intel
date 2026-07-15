@@ -73,6 +73,32 @@ test("casual greeting and goodbye use social fast paths", async () => {
   }
 });
 
+test("social-only recovery after finance uses zero providers and keeps state", async () => {
+  const finance = await answerChat(request("Compare Apple and Microsoft"), {
+    retrievalProviders: setup().providers,
+  });
+  const replies: string[] = [];
+  for (const message of [
+    "gucci, sayonara",
+    "that was actually helpful",
+    "we good?",
+  ]) {
+    const { calls, providers } = setup();
+    const reply = await answerChat(
+      request(message, { state: finance.state }),
+      { retrievalProviders: providers }
+    );
+    replies.push(reply.text);
+    assert.doesNotMatch(reply.text, /over capacity|analysis engine/i);
+    assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0 });
+    assert.deepEqual(
+      reply.state?.entities.map((entity) => entity.ticker),
+      ["AAPL", "MSFT"]
+    );
+  }
+  assert.equal(new Set(replies).size, replies.length);
+});
+
 test("capability questions use the social help path", async () => {
   const { calls, providers } = setup();
   const reply = await answerChat(

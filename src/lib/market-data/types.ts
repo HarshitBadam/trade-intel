@@ -68,10 +68,22 @@ export type ChatQuote = {
   price: number;
   asOf: string;
   dayPct: number;
+  // Prior completed session's own move (what a user means by "yesterday").
+  prevSessionPct?: number | null;
+  prevSessionDate?: string;
   fewDaysPct: number | null;
   weekPct: number | null;
   monthPct: number | null;
   yearPct: number | null;
+  // Calendar year-to-date, measured from the last close of the prior year
+  // (or the earliest session of this year when history is shorter).
+  ytdPct?: number | null;
+  ytdStart?: string;
+  // Calendar month-to-date, measured from the last close of the prior month.
+  // Distinct from monthPct (trailing ~21 sessions): "since the start of the
+  // month" and "over the last month" are different questions.
+  mtdPct?: number | null;
+  mtdStart?: string;
   fewDaysStart?: string;
   weekStart?: string;
   monthStart?: string;

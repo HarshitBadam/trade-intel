@@ -170,15 +170,8 @@ async function main(): Promise<void> {
   const deep = process.env.EVAL_DEEP === "1";
   const { answerChat } = await import("../src/lib/stocksage/chat");
   const { runDeepResearch } = await import("../src/lib/stocksage/deep");
-  const { triageWithLLM } = await import("../src/lib/stocksage/triage");
   type State = Parameters<typeof answerChat>[0]["state"];
   type Turn = { role: "user" | "ai"; text: string };
-
-  const loggingTriage: typeof triageWithLLM = async (args) => {
-    const result = await triageWithLLM(args);
-    if (debug) console.log(`    [triage] ${JSON.stringify(result)}`);
-    return result;
-  };
 
   const args = process.argv.slice(2);
   if (args[0] === "--list") {
@@ -199,15 +192,12 @@ async function main(): Promise<void> {
     const history: Turn[] = [];
     for (const message of scenario.turns) {
       const startedAt = Date.now();
-      const reply = await answerChat(
-        {
-          message,
-          history: [...history],
-          state,
-          sessionId: `eval-${scenario.name}`,
-        },
-        debug ? { triage: loggingTriage } : {}
-      );
+      const reply = await answerChat({
+        message,
+        history: [...history],
+        state,
+        sessionId: `eval-${scenario.name}`,
+      });
       if (debug) {
         console.log(
           `    [state] ${JSON.stringify({

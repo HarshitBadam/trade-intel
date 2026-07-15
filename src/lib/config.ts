@@ -49,9 +49,9 @@ export const GROQ_CHAT_MODEL =
   process.env.GROQ_CHAT_MODEL ?? "meta-llama/llama-4-scout-17b-16e-instruct";
 export const GROQ_FALLBACK_MODEL =
   process.env.GROQ_FALLBACK_MODEL ?? "llama-3.3-70b-versatile";
-export const GROQ_TRIAGE_MODEL =
-  process.env.GROQ_TRIAGE_MODEL ??
-  "meta-llama/llama-4-scout-17b-16e-instruct";
+// Groq quotas are per model, so an extra model family is an extra 429 budget.
+export const GROQ_OSS_MODEL =
+  process.env.GROQ_OSS_MODEL ?? "openai/gpt-oss-20b";
 const rawGroq = Boolean(GROQ_API_KEY);
 
 export const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
@@ -60,8 +60,9 @@ export const CEREBRAS_CHAT_MODEL =
 const rawCerebras = Boolean(CEREBRAS_API_KEY);
 
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+// flash-lite has a 1,000 req/day free tier; plain flash is capped at 20/day.
 export const GEMINI_CHAT_MODEL =
-  process.env.GEMINI_CHAT_MODEL ?? "gemini-2.5-flash";
+  process.env.GEMINI_CHAT_MODEL ?? "gemini-2.5-flash-lite";
 const rawGemini = Boolean(GEMINI_API_KEY);
 
 export const TAVILY_API_KEY = process.env.TAVILY_API_KEY;

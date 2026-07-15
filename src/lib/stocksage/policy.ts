@@ -1,3 +1,4 @@
+import { creativeRequestOnly } from "./regular-guards";
 import {
   CASUAL_ACKNOWLEDGEMENT,
   FAREWELL,
@@ -29,7 +30,7 @@ const FACILITATION =
 const LOCAL_SECRET_ACCESS =
   /\b(?:read|open|access|show|list|print|reveal|find|cat|dump|paste|leak|expose|grab|fetch|extract|copy|run cat|echo)\b.{0,80}\b(?:\.env(?:\.local)?|env file|environment variables?|local files?|api keys?|tokens?|secrets?|credentials?|(?:tavily|groq|polygon|alpaca|finnhub|astra|upstash|langflow) key)\b/i;
 const FINANCIAL_ACTION =
-  /\b(?:place|execute|submit|make)\b.{0,60}\b(?:trade|order)\b|\b(?:transfer|send|move)\b.{0,60}\b(?:money|funds?|\$\s*\d)/i;
+  /\b(?:place|execute|submit|make)\b.{0,60}\b(?:buy|sell|trade|order)\b|\b(?:buy|sell)\b.{0,60}\b(?:shares?|stocks?)\b.{0,30}\b(?:for me|on my behalf)\b|\b(?:transfer|send|move)\b.{0,60}\b(?:money|funds?|\$\s*\d)/i;
 const CRYPTO =
   /\b(?:crypto|bitcoin|btc|ethereum|eth|token|memecoin|altcoin|stablecoin|blockchain|wallet|defi|nft)\b/i;
 const CRYPTO_EXECUTION =
@@ -43,8 +44,10 @@ const FINANCE =
 const GENERAL_NEWS =
   /\b(?:celebrity|gossip|movie|music|entertainment|election|politics|politician|weather|recipe|travel)\b/i;
 const PREDICTION_MARKET = /\bprediction markets?\b/i;
+// Inflections matter: "guaranteeing"/"promising"/"assuring" must hit this
+// floor exactly like the base verb forms do (F0.1/FQ-01).
 const GUARANTEE =
-  /\b(?:guarantee[ds]?|promise|assure[ds]?|are you (?:sure|positive|certain))\b.{0,90}\b(?:returns?|profits?|double|triple|\d{1,4}x|gains?|go(?:es|ing)? (?:up|down)|positive|negative|perform(?:s|ance)?(?:\s+poorly|\s+well)?|money|lose|loss|year end)\b|\b(?:guaranteed|risk[- ]free|sure[- ]thing)\s+(?:returns?|profits?|picks?|stocks?|winners?)\b|\bno risk\b/i;
+  /\b(?:guarantee(?:s|d|ing)?|promis(?:e|es|ed|ing)|assur(?:e|es|ed|ing)|are you (?:sure|positive|certain)|can you (?:guarantee|promise|assure))\b.{0,90}\b(?:returns?|profits?|double|triple|\d{1,4}x|gains?|go(?:es|ing)? (?:up|down)|positive|negative|perform(?:s|ance|ing)?(?:\s+poorly|\s+well)?|money|lose|loss|year end)\b|\b(?:guaranteed|risk[- ]free|sure[- ]thing)\s+(?:returns?|profits?|picks?|stocks?|winners?)\b|\bno risk\b|\b(?:no|zero)\s+chance\b.{0,80}\b(?:fall|drop|decline|crash|lose|rise|rally|gain|go (?:up|down)|perform (?:poorly|well))\b|\bso you(?:'re| are) saying\b.{0,80}\b(?:will|won't|cannot|can't)\b.{0,30}\b(?:fall|drop|decline|crash|lose|rise|rally|gain|perform (?:poorly|well))\b/i;
 const LIFE_EVENT_STAKE =
   /\b(?:sold my house|selling my house|house (?:proceeds|money|sale)|inheritance|life savings|retirement (?:savings|fund)|superannuation|my super\b|redundancy (?:pay(?:out)?)?|mortgage refinance|divorce settlement)\b/i;
 const ALL_IN =
@@ -67,12 +70,96 @@ function investingContext(text: string, entities: FinanceEntity[]): boolean {
   );
 }
 
-const guaranteeResponse =
-  "I can’t guarantee any return — up or down — and you should be wary of anyone who does. Single-stock outcomes are genuinely uncertain. What I can do is lay out the current evidence, the key risks, and what would need to go right or wrong.";
-const highStakesResponse =
-  "That’s a serious amount of your life tied up in one position, so I’ll be straight with you: I can’t tell you it was the right call, and I can’t promise how it will go. Concentrating money you can’t afford to lose in a single stock is high-risk no matter the company. I can walk through the risks and what to watch, and for a decision this size it’s worth talking to a licensed financial adviser.";
-const personalPositionResponse =
-  "I can’t tell you to buy, sell, or hold your own position — that depends on your full finances, tax situation, and risk tolerance, which I can’t see. I can lay out the current evidence and risks so you can decide, and a licensed financial adviser can help with the personal side.";
+// High-stakes refusals keep the deterministic safety floor (no guarantees,
+// ever) but must read like a person, not a replayed template: variants per
+// trigger, direction-aware (promised gains vs promised losses), and
+// forward-looking vs already-done aware. chat.ts tracks which variant IDs a
+// session has seen so no body is replayed verbatim.
+export type HighStakesKind =
+  | "guarantee_positive"
+  | "guarantee_negative"
+  | "life_event_past"
+  | "life_event_forward"
+  | "position_directive";
+
+const HIGH_STAKES_VARIANTS: Record<HighStakesKind, string[]> = {
+  guarantee_positive: [
+    "I can’t guarantee any return — up or down — and you should be wary of anyone who does. Single-stock outcomes are genuinely uncertain. What I can do is lay out the current evidence, the key risks, and what would need to go right or wrong.",
+    "No — I can’t promise you a positive return, and honestly nobody can. Even the strongest company can get repriced by things neither of us controls. What I can do is show you what the evidence looks like right now and where the real risks sit.",
+    "I get why you want certainty here, but a promised gain isn’t something I can give you — markets just don’t offer that. The honest version is the evidence and the risk picture, and I’m happy to walk through both.",
+    "If I said yes, I’d be making it up — no analyst can assure a profit on a single stock. What’s actually knowable is how the business is doing and what could push it either way, and I can take you through that.",
+  ],
+  guarantee_negative: [
+    "I can’t promise it will do badly any more than I could promise it would do well — certainty cuts both ways, and I don’t have it in either direction. What I can give you is the evidence behind the concern and what would prove it wrong.",
+    "No — “sure to underperform” is as much a guess as “sure to rally”. The risks I’ve flagged are real, but risks are probabilities, not verdicts. I can show you what to watch to see which way it’s actually breaking.",
+    "I’m not certain of that, and I’d be lying if I claimed to be. A weak setup can still surprise on the upside. The useful thing is knowing which specific numbers would confirm or kill the bearish case, and I can lay those out.",
+  ],
+  life_event_past: [
+    "That’s a serious amount of your life tied up in one position, so I’ll be straight with you: I can’t tell you it was the right call, and I can’t promise how it will go. Concentrating money you can’t afford to lose in a single stock is high-risk no matter the company. I can walk through the risks and what to watch, and for a decision this size it’s worth talking to a licensed financial adviser.",
+    "That’s a big, real commitment you’ve already made, and I won’t pretend to know how it ends — nobody does. What matters now is understanding the position: what the company’s numbers look like, what could hurt it, and what your exit options are. For money at this scale, a licensed adviser is worth the conversation.",
+    "I hear how much is riding on this. I can’t score the decision for you or forecast the outcome — a single stock carrying money you can’t afford to lose is high-risk full stop. What I can do is keep you sharp on the evidence and the warning signs, and someone licensed should be in the loop for stakes like these.",
+  ],
+  life_event_forward: [
+    "Before you put more in: I can’t tell you whether to do it, and I can’t promise how it would go. What I can say is that adding your remaining savings would concentrate even more of your life in one outcome — the risk compounds, it doesn’t average out. Let’s look at the evidence together, and for a decision this size a licensed financial adviser should be part of it.",
+    "That’s a decision I can’t make for you — and going further in with money you’d genuinely miss raises the stakes a lot. No outcome here is assured in either direction. I can walk you through what the data says and the risks of doubling down, and an adviser who can see your full picture is the right person for the final call.",
+    "I won’t tell you yes or no on that — it depends on your whole financial picture, which I can’t see, and there’s no guaranteed result to lean on. What I can offer is the current evidence and what concentrating further would mean for your risk. For savings-level money, please loop in a licensed adviser.",
+  ],
+  position_directive: [
+    "I can’t tell you to buy, sell, or hold your own position — that depends on your full finances, tax situation, and risk tolerance, which I can’t see. I can lay out the current evidence and risks so you can decide, and a licensed financial adviser can help with the personal side.",
+    "That call has to stay yours — buy/sell/hold decisions hang on your whole situation, not just the stock, and I only see the stock. What I can do well is give you the evidence and the risk picture so you’re deciding with clear eyes; an adviser can handle the personal half.",
+    "I don’t give personal trading instructions — not because the question’s unreasonable, but because the right answer depends on things only you (and maybe an adviser) can weigh. Happy to arm you with the data and the risks either way.",
+  ],
+};
+
+const NEGATIVE_DIRECTION =
+  /\b(?:poorly|badly|underperform|go(?:es|ing)?\s+down|negative|lose|loss(?:es)?|tank|drop|fall|crash|decline)\b/i;
+const NO_CHANCE_DOWNSIDE =
+  /\b(?:no|zero)\s+chance\b.{0,80}\b(?:fall|drop|decline|crash|lose|go down)\b/i;
+const NO_CHANCE_UPSIDE =
+  /\b(?:no|zero)\s+chance\b.{0,80}\b(?:rise|rally|gain|go up|perform well)\b/i;
+const FORWARD_LOOKING =
+  /\b(?:should|shall|can|could)\s+i\b|\bthinking (?:of|about)\b|\bplanning (?:to|on)\b|\bgoing to\b|\babout to\b|\bworth (?:putting|adding|buying)\b|\b(?:put|add|invest)\b.{0,40}\btoo\b/i;
+
+export function classifyHighStakes(
+  message: string,
+  entities: FinanceEntity[]
+): HighStakesKind | null {
+  const text = message.trim();
+  if (GUARANTEE.test(text) && investingContext(text, entities)) {
+    if (NO_CHANCE_DOWNSIDE.test(text)) return "guarantee_positive";
+    if (NO_CHANCE_UPSIDE.test(text)) return "guarantee_negative";
+    return NEGATIVE_DIRECTION.test(text)
+      ? "guarantee_negative"
+      : "guarantee_positive";
+  }
+  if (
+    (LIFE_EVENT_STAKE.test(text) || ALL_IN.test(text)) &&
+    investingContext(text, entities) &&
+    !CASINO_OR_SPORTSBOOK.test(text)
+  ) {
+    return FORWARD_LOOKING.test(text) ? "life_event_forward" : "life_event_past";
+  }
+  if (PERSONAL_POSITION_DIRECTIVE.test(text) && !CASINO_OR_SPORTSBOOK.test(text)) {
+    return "position_directive";
+  }
+  return null;
+}
+
+export function pickHighStakesReply(
+  kind: HighStakesKind,
+  used: string[]
+): { id: string; text: string } {
+  const pool = HIGH_STAKES_VARIANTS[kind];
+  const usedSet = new Set(used);
+  for (let index = 0; index < pool.length; index += 1) {
+    const id = `${kind}:${index}`;
+    if (!usedSet.has(id)) return { id, text: pool[index] };
+  }
+  // Pool exhausted (long session): cycle from the start rather than repeat
+  // the most recent body back to back.
+  const index = used.filter((id) => id.startsWith(`${kind}:`)).length % pool.length;
+  return { id: `${kind}:${index}`, text: pool[index] };
+}
 
 export const OUT_OF_SCOPE_RESPONSE =
   "StockSage focuses on financial markets and public-company research. Try asking about a company, fund, market, economic trend, or finance concept.";
@@ -98,8 +185,8 @@ const HARD_FLOOR_CODES = new Set([
 ]);
 
 // Safety outcomes that must never depend on LLM availability. Runs before
-// triage; soft outcomes (out_of_scope, clarify, social) fall through to the
-// model, which judges them better.
+// the model call; soft outcomes (out_of_scope, clarify, social) fall through
+// to the model, which judges them better.
 export function hardSafetyFloor(
   message: string,
   entities: FinanceEntity[]
@@ -174,31 +261,8 @@ export function evaluateDomainPolicy(
       response: cryptoPromotionResponse,
     };
   }
-  if (GUARANTEE.test(text) && investingContext(text, entities)) {
-    return {
-      action: "respond",
-      reasonCode: "high_stakes_finance",
-      response: guaranteeResponse,
-    };
-  }
-  if (
-    (LIFE_EVENT_STAKE.test(text) || ALL_IN.test(text)) &&
-    investingContext(text, entities) &&
-    !CASINO_OR_SPORTSBOOK.test(text)
-  ) {
-    return {
-      action: "respond",
-      reasonCode: "high_stakes_finance",
-      response: highStakesResponse,
-    };
-  }
-  if (PERSONAL_POSITION_DIRECTIVE.test(text) && !CASINO_OR_SPORTSBOOK.test(text)) {
-    return {
-      action: "respond",
-      reasonCode: "high_stakes_finance",
-      response: personalPositionResponse,
-    };
-  }
+  // Gambling instructions take precedence over finance language such as
+  // "guaranteed" or "lock". A parlay never becomes a stock recommendation.
   if (
     GAMBLING.test(text) &&
     !(INVESTING_CONTEXT.test(text) && !CASINO_OR_SPORTSBOOK.test(text) && !SPORTS.test(text))
@@ -229,12 +293,31 @@ export function evaluateDomainPolicy(
       };
     }
   }
+  const highStakes = classifyHighStakes(text, entities);
+  if (highStakes) {
+    return {
+      action: "respond",
+      reasonCode: "high_stakes_finance",
+      response: pickHighStakesReply(highStakes, []).text,
+    };
+  }
   if (PREDICTION_MARKET.test(text) && !COMPANY_ANALYSIS.test(text)) {
     return {
       action: "clarify",
       reasonCode: "prohibited_gambling",
       response:
         "Are you asking about a listed prediction-market business, regulation, or financial risk? I can cover those topics, but not betting picks or strategies.",
+    };
+  }
+  // A creative-writing request stays out of scope even when its subject is a
+  // stock — "a haiku about nvidia" must not slide into finance analysis just
+  // because an entity resolved. Only pure requests refuse here; a message
+  // that also carries a real finance question falls through to be answered.
+  if (creativeRequestOnly(text)) {
+    return {
+      action: "respond",
+      reasonCode: "out_of_scope",
+      response: scopeResponse,
     };
   }
   if (SPORTS.test(text) && !COMPANY_ANALYSIS.test(text)) {

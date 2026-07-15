@@ -22,19 +22,89 @@ import type {
 } from "./types";
 
 const PLURAL_REFERENCE = /\b(?:they|their|them|those|these|both)\b/i;
+// Conversational category references ("the consultant group") should
+// inherit whichever named group is currently active, same as "they".
+const CATEGORY_REFERENCE =
+  /\b(?:the\s+consultant(?:s|ing)?(?:\s+group)?|the\s+consulting\s+firms?|the\s+accounting\s+firms?)\b/i;
 const SINGULAR_REFERENCE =
   /\b(?:it|its|that one|this one|the company|the stock|the shares|what about|how about|wb)\b/i;
 const ORDERED_REFERENCE = /\b(?:former|latter|first one|second one)\b/i;
 const COMPARISON_FOLLOW_UP =
-  /\b(?:which (?:one|is|looks)|what about|how about|wb|better|safe(?:st|r)|less risky|more risky|rank|order|all of them|former two|latter two|today|yesterday|(?:a\s+)?few days ago|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|over (?:the )?last|past \d+|between)\b/i;
+  /\b(?:which (?:one|is|looks)|which of (?:the|those|these)|what about|how about|wb|better|safe(?:st|r)|less risky|more risky|more volatile|volatil|rank|order|all of them|former two|latter two|today|yesterday|(?:a\s+)?few days ago|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|over (?:the )?last|past \d+|between)\b/i;
 const CONTEXTUAL_FOLLOW_UP =
   /^(?:(?:and|so|ok(?:ay)?|\.{2,})\s+)?(?:today|yesterday|(?:a\s+)?few days ago|anything notable|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|what (?:changed|happened|moved)|what(?:'?s| is) (?:your|the) (?:current\s+)?outlook|which (?:one|is|looks|parts?)|(?:can you )?reconcile|how (?:did|has|is|are|was)|why\b|rank\b|order\b|all of them\b|only the (?:former|latter) two\b)/i;
 const REMOVAL =
   /\b(?:forget|drop|remove|ignore|skip|leave out|without)\s+(?:about\s+)?(.+?)(?=\s*(?:[—–-]{1,2}|,|\.|;|!|\?|$))/i;
+// "swap X out for Y" / "replace X with Y" is a targeted substitution: X
+// leaves, Y takes X's slot, and everything else in the active set stays
+// (the FQ swap-correction hard fail: Nasdaq must survive the Tesla→Rivian
+// swap). "swap in Y for X" reverses which capture names the outgoing one.
+const SWAP_IN_CORRECTION =
+  /\b(?:swap|sub(?:stitute)?)\s+in\s+(.+?)\s+(?:for|instead of|in place of)\s+(.+?)(?=[.!?,;]|$)/i;
+const SWAP_CORRECTION =
+  /\b(?:swap|switch|replace|sub(?:stitute)?)\s+(?:out\s+)?(.+?)\s+(?:out\s+)?(?:for|with|to)\s+(.+?)(?=[.!?,;]|$)/i;
+// "Forget the others, between those two..." names no specific entity, so it
+// cannot resolve via REMOVAL above — it narrows to whichever subset the
+// assistant's own last reply most recently focused on (FQ-08/F1.2).
+const NARROWING_TO_SUBSET =
+  /\b(?:forget\s+(?:the\s+)?(?:others?|rest)|only\s+(?:those|these)\s+(?:two|three|four|couple)|between\s+(?:those|these)\s+(?:two|three|couple)|just\s+(?:those|these)\s+(?:two|three))\b/i;
 const RESET = /^(?:reset|start (?:over|fresh|again)|clear (?:the )?(?:context|conversation|slate)|new topic)[\s,.!?]*$/i;
 const AUSTRALIAN_BANK_TICKERS = new Set(["CBA", "NAB", "ANZ", "WBC"]);
 const CONSULTING_NAMES = new Set(["Deloitte", "PwC", "EY", "KPMG"]);
 const INDEX_TICKERS = new Set(["IXIC", "GSPC", "DJI"]);
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function subsetKeepCount(message: string): number {
+  const match = message.match(/\b(two|three|four|couple)\b/i);
+  const word = match?.[1].toLowerCase();
+  if (word === "three") return 3;
+  if (word === "four") return 4;
+  return 2;
+}
+
+// Counts name/ticker mentions of each currently-known entity in the most
+// recent assistant turn, so "those two"/"the others" can resolve against
+// whichever subset the assistant itself just highlighted rather than the
+// full original explicit set.
+function lastAssistantMentionCounts(
+  base: FinanceEntity[],
+  history: ChatTurn[]
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const turn = history[index];
+    if (turn.role !== "ai") continue;
+    for (const entity of base) {
+      const terms = [
+        entity.ticker,
+        entity.name,
+        entity.name.split(/[\s,.]+/)[0],
+      ].filter(
+        (term): term is string => typeof term === "string" && term.length >= 2
+      );
+      let count = 0;
+      for (const term of new Set(terms)) {
+        const matches = turn.text.match(
+          new RegExp(`\\b${escapeRegExp(term)}\\b`, "gi")
+        );
+        count += matches?.length ?? 0;
+      }
+      counts.set(entity.id, count);
+    }
+    return counts;
+  }
+  return counts;
+}
+
+function isIndexEntity(entity: FinanceEntity): boolean {
+  return (
+    (Boolean(entity.ticker) && INDEX_TICKERS.has(entity.ticker as string)) ||
+    /\b(?:composite|index|500)\b/i.test(entity.name)
+  );
+}
 
 function removalTargets(
   phrase: string,
@@ -43,11 +113,7 @@ function removalTargets(
   const resolved = resolveText(phrase);
   if (resolved.length > 0) return resolved;
   if (/\b(?:index(?:es)?|indices)\b/i.test(phrase)) {
-    return base.filter(
-      (entity) =>
-        (entity.ticker && INDEX_TICKERS.has(entity.ticker)) ||
-        /\b(?:composite|index|500)\b/i.test(entity.name)
-    );
+    return base.filter(isIndexEntity);
   }
   if (/\bbanks?\b/i.test(phrase)) {
     return base.filter(
@@ -56,6 +122,9 @@ function removalTargets(
   }
   if (/\bconsult|accountants?|firms\b/i.test(phrase)) {
     return base.filter((entity) => CONSULTING_NAMES.has(entity.name));
+  }
+  if (/\b(?:those|these|them|others?|rest)\b/i.test(phrase)) {
+    return base;
   }
   return [];
 }
@@ -132,15 +201,41 @@ export function resolveConversationState(
   const replacementCorrection = message.match(
     /\bnot\s+(.+?)(?:,|\s+but\s+|\s+instead\s+)(.+?)(?:[.!?]|$)/i
   );
+  const swapIn = message.match(SWAP_IN_CORRECTION);
+  const swap = swapIn ? null : message.match(SWAP_CORRECTION);
   let removed = meantCorrection
     ? resolveText(meantCorrection[2])
     : replacementCorrection
       ? resolveText(replacementCorrection[1])
-      : [];
+      : swapIn
+        ? resolveText(swapIn[2])
+        : swap
+          ? resolveText(swap[1])
+          : [];
   if (removed.length === 0) {
     const removalMatch = message.match(REMOVAL);
     if (removalMatch) {
       removed = removalTargets(removalMatch[1], base.entities);
+    }
+  }
+  if (
+    removed.length === 0 &&
+    base.entities.length > 2 &&
+    NARROWING_TO_SUBSET.test(message)
+  ) {
+    const counts = lastAssistantMentionCounts(base.entities, history);
+    const mentioned = base.entities.filter(
+      (entity) => (counts.get(entity.id) ?? 0) > 0
+    );
+    if (mentioned.length > 0 && mentioned.length < base.entities.length) {
+      const keepCount = Math.min(subsetKeepCount(message), mentioned.length);
+      const keepIds = new Set(
+        [...mentioned]
+          .sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0))
+          .slice(0, keepCount)
+          .map((entity) => entity.id)
+      );
+      removed = base.entities.filter((entity) => !keepIds.has(entity.id));
     }
   }
   let correctedBase = base.entities;
@@ -212,6 +307,11 @@ export function resolveConversationState(
     ...message.matchAll(/\b(former|latter|first one|second one)\b/gi),
   ];
   const orderedMatch = orderedMatches[0];
+  // True when an ordered reference ("the former") is paired with a newly
+  // named entity in the same message ("... vs IXIC"), meaning the user is
+  // deliberately pivoting the active comparison pair rather than just
+  // re-referring to the existing one (F1.1/FQ-02).
+  let orderedPivot = false;
   if (subsetMatch) {
     if (base.explicitEntitySet.length < 2) {
       return {
@@ -261,19 +361,27 @@ export function resolveConversationState(
         reasonCode: "stale_ordered_reference",
       };
     }
+    orderedPivot = direct.length > 0;
     direct.unshift(...resolved);
   }
 
-  const referencesPlural = PLURAL_REFERENCE.test(message);
+  const referencesPlural =
+    PLURAL_REFERENCE.test(message) || CATEGORY_REFERENCE.test(message);
   const referencesSingular = SINGULAR_REFERENCE.test(message);
   const anchoredPronoun =
     /\b(?:its|that one|this one|the company|the stock|the shares)\b/i.test(
       message
     ) ||
-    (/\b(?:compare[ds]?|comparing|vs\.?|versus|against|stacks? up|match(?:es)? up)\b/i.test(
+    (/\b(?:compare[ds]?|comparing|vs\.?|versus|against|beat(?:s|ing)?|stacks? up|match(?:es)? up)\b/i.test(
       message
     ) &&
       /\bit\b/i.test(message));
+  // A message that IS the comparison connector ("vs amd", "against the S&P")
+  // names only the new side; the old side is whatever was just discussed.
+  const bareComparison =
+    /^(?:(?:and|or|ok(?:ay)?|so|now)\s+)?(?:vs\.?|versus|against|compared?\s+(?:to|with))\b/i.test(
+      message
+    );
   const anchor =
     direct.length > 0 &&
     grouped.length === 0 &&
@@ -281,12 +389,20 @@ export function resolveConversationState(
     !subsetMatch &&
     !orderedMatch &&
     !fortuneReplacement &&
-    anchoredPronoun
+    (anchoredPronoun || bareComparison)
       ? base.entities
           .slice(-1)
           .filter(
             (entity) => !direct.some((candidate) => candidate.id === entity.id)
           )
+      : [];
+  // "is it beating the index" re-attaches whichever index is already in
+  // play, even when this turn also names a company explicitly.
+  const indexReference =
+    removed.length === 0 &&
+    /\bthe\s+(?:index(?:es)?|indices|benchmark)\b/i.test(message) &&
+    ![...direct, ...grouped].some(isIndexEntity)
+      ? base.entities.filter(isIndexEntity)
       : [];
   const comparisonFollowUp =
     !orderedMatch &&
@@ -319,13 +435,13 @@ export function resolveConversationState(
     ? base.entities.flatMap((entity) =>
         entity.name === "Fortune 500" ? direct : [entity]
       )
-    : [...referenced, ...anchor, ...direct, ...grouped];
+    : [...referenced, ...anchor, ...direct, ...grouped, ...indexReference];
   const entities = [
     ...new Map(merged.map((entity) => [entity.id, entity])).values(),
-  ].slice(0, 8);
-  const explicit = [...anchor, ...direct, ...grouped];
+  ].slice(0, 12);
+  const explicit = [...anchor, ...direct, ...grouped, ...indexReference];
   const retainComparisonContext =
-    (Boolean(orderedMatch) && !subsetMatch) ||
+    (Boolean(orderedMatch) && !subsetMatch && !orderedPivot) ||
     (direct.length === 0 &&
       grouped.length === 0 &&
       removed.length === 0 &&
@@ -334,6 +450,7 @@ export function resolveConversationState(
   const startsNewTopic =
     (direct.length > 0 || (grouped.length > 0 && !groupSwitch)) &&
     anchor.length === 0 &&
+    indexReference.length === 0 &&
     !orderedMatch &&
     !subsetMatch &&
     removed.length === 0 &&
@@ -343,9 +460,11 @@ export function resolveConversationState(
   const next: ConversationState = {
     version: 1,
     revision: base.revision + 1,
+    // After a removal, the corrected set stands even when it came out empty
+    // ("forget the consultants" must not silently keep the consultants).
     entities: retainComparisonContext
       ? base.entities
-      : entities.length > 0
+      : removed.length > 0 || entities.length > 0
         ? entities
         : base.entities,
     explicitEntitySet:
@@ -359,7 +478,9 @@ export function resolveConversationState(
                 : [id]
             )
           : orderedMatch && !subsetMatch
-            ? base.explicitEntitySet
+            ? orderedPivot
+              ? [...new Set(explicit.map((entity) => entity.id))]
+              : base.explicitEntitySet
             : subsetMatch
               ? [...new Set(direct.map((entity) => entity.id))]
               : explicit.length > 0
@@ -370,6 +491,9 @@ export function resolveConversationState(
     horizon: horizon ?? (startsNewTopic ? undefined : base.horizon),
     jurisdiction:
       jurisdiction ?? (startsNewTopic ? undefined : base.jurisdiction),
+    // Safety-reply bookkeeping is session-scoped, not topic-scoped: a new
+    // topic must not license replaying a refusal the user already read.
+    safetyRepliesUsed: base.safetyRepliesUsed,
   };
   return {
     state: next,

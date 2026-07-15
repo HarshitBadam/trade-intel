@@ -92,6 +92,70 @@ export function violatesStyle(text: string, hasSources: boolean): string | null 
   return null;
 }
 
+// A finance turn can smuggle an off-topic task along for the ride ("what's
+// 2**10? also how's nvidia doing"). The finance half must be answered and the
+// smuggled half declined WITHOUT being performed — so detect the smuggled ask
+// in the message, then reject any candidate that computes/performs it.
+const SMUGGLED_TASK =
+  /\d\s*(?:\*\*|[×^])\s*\d|\bwhat(?:'?s| is)\s+\d+\s*[-+*/^]\s*\d|\b(?:sum|sqrt|factorial|fibonacci)\s*\(|\brange\s*\(|\bprint\s*\(|\b(?:derive|formula for)\b.{0,30}\b(?:gravity|physics|motion|energy)\b|\bdating advice\b/i;
+
+// Creative-writing requests are off-topic even when the subject is a stock —
+// "a haiku about nvidia's stock price" is still a haiku. Two shapes: a
+// composing verb near a creative noun, or the bare "<form> about X" phrasing.
+// Kept tight so incidental mentions ("the rally was pure poetry") never match.
+const CREATIVE_ASK =
+  /\b(?:write|writing|compose|pen|craft)\b[^.!?;\n]{0,40}\b(?:haikus?|poems?|poetry|songs?|raps?|stor(?:y|ies)|jokes?|limericks?|sonnets?|lyrics|ballads?|odes?|verses?)\b|\b(?:tell|give|make|do|sing)\s+(?:me\s+|us\s+)?(?:a|an|another|one more|some)\s+(?:\w+\s+){0,2}?(?:haiku|poem|song|rap|story|joke|limerick|sonnet|ballad|ode)\b|\b(?:a\s+)?(?:haiku|limerick|sonnet|ballad|ode)\s+about\b/i;
+
+const PERFORMED_TASK =
+  /=\s*[\d,]|\d\s*(?:\*\*|[×^])\s*\d|\bwould (?:print|return|output|evaluate)\b|\b(?:prints?|outputs?|evaluates? to|comes? (?:out|to))\s+[\d,]|\bthe (?:answer|result) is\s+[\d,]|\bhere'?s (?:a|your|the|that)\s*(?:short\s+|little\s+|quick\s+)?(?:poem|haiku|joke|story|song|rap|limerick|sonnet|verse|ballad|ode)\b|\broses are red\b/i;
+
+// Verse has a shape prose doesn't: short line stacks without figures, or
+// inline lines separated by " / ". Only consulted when the request itself was
+// creative/smuggled, so ordinary finance answers are never scanned.
+function looksLikeVerse(text: string): boolean {
+  if (/\S \/ \S[^\n]* \/ \S/.test(text)) return true;
+  let run = 0;
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (
+      line.length === 0 ||
+      /^(?:[-*•>#|]|\d+[.)])/.test(line) ||
+      /^\*\*[^*]+\*\*:?$/.test(line)
+    ) {
+      run = 0;
+      continue;
+    }
+    const versey =
+      line.length <= 60 && !/\d/.test(line) && line.split(/\s+/).length <= 9;
+    run = versey ? run + 1 : 0;
+    if (run >= 3) return true;
+  }
+  return false;
+}
+
+export function hasSmuggledOffTopicTask(message: string): boolean {
+  return SMUGGLED_TASK.test(message) || CREATIVE_ASK.test(message);
+}
+
+// True when the message IS the creative task — no separate finance question
+// rides alongside it — so the whole turn should be refused rather than
+// treated as a data turn just because a ticker appears inside the request.
+const FINANCE_ASK =
+  /\b(?:how(?:'?s| is| are| did| has| have)|what(?:'?s| is| are| about| happened| moved)|compare|vs\.?|versus|rank|wb|price[sd]?|trading|perform(?:s|ed|ing|ance)?|doing|moved?|outlook|earnings|risks?)\b/i;
+
+export function creativeRequestOnly(message: string): boolean {
+  if (!CREATIVE_ASK.test(message)) return false;
+  const remainder = message
+    .split(/[.!?;\n]+|,?\s+\b(?:and|then|also|plus|btw|after that)\b\s+/i)
+    .filter((clause) => clause.trim().length > 0 && !CREATIVE_ASK.test(clause))
+    .join(" ");
+  return !FINANCE_ASK.test(remainder);
+}
+
+export function performsSmuggledTask(candidate: string): boolean {
+  return PERFORMED_TASK.test(candidate) || looksLikeVerse(candidate);
+}
+
 const CRITERION_EVIDENCE: Record<string, RegExp> = {
   performance:
     /\b(?:perform(?:ance|ed|ing)?|returns?|gain(?:ed|s)?|fell|rose|dropped|climbed|moved?|rall(?:y|ied)|slid|up|down)\b|[+-]?\d+(?:\.\d+)?%/i,

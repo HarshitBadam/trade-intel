@@ -6,6 +6,7 @@ import {
   GROQ_ANALYSIS_MODEL,
   GROQ_CHAT_MODEL,
   GROQ_FALLBACK_MODEL,
+  GROQ_OSS_MODEL,
   hasAnySynthesisLlm,
 } from "@/lib/config";
 import {
@@ -115,6 +116,15 @@ function candidatesFor(args: SynthesisArgs): Candidate[] {
     quotaProvider: "groq-fallback",
     budgetPerMinute: 4,
   };
+  // Groq rate limits are per model, so this rides a separate 429 budget from
+  // the scout/70b lanes.
+  const groqOss: Candidate = {
+    vendor: "groq",
+    model: GROQ_OSS_MODEL,
+    provider: deep ? "groq-deep-oss" : "groq-oss",
+    quotaProvider: "groq-oss",
+    budgetPerMinute: 10,
+  };
   const groqSmall: Candidate = {
     vendor: "groq",
     model: GROQ_ANALYSIS_MODEL,
@@ -124,8 +134,8 @@ function candidatesFor(args: SynthesisArgs): Candidate[] {
   };
   const ordered =
     args.lane === "light"
-      ? [groqPrimary, gemini, cerebras, groqSmall, groqFallback]
-      : [groqPrimary, cerebras, gemini, groqFallback, groqSmall];
+      ? [groqPrimary, gemini, cerebras, groqOss, groqSmall, groqFallback]
+      : [groqPrimary, cerebras, gemini, groqOss, groqFallback, groqSmall];
   return ordered.filter(
     (candidate, index, list) =>
       hasVendor(candidate.vendor) &&

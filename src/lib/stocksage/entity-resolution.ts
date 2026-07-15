@@ -84,16 +84,37 @@ export function canonicalizeEntity(entity: FinanceEntity): FinanceEntity | null 
 }
 
 export function resolveGroup(text: string): FinanceEntity[] {
-  const group = CANONICAL_GROUPS.find((candidate) => candidate.aliases.test(text));
-  if (!group) return [];
-  return group.members
-    .map((member) =>
-      WEB_ALIASES.find(
-        (alias) => alias.ticker === member || alias.name === member
-      )
-    )
-    .filter((alias): alias is WebAlias => Boolean(alias))
-    .map(fromAlias);
+  const groups = CANONICAL_GROUPS.map((candidate) => ({
+    candidate,
+    index: text.search(candidate.aliases),
+  }))
+    .filter((match) => match.index >= 0)
+    .filter((match) => {
+      const prefix = text.slice(Math.max(0, match.index - 32), match.index);
+      if (/\bnot(?:\s+the)?\s*$/i.test(prefix)) return false;
+      return !(
+        match.candidate.id === "australian-big-four" &&
+        /\b(?:consulting|consultancy|accounting|audit|professional services)\s*$/i.test(
+          prefix
+        )
+      );
+    })
+    .sort((left, right) => left.index - right.index)
+    .map((match) => match.candidate);
+  return [
+    ...new Map(
+      groups
+        .flatMap((group) => group.members)
+        .map((member) =>
+          WEB_ALIASES.find(
+            (alias) => alias.ticker === member || alias.name === member
+          )
+        )
+        .filter((alias): alias is WebAlias => Boolean(alias))
+        .map(fromAlias)
+        .map((entity): [string, FinanceEntity] => [entity.id, entity])
+    ).values(),
+  ];
 }
 
 const EXCHANGE_CONTEXT_TICKERS = new Set(["ASX", "LSE", "TSX", "HKEX", "TSE", "NSE", "BSE", "NYSE", "AX"]);

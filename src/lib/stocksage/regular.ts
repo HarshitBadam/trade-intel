@@ -7,7 +7,10 @@ import {
 } from "./citations";
 import { unsupportedFigures } from "./figures";
 import { buildChatSystemPrompt } from "./regular-prompt";
-import { buildFallbackReply } from "./regular-fallback";
+import {
+  buildDeterministicRankingReply,
+  buildFallbackReply,
+} from "./regular-fallback";
 import { historyMessages } from "./regular-history";
 import {
   coversEveryEntity,
@@ -56,6 +59,15 @@ export async function answerRegularChat(
       live,
     };
   }
+  const deterministicRanking = buildDeterministicRankingReply(
+    request,
+    entities,
+    context,
+    options.timeframe ?? state.horizon
+  );
+  if (deterministicRanking) {
+    return { ...deterministicRanking, live };
+  }
   try {
     const requireCitations =
       context.sources.length > 0 &&
@@ -92,14 +104,6 @@ export async function answerRegularChat(
       request.message,
     ].join("\n");
     const history = historyMessages(request);
-    if (history.length > 0 && entities.length >= 2) {
-      history.push({
-        role: "system",
-        content: `The next user message is about exactly: ${entities
-          .map((entity) => entity.name)
-          .join(", ")}. Answer about these and no one else, whatever the earlier turns discussed.`,
-      });
-    }
     const priorReplies = request.history
       .filter((turn) => turn.role === "ai")
       .slice(-3)
@@ -166,7 +170,7 @@ export async function answerRegularChat(
           requireCoverage
             ? `cover every one of: ${names} — same criteria for each — and `
             : ""
-        }cite the source ID like [S1] after every claim taken from SOURCES. Keep the same voice and length.`;
+        }cite the source ID like [S1] after every claim taken from SOURCES. Output only the final answer — never apologize for or mention the rewrite, this instruction, or the earlier draft. Keep the same voice and length.`;
       },
     });
     const cleaned = stripTickerCitationMarkers(
@@ -186,6 +190,7 @@ export async function answerRegularChat(
 }
 
 export {
+  buildDeterministicRankingReply,
   buildFallbackReply,
   coversEveryEntity,
   historyMessages,

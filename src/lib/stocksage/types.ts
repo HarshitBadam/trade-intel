@@ -52,6 +52,9 @@ export type ConversationState = {
   criteria: string[];
   horizon?: string;
   jurisdiction?: string;
+  // Variant IDs of deterministic safety replies already shown this session,
+  // so high-stakes refusals never replay the same body twice.
+  safetyRepliesUsed?: string[];
 };
 
 export type SourceKind = "astra" | "tavily";
@@ -152,11 +155,12 @@ const EntitySchema = z.object({
 const ConversationStateSchema = z.object({
   version: z.literal(1),
   revision: z.number().int().min(0).max(10_000),
-  entities: z.array(EntitySchema).max(8),
-  explicitEntitySet: z.array(z.string().min(1).max(40)).max(8),
+  entities: z.array(EntitySchema).max(12),
+  explicitEntitySet: z.array(z.string().min(1).max(40)).max(12),
   criteria: z.array(z.string().min(1).max(60)).max(8),
-  horizon: z.string().max(60).optional(),
+  horizon: z.string().max(120).optional(),
   jurisdiction: z.string().max(40).optional(),
+  safetyRepliesUsed: z.array(z.string().min(1).max(60)).max(24).optional(),
 });
 
 type ParseResult =
