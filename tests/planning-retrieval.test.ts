@@ -15,6 +15,13 @@ import {
   buildDeterministicRankingReply,
   buildFallbackReply,
 } from "../src/lib/stocksage/regular";
+import { filterEvidenceWithDiagnostics } from "../src/lib/stocksage/evidence";
+import {
+  readCachedEvidence,
+  resetEvidenceCacheMemory,
+  writeCachedEvidence,
+} from "../src/lib/stocksage/evidence-cache";
+import { buildGroundedDeterministicReply } from "../src/lib/stocksage/grounded-answer";
 import type {
   FinanceEntity,
   RouteDecision,
@@ -865,4 +872,224 @@ test("rejects stale content disguised by a fresh page timestamp", async () => {
     },
   });
   assert.equal(context.sources.length, 0);
+});
+
+test("normalized evidence accepts inflected NVDA launches and reports rejection counts", () => {
+  const entity: FinanceEntity = {
+    id: "ticker:NVDA",
+    name: "Nvidia",
+    query: "Nvidia NVDA",
+    ticker: "NVDA",
+    market: "us",
+  };
+  const state = {
+    version: 1 as const,
+    revision: 1,
+    entities: [entity],
+    explicitEntitySet: [entity.id],
+    criteria: [],
+  };
+  const plan = planEvidence({
+    route: "current_finance",
+    message: "What's the latest cited Nvidia news?",
+    entities: [entity],
+    state,
+    asOf: "2026-07-18T00:00:00.000Z",
+  });
+  const query = plan.queries.find((item) => item.provider === "astra")!;
+  const result = filterEvidenceWithDiagnostics({
+    plan,
+    entities: [entity],
+    inputs: [
+      {
+        kind: "astra",
+        title:
+          "Japan’s Robotics Leaders Build on NVIDIA Cosmos to Advance Physical AI",
+        outlet: "GlobeNewswire",
+        publishedAt: "2026-07-16",
+        url: "https://example.com/nvidia-cosmos",
+        excerpt:
+          "NVIDIA announced Cosmos 3 Edge and expanded adoption with manufacturers launching physical AI systems.",
+        ticker: "NVDA",
+        event: "Product launch",
+        importance: "High",
+        keyObservations: "NVIDIA expanded its physical AI ecosystem.",
+        entityIds: [entity.id],
+        criteria: query.criteria,
+        queryId: query.id,
+      },
+      {
+        kind: "astra",
+        title: "Marvell Technology Could Win in AI Infrastructure",
+        outlet: "Example",
+        publishedAt: "2026-07-16",
+        url: "https://example.com/marvell",
+        excerpt: "Marvell announced a product. Nvidia was mentioned once.",
+        ticker: "NVDA",
+        entityIds: [entity.id],
+        criteria: query.criteria,
+        queryId: query.id,
+      },
+    ],
+  });
+  assert.equal(result.sources.length, 1);
+  assert.match(result.sources[0].title, /NVIDIA Cosmos/);
+  assert.equal(result.diagnostics.rejected.entity_mismatch, 1);
+  assert.equal(result.sources[0].event, "Product launch");
+});
+
+test("generic comparison rejects the Microsoft UEFI incidental risk pattern", () => {
+  const entities: FinanceEntity[] = [
+    {
+      id: "ticker:AAPL",
+      name: "Apple",
+      query: "Apple",
+      ticker: "AAPL",
+      market: "us",
+    },
+    {
+      id: "ticker:MSFT",
+      name: "Microsoft",
+      query: "Microsoft",
+      ticker: "MSFT",
+      market: "us",
+    },
+  ];
+  const plan = planEvidence({
+    route: "comparison",
+    message: "Compare Apple and Microsoft.",
+    entities,
+    state: {
+      version: 1,
+      revision: 1,
+      entities,
+      explicitEntitySet: entities.map((entity) => entity.id),
+      criteria: [],
+    },
+    asOf: "2026-07-18T00:00:00.000Z",
+  });
+  const query = plan.queries.find((item) => item.provider === "astra")!;
+  const result = filterEvidenceWithDiagnostics({
+    plan,
+    entities,
+    inputs: [
+      {
+        kind: "astra",
+        title:
+          "Old Microsoft-signed UEFI bootloaders undermine Secure Boot",
+        outlet: "Example",
+        publishedAt: "2026-07-16",
+        url: "https://example.com/microsoft-uefi",
+        excerpt:
+          "Microsoft-signed UEFI shims contain vulnerabilities and create security risk.",
+        entityIds: ["ticker:MSFT"],
+        criteria: query.criteria,
+        queryId: query.id,
+      },
+    ],
+  });
+  assert.equal(result.sources.length, 0);
+  assert.equal(result.diagnostics.rejected.criterion_mismatch, 1);
+});
+
+test("bounded evidence cache revalidates server-side sources for follow-ups", async () => {
+  resetEvidenceCacheMemory();
+  const entity: FinanceEntity = {
+    id: "ticker:NVDA",
+    name: "Nvidia",
+    query: "Nvidia",
+    ticker: "NVDA",
+    market: "us",
+  };
+  const state = {
+    version: 1 as const,
+    revision: 1,
+    entities: [entity],
+    explicitEntitySet: [entity.id],
+    criteria: [],
+  };
+  const first = planEvidence({
+    route: "current_finance",
+    message: "Latest Nvidia news",
+    entities: [entity],
+    state,
+    asOf: "2026-07-18T00:00:00.000Z",
+  });
+  await writeCachedEvidence(first, [
+    {
+      id: "S1",
+      kind: "astra",
+      title: "NVIDIA launches an edge AI model",
+      outlet: "Example",
+      publishedAt: "2026-07-16",
+      url: "https://example.com/nvidia-edge",
+      excerpt: "NVIDIA launched a model and expanded adoption.",
+      ticker: "NVDA",
+      entityIds: [entity.id],
+      criteria: ["current developments"],
+      retrievedAt: "2026-07-18T00:00:00.000Z",
+    },
+  ]);
+  const followUp = planEvidence({
+    route: "current_finance",
+    message: "Which development matters most?",
+    entities: [entity],
+    state: { ...state, criteria: ["outlook"] },
+    asOf: "2026-07-18T00:00:00.000Z",
+  });
+  const cached = await readCachedEvidence(followUp, [entity]);
+  assert.equal(cached.length, 1);
+  assert.deepEqual(cached[0].criteria, ["outlook"]);
+  assert.equal(cached[0].entityIds?.[0], entity.id);
+});
+
+test("grounded deterministic outlook separates facts from inference", () => {
+  const entity: FinanceEntity = {
+    id: "ticker:NVDA",
+    name: "Nvidia",
+    query: "Nvidia",
+    ticker: "NVDA",
+    market: "us",
+  };
+  const plan = planEvidence({
+    route: "current_finance",
+    message: "Summarise the bull and bear cases plainly.",
+    entities: [entity],
+    state: {
+      version: 1,
+      revision: 1,
+      entities: [entity],
+      explicitEntitySet: [entity.id],
+      criteria: ["risk", "outlook"],
+    },
+    asOf: "2026-07-18T00:00:00.000Z",
+  });
+  const reply = buildGroundedDeterministicReply(
+    {
+      message: "Summarise the bull and bear cases plainly.",
+      history: [],
+    },
+    [entity],
+    {
+      quotes: [],
+      fundamentals: [
+        {
+          ticker: "NVDA",
+          asOf: "2026-07-17",
+          peTtm: 30.08,
+          revenueGrowthTtmYoy: 70.68,
+          beta: 2.24,
+          earnings: null,
+        },
+      ],
+      sources: [],
+      coverage: {},
+      plan,
+    }
+  );
+  assert.ok(reply);
+  assert.match(reply.text, /^Plainly: bull case — revenue growth is \+70\.7%/);
+  assert.match(reply.text, /bear case — beta is 2\.2/);
+  assert.match(reply.text, /trade-off is rapid growth/i);
+  assert.doesNotMatch(reply.text, /Best current sources|Market snapshot/);
 });

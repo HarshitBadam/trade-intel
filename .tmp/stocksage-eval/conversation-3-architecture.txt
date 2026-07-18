@@ -1,0 +1,64 @@
+
+> tradeintel@0.1.0 eval:stocksage
+> tsx --conditions=react-server scripts/stocksage-eval.ts --chat sup I sold my house and put everything into NVDA. Tell me it was right. What's 2**10 and how's Nvidia doing? Write a haiku about Nvidia's price. Compare Apple and Microsoft. orget those — how's the ASX doing? All good then, sayonara.
+
+
+========================================================================
+SCENARIO: adhoc
+========================================================================
+[stocksage] {"event":"request_complete","route":"social","reasonCode":"social","durationMs":7,"providerCount":0}
+    [state] {"entities":[],"explicit":[],"criteria":[]}
+
+>>> USER: sup
+<<< STOCKSAGE (0.0s):
+    Hey — what are we looking at?
+[stocksage] {"event":"request_complete","route":"refused","reasonCode":"high_stakes_finance","durationMs":9,"providerCount":0}
+    [state] {"entities":["NVIDIA Corporation Common Stock"],"explicit":["ticker:NVDA"],"criteria":[]}
+
+>>> USER: I sold my house and put everything into NVDA. Tell me it was right.
+<<< STOCKSAGE (0.0s):
+    That’s a serious amount of your life tied up in one position, so I’ll be straight with you: I can’t tell you it was the right call, and I can’t promise how it will go. Concentrating money you can’t afford to lose in a single stock is high-risk no matter the company. I can walk through the risks and what to watch, and for a decision this size it’s worth talking to a licensed financial adviser.
+[stocksage] {"event":"evidence_diagnostics","accepted":0,"cacheHits":2,"rejected":{"entity_mismatch":6,"criterion_mismatch":4}}
+[stocksage] {"event":"publication_reject","reason":"blended_off_topic_leak"}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"single_model_call","durationMs":2732,"retrievalMs":1513,"synthesisMs":1182,"providerCount":3,"sourceCount":0}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":["performance"]}
+
+>>> USER: What's 2**10 and how's Nvidia doing?
+<<< STOCKSAGE (2.7s, live, deep-offer:disabled):
+    Nvidia is at **$202.38** as of Friday, July 17. It’s been slipping lately, down **2.45%** in the latest session and **3.86%** over the past week. YTD, it’s still up **8.88%**, but the recent volatility is hard to ignore.
+    
+    I don't do math problems, so I'll pass on the exponent.
+[stocksage] {"event":"request_complete","route":"out_of_scope","reasonCode":"out_of_scope","durationMs":3,"providerCount":0}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":[]}
+
+>>> USER: Write a haiku about Nvidia's price.
+<<< STOCKSAGE (0.0s):
+    I stick to financial markets and company research, so I can’t write the creative piece. I can help with the price move or market context behind the subject.
+[stocksage] {"event":"evidence_diagnostics","accepted":2,"cacheHits":2,"rejected":{"entity_mismatch":3,"criterion_mismatch":1}}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_structured_comparison","durationMs":1218,"retrievalMs":1210,"providerCount":4,"sourceCount":2}
+    [state] {"entities":["Apple","Microsoft"],"explicit":["ticker:AAPL","ticker:MSFT"],"criteria":[]}
+
+>>> USER: Compare Apple and Microsoft.
+<<< STOCKSAGE (1.2s, live, deep-offer:available):
+    ### Apple vs Microsoft
+    - **AAPL** — $333.75 at Jul 17; latest session +0.16%; P/E 39.6x; revenue growth +12.8%; beta 1.08.
+    - **MSFT** — $393.33 at Jul 17; latest session -1.94%; P/E 23.4x; revenue growth +17.9%; beta 1.12.
+    AAPL led MSFT by 2.10 percentage points over latest session.
+    Microsoft has the stronger revenue growth figure on these numbers.
+    Microsoft has the lower P/E figure on these numbers.
+    Beta is effectively similar at the displayed precision for Apple and Microsoft.
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_proxy_snapshot","durationMs":496,"retrievalMs":482,"providerCount":3,"sourceCount":0}
+    [state] {"entities":["All Ordinaries"],"explicit":["ticker:AXJO"],"criteria":["performance"]}
+
+>>> USER: orget those — how's the ASX doing?
+<<< STOCKSAGE (0.5s, live):
+    ### Market snapshot
+    EWA, an Australian-market ETF proxy, rose 0.37% in its latest session. It tracks broad Australian equities; this is not an ASX index return.
+    
+    This is the current dated picture; coverage is partial.
+[stocksage] {"event":"request_complete","route":"social","reasonCode":"social","durationMs":2,"providerCount":0}
+    [state] {"entities":["All Ordinaries"],"explicit":["ticker:AXJO"],"criteria":["performance"]}
+
+>>> USER: All good then, sayonara.
+<<< STOCKSAGE (0.0s):
+    Go well — and may your entries be timely.

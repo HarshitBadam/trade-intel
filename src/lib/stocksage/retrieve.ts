@@ -16,11 +16,16 @@ import {
   STOOQ_SYMBOLS,
 } from "./entity-catalog";
 import type { EvidenceInput } from "./citations";
-import { evidenceCoverage, filterEvidence } from "./evidence";
+import {
+  readCachedEvidence,
+  writeCachedEvidence,
+} from "./evidence-cache";
+import { evidenceCoverage, filterEvidenceWithDiagnostics } from "./evidence";
 import { searchTavily } from "./tavily";
 import type {
   EvidencePlan,
   EvidenceQuery,
+  EvidenceBundle,
   EvidenceSource,
   FinanceEntity,
 } from "./types";
@@ -31,6 +36,7 @@ export type RegularContext = {
   sources: EvidenceSource[];
   coverage: Record<string, "covered" | "missing">;
   plan: EvidencePlan;
+  bundle?: EvidenceBundle;
 };
 
 export type RetrievalProviders = {
@@ -71,7 +77,9 @@ async function bounded<T>(promise: Promise<T>, fallback: T): Promise<T> {
 }
 
 function recentArticle(article: StoredArticle, windowDays: number): boolean {
-  const published = Date.parse(article.metadata.publication_date);
+  const published = Date.parse(
+    article.metadata.publication_date || article.metadata.ingested_at || ""
+  );
   return (
     Number.isFinite(published) &&
     published >= Date.now() - windowDays * 24 * 60 * 60 * 1000
@@ -110,13 +118,19 @@ export function astraInput(
     kind: "astra",
     title: metadata.title,
     outlet: metadata.source,
-    publishedAt: metadata.publication_date,
+    publishedAt: metadata.publication_date || metadata.ingested_at,
     url: metadata.url,
     excerpt,
     entityIds: entityId ? [entityId] : query.entityIds,
     criteria: query.criteria,
     retrievedAt: new Date().toISOString(),
     queryId: query.id,
+    ticker: metadata.ticker?.trim().toUpperCase(),
+    event: metadata.event,
+    importance: metadata.importance,
+    keyObservations: metadata.key_observations,
+    sentiment: metadata.sentiment,
+    sentimentReasoning: metadata.sentiment_reasoning,
   };
 }
 
@@ -333,6 +347,7 @@ export async function executeEvidencePlan(args: {
   providers?: RetrievalProviders;
 }): Promise<RegularContext> {
   const providers = args.providers ?? defaultRetrievalProviders;
+  const useSharedCache = providers === defaultRetrievalProviders;
   const requestedCriteria = new Set(
     args.plan.queries.flatMap((query) => query.criteria)
   );
@@ -364,7 +379,7 @@ export async function executeEvidencePlan(args: {
     );
     await Promise.all(workers);
   };
-  const [results, fundamentals] = await Promise.all([
+  const [results, fundamentals, _tavilyDone, cachedInputs] = await Promise.all([
     Promise.all(
       args.plan.queries.map(async (query) => {
         if (query.provider === "quotes") {
@@ -399,14 +414,40 @@ export async function executeEvidencePlan(args: {
       ? bounded(providers.fundamentals(fundamentalTickers), [])
       : Promise.resolve([]),
     runTavilyQueue(),
+    useSharedCache
+      ? readCachedEvidence(args.plan, args.entities)
+      : Promise.resolve([]),
   ]);
+  void _tavilyDone;
   const tavilyInputs = [...tavilyResults.values()].flat();
   const quotes = results.flatMap((result) => result.quotes);
-  const sources = filterEvidence({
-    inputs: [...results.flatMap((result) => result.inputs), ...tavilyInputs],
+  const freshInputs = [
+    ...results.flatMap((result) => result.inputs),
+    ...tavilyInputs,
+  ];
+  const filtered = filterEvidenceWithDiagnostics({
+    inputs: [...freshInputs, ...cachedInputs],
     plan: args.plan,
     entities: args.entities,
   });
+  const sources = filtered.sources;
+  filtered.diagnostics.cacheHitCount = cachedInputs.length;
+  if (useSharedCache && sources.length > 0) {
+    await writeCachedEvidence(args.plan, sources);
+  }
+  if (
+    filtered.diagnostics.inputCount > 0 ||
+    Object.keys(filtered.diagnostics.rejected).length > 0
+  ) {
+    console.info(
+      `[stocksage] ${JSON.stringify({
+        event: "evidence_diagnostics",
+        accepted: filtered.diagnostics.acceptedCount,
+        cacheHits: filtered.diagnostics.cacheHitCount,
+        rejected: filtered.diagnostics.rejected,
+      })}`
+    );
+  }
   const quotedEntityIds = args.entities
     .filter(
       (entity) =>
@@ -436,12 +477,59 @@ export async function executeEvidencePlan(args: {
     }
   }
 
+  const criteriaCoverage = Object.fromEntries(
+    args.entities.map((entity) => [
+      entity.id,
+      [
+        ...new Set(
+          sources
+            .filter((source) => source.entityIds.includes(entity.id))
+            .flatMap((source) => source.criteria)
+        ),
+      ],
+    ])
+  );
+  const freshness = Object.fromEntries(
+    sources.map((source) => [source.id, source.publishedAt])
+  );
+  const proxyIdentity = Object.fromEntries(
+    quotes.flatMap((quote) =>
+      quote.proxySymbol && quote.proxyKind
+        ? [
+            [
+              quote.ticker,
+              {
+                symbol: quote.proxySymbol,
+                kind: quote.proxyKind,
+                note: quote.sourceNote,
+              },
+            ],
+          ]
+        : []
+    )
+  );
   return {
     quotes,
     fundamentals,
     sources,
     coverage,
     plan: args.plan,
+    bundle: {
+      version: 1,
+      asOf: args.plan.asOf,
+      entityIds: args.entities.map((entity) => entity.id),
+      criteria: [
+        ...new Set(args.plan.queries.flatMap((query) => query.criteria)),
+      ],
+      horizon: args.plan.horizon,
+      quotes,
+      fundamentals,
+      sources,
+      criteriaCoverage,
+      freshness,
+      proxyIdentity,
+      diagnostics: filtered.diagnostics,
+    },
   };
 }
 

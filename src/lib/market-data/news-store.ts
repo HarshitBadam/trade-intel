@@ -225,12 +225,24 @@ export async function readTickerArticles(
   ticker: string,
   limit = 10
 ): Promise<StoredArticle[]> {
-  return newsCollection()
+  const symbol = ticker.trim().toUpperCase();
+  const aliases = [...new Set([symbol, symbol.toLowerCase()])];
+  const rows = await newsCollection()
     .find(
-      { "metadata.ticker": ticker.trim().toUpperCase() },
-      { sort: { "metadata.publication_date": -1 }, limit }
+      { "metadata.ticker": { $in: aliases } },
+      {
+        sort: { "metadata.publication_date": -1 },
+        limit: Math.max(limit, Math.min(100, limit * 3)),
+      }
     )
     .toArray();
+  const timestamp = (article: StoredArticle): number => {
+    const published = Date.parse(article.metadata?.publication_date ?? "");
+    if (Number.isFinite(published)) return published;
+    const ingested = Date.parse(article.metadata?.ingested_at ?? "");
+    return Number.isFinite(ingested) ? ingested : 0;
+  };
+  return rows.sort((left, right) => timestamp(right) - timestamp(left)).slice(0, limit);
 }
 
 export async function countTickerArticles(ticker: string): Promise<number> {

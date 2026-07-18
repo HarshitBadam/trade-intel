@@ -1,0 +1,54 @@
+
+> tradeintel@0.1.0 eval:stocksage
+> tsx --conditions=react-server scripts/stocksage-eval.ts --chat What's the latest cited Nvidia news? Which development matters most for investors? Compare Nvidia and AMD on growth, valuation and risk. Research Nvidia's next-quarter catalysts and risks. Summarise the bull and bear cases plainly.
+
+
+========================================================================
+SCENARIO: adhoc
+========================================================================
+[stocksage] {"event":"evidence_diagnostics","accepted":2,"cacheHits":2,"rejected":{"entity_mismatch":6}}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_grounded_answer","durationMs":1583,"retrievalMs":1558,"providerCount":3,"sourceCount":2}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":[]}
+
+>>> USER: What's the latest cited Nvidia news?
+<<< STOCKSAGE (1.6s, live, deep-offer:available):
+    Nvidia’s strongest current developments are:
+    - **2026-07-16 — Japan’s Robotics and Manufacturing Leaders Build on NVIDIA Cosmos to Advance Physical AI Frontier**: NVIDIA is expanding its physical AI ecosystem in Japan with major partnerships, launching new Cosmos 3 Edge product, and establishing a broad coalition of leading manufacturers. [GlobeNewswire Inc.](https://www.globenewswire.com/news-release/2026/07/16/3328205/0/en/Japan-s-Robotics-and-Manufacturing-Leaders-Build-on-NVIDIA-Cosmos-to-Advance-Physical-AI-Frontier.html)
+    - **2026-07-15 — SK Hynix Controls More Than Half the HBM Market Nvidia Depends On**: Dependent on SK Hynix's HBM supply for AI accelerators; the article emphasizes Nvidia's critical need for HBM and its technology partnership with SK Hynix, indicating strong business relationship and continued AI infrastructure growth. [The Motley Fool](https://www.fool.com/investing/2026/07/15/sk-hynix-controls-more-than-half-the-hbm-market-nv/?source=iedfolrf0000001)
+[stocksage] {"event":"evidence_diagnostics","accepted":1,"cacheHits":2,"rejected":{"entity_mismatch":6,"criterion_mismatch":2,"invalid_source":1}}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_grounded_answer","durationMs":365,"retrievalMs":354,"providerCount":3,"sourceCount":1}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":["outlook"]}
+
+>>> USER: Which development matters most for investors?
+<<< STOCKSAGE (0.4s, live, deep-offer:available):
+    The development that matters most is **Japan’s Robotics and Manufacturing Leaders Build on NVIDIA Cosmos to Advance Physical AI Frontier** (2026-07-16). NVIDIA is expanding its physical AI ecosystem in Japan with major partnerships, launching new Cosmos 3 Edge product, and establishing a broad coalition of leading manufacturers. [GlobeNewswire Inc.](https://www.globenewswire.com/news-release/2026/07/16/3328205/0/en/Japan-s-Robotics-and-Manufacturing-Leaders-Build-on-NVIDIA-Cosmos-to-Advance-Physical-AI-Frontier.html) The article’s investor read-through is positive.
+[stocksage] {"event":"evidence_diagnostics","accepted":2,"cacheHits":2,"rejected":{"entity_mismatch":2,"criterion_mismatch":1}}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_structured_comparison","durationMs":884,"retrievalMs":867,"providerCount":4,"sourceCount":2}
+    [state] {"entities":["Nvidia","Advanced Micro Devices, Inc. Common Stock"],"explicit":["ticker:NVDA","ticker:AMD"],"criteria":["valuation","growth","risk"]}
+
+>>> USER: Compare Nvidia and AMD on growth, valuation and risk.
+<<< STOCKSAGE (0.9s, live, deep-offer:available):
+    ### Nvidia vs Advanced Micro Devices
+    - **NVDA** — P/E 30.1x; revenue growth +70.7%; beta 2.24.
+    - **AMD** — P/E 161.1x; revenue growth +35.0%; beta 2.52.
+    Nvidia has the stronger revenue growth figure on these numbers.
+    Nvidia has the lower P/E figure on these numbers.
+    Nvidia has the lower beta figure on these numbers.
+[stocksage] {"event":"evidence_diagnostics","accepted":2,"cacheHits":1,"rejected":{"entity_mismatch":6}}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_grounded_answer","durationMs":385,"retrievalMs":374,"providerCount":3,"sourceCount":2}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":["risk","outlook"]}
+
+>>> USER: Research Nvidia's next-quarter catalysts and risks.
+<<< STOCKSAGE (0.4s, live, deep-offer:available):
+    **Bull case:** TTM revenue growth is +70.7% year over year. The shares trade at 30.1× trailing earnings. NVIDIA is expanding its physical AI ecosystem in Japan with major partnerships, launching new Cosmos 3 Edge product, and establishing a broad coalition of leading manufacturers. [GlobeNewswire Inc.](https://www.globenewswire.com/news-release/2026/07/16/3328205/0/en/Japan-s-Robotics-and-Manufacturing-Leaders-Build-on-NVIDIA-Cosmos-to-Advance-Physical-AI-Frontier.html)
+    
+    **Bear case:** Beta is 2.2, so the stock has historically moved more sharply than the broad market. Dependent on SK Hynix's HBM supply for AI accelerators; the article emphasizes Nvidia's critical need for HBM and its technology partnership with SK Hynix, indicating strong business relationship and continued AI infrastructure growth. [The Motley Fool](https://www.fool.com/investing/2026/07/15/sk-hynix-controls-more-than-half-the-hbm-market-nv/?source=iedfolrf0000001)
+    
+    The numbers imply that stronger growth can support the thesis, while the earnings multiple and beta determine how much disappointment risk investors are taking.
+[stocksage] {"event":"evidence_diagnostics","accepted":2,"cacheHits":2,"rejected":{"entity_mismatch":6}}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_grounded_answer","durationMs":353,"retrievalMs":351,"providerCount":3,"sourceCount":2}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":["risk","outlook"]}
+
+>>> USER: Summarise the bull and bear cases plainly.
+<<< STOCKSAGE (0.4s, live, deep-offer:available):
+    Plainly: bull case — revenue growth is +70.7% year over year; bear case — beta is 2.2, so the stock has historically moved more sharply than the broad market. The trade-off is rapid growth against valuation and volatility sensitivity.

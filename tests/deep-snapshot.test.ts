@@ -277,3 +277,27 @@ test("deep result requires every entity and verifiable citations", () => {
     null
   );
 });
+
+test("deep comparison preflight requires evidence for every entity", async () => {
+  const { assessDeepResearchAvailability } = await import(
+    "../src/lib/stocksage/deep-snapshot"
+  );
+  const result = assessDeepResearchAvailability({
+    question: "Compare Tesla with the Nasdaq Composite this year.",
+    criteria: [],
+    entityIds: ["ticker:TSLA", "ticker:IXIC"],
+    sources: [
+      {
+        ...source(
+          "S1",
+          "https://example.com/tesla",
+          "Example",
+          ["performance"]
+        ),
+        entityIds: ["ticker:TSLA"],
+      },
+    ],
+  });
+  assert.equal(result.available, false);
+  assert.equal(result.reason, "missing_entity_coverage");
+});

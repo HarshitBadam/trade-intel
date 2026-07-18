@@ -56,7 +56,8 @@ export type DeepResearchAvailabilityReason =
   | "available_single_criterion"
   | "no_valid_sources"
   | "insufficient_independent_sources"
-  | "missing_criteria_coverage";
+  | "missing_criteria_coverage"
+  | "missing_entity_coverage";
 
 export type DeepResearchAvailability = {
   available: boolean;
@@ -105,6 +106,7 @@ export function assessDeepResearchAvailability(args: {
   question: string;
   criteria: string[];
   sources: EvidenceSource[];
+  entityIds?: string[];
 }): DeepResearchAvailability {
   const explicitCriteria = detectCriteria(args.question).filter((criterion) =>
     RESEARCH_CRITERIA.has(criterion)
@@ -130,6 +132,21 @@ export function assessDeepResearchAvailability(args: {
       available: false,
       reason: "no_valid_sources",
       distinctSourceCount: 0,
+      coveredCriteria,
+    };
+  }
+  const requiredEntities = [...new Set(args.entityIds ?? [])];
+  if (
+    requiredEntities.length > 1 &&
+    requiredEntities.some(
+      (entityId) =>
+        !validSources.some((source) => source.entityIds.includes(entityId))
+    )
+  ) {
+    return {
+      available: false,
+      reason: "missing_entity_coverage",
+      distinctSourceCount: validSources.length,
       coveredCriteria,
     };
   }
@@ -203,6 +220,7 @@ export function createDeepResearchOffer(args: {
     question: args.question,
     criteria: args.state.criteria,
     sources: args.sources,
+    entityIds: args.entities.map((entity) => entity.id),
   });
   const snapshot: DeepResearchSnapshot = {
     version: 1,
