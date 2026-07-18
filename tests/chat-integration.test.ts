@@ -189,14 +189,14 @@ test("stable P/E explanation uses no retrieval", async () => {
   assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0 });
 });
 
-test("current price uses validated quote plan only", async () => {
+test("current price uses quotes plus Astra context", async () => {
   const { calls, providers } = setup();
   const reply = await answerChat(request("What is Apple trading at?"), {
     retrievalProviders: providers,
   });
   assert.match(reply.text, /\$210\.00/);
   assert.match(reply.text, /2026-07-10/);
-  assert.deepEqual(calls, { quotes: 1, astra: 0, tavily: 0 });
+  assert.deepEqual(calls, { quotes: 1, astra: 1, tavily: 0 });
 });
 
 test("current company event uses planned evidence providers", async () => {
@@ -274,7 +274,7 @@ test("Coinbase and Robinhood comparison uses bounded evidence", async () => {
     reply.state?.entities.map((entity) => entity.ticker),
     ["COIN", "HOOD"]
   );
-  assert.deepEqual(calls, { quotes: 1, astra: 0, tavily: 2 });
+  assert.deepEqual(calls, { quotes: 1, astra: 1, tavily: 2 });
 });
 
 test("listed sportsbook request asks for company without betting help", async () => {

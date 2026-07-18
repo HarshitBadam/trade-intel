@@ -143,6 +143,7 @@ export function FloatingWidget({
             text: reply.text,
             error: true,
             retryable: reply.retryable,
+            dataStatus: reply.dataStatus,
           },
         ]);
         return;
@@ -160,6 +161,7 @@ export function FloatingWidget({
           deepResearch: reply.deepResearch,
           deepState: reply.deepResearch ? { status: "idle" } : undefined,
           retryable: reply.retryable,
+          dataStatus: reply.dataStatus,
         },
       ]);
     } catch {
@@ -208,6 +210,7 @@ export function FloatingWidget({
     const target = messages.find((message) => message.id === messageId);
     if (
       !target?.deepResearch ||
+      !target.deepResearch.available ||
       target.deepState?.status === "pending" ||
       researchInFlightRef.current.has(messageId)
     ) {
@@ -252,7 +255,7 @@ export function FloatingWidget({
                 ...message,
                 deepState: {
                   status: "failure",
-                  text: "Research deeper failed. The regular answer is still available.",
+          text: "The deeper report isn’t available right now — the answer above remains in place; try again shortly.",
                   retryable: true,
                 },
               }

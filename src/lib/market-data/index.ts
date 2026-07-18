@@ -119,3 +119,5 @@ export {
   getHomeData,
   getHomeTickerData,
 } from "./api";
+
+export { getStooqQuotes } from "./stooq";

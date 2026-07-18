@@ -23,6 +23,12 @@ export type ChatRequest = {
   state?: ConversationState;
 };
 
+// Machine-readable data health for the UI: "full" means the answer used all
+// the data it wanted, "limited" means it published from partial verified
+// data, "unavailable" means no current data could back this turn. The widget
+// renders a subtle status chip from this instead of apology prose.
+export type ChatDataStatus = "full" | "limited" | "unavailable";
+
 export type ChatReply = {
   text: string;
   live: boolean;
@@ -33,15 +39,23 @@ export type ChatReply = {
   responseId?: string;
   deepResearch?: DeepResearchOffer;
   state?: ConversationState;
+  dataStatus?: ChatDataStatus;
 };
+
+// "index" and "au" route quote retrieval through the keyless Stooq provider
+// (EOD/delayed); "us" uses the primary intraday providers; "web" has no
+// validated quote feed at all.
+export type FinanceMarket = "us" | "web" | "index" | "au";
 
 export type FinanceEntity = {
   id: string;
   name: string;
   query: string;
   ticker?: string;
-  market: "us" | "web";
+  market: FinanceMarket;
   jurisdiction?: string;
+  // Privately held company: same news pipeline, no market-data block.
+  private?: boolean;
 };
 
 export type ConversationState = {
@@ -74,7 +88,12 @@ export type EvidenceSource = {
   queryId?: string;
 };
 
-export type EvidenceProvider = "quotes" | "astra" | "tavily";
+export type EvidenceProvider =
+  | "quotes"
+  | "market_proxy"
+  | "astra"
+  | "tavily"
+  | "stooq";
 
 export type EvidenceQuery = {
   id: string;
@@ -127,6 +146,11 @@ export type DomainPolicyDecision = {
 export type DeepResearchOffer = {
   token: string;
   workId: string;
+  // Pre-flight availability: false when the research providers behind the
+  // offer can't currently supply evidence for these subjects. The widget
+  // renders a disabled button with a tooltip instead of a dead click.
+  available: boolean;
+  unavailableReason?: string;
 };
 
 export type DeepResearchReply = {
@@ -148,8 +172,9 @@ const EntitySchema = z.object({
   name: z.string().min(1).max(120),
   query: z.string().min(1).max(180),
   ticker: z.string().min(1).max(12).optional(),
-  market: z.enum(["us", "web"]),
+  market: z.enum(["us", "web", "index", "au"]),
   jurisdiction: z.string().max(40).optional(),
+  private: z.boolean().optional(),
 });
 
 const ConversationStateSchema = z.object({

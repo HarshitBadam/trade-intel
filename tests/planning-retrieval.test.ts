@@ -3,6 +3,7 @@ import test from "node:test";
 import { resolveConversationState } from "../src/lib/stocksage/entities";
 import { planEvidence } from "../src/lib/stocksage/planning";
 import {
+  astraInput,
   executeEvidencePlan,
   type RetrievalProviders,
 } from "../src/lib/stocksage/retrieve";
@@ -84,7 +85,7 @@ test("stable finance creates no evidence plan", () => {
   assert.deepEqual(plan.queries, []);
 });
 
-test("price-only current question calls only quotes", async () => {
+test("price-only current question uses quotes plus cheap Astra context", async () => {
   const resolution = resolveConversationState(
     "What is Apple trading at?",
     undefined,
@@ -98,7 +99,7 @@ test("price-only current question calls only quotes", async () => {
   });
   assert.deepEqual(
     plan.queries.map((query) => query.provider),
-    ["quotes"]
+    ["quotes", "astra"]
   );
   const counts = { quotes: 0, astra: 0, tavily: 0 };
   const context = await executeEvidencePlan({
@@ -106,7 +107,7 @@ test("price-only current question calls only quotes", async () => {
     entities: resolution.entities,
     providers: providers(counts),
   });
-  assert.deepEqual(counts, { quotes: 1, astra: 0, tavily: 0 });
+  assert.deepEqual(counts, { quotes: 1, astra: 1, tavily: 0 });
   assert.equal(context.quotes[0]?.ticker, "AAPL");
 });
 
@@ -134,6 +135,104 @@ test("today question uses bounded planned current providers", async () => {
   });
   assert.deepEqual(counts, { quotes: 1, astra: 1, tavily: 1 });
   assert.equal(context.sources.length, 2);
+});
+
+test("Astra reader consumes nested metadata and surfaces stored enrichment", () => {
+  const input = astraInput(
+    {
+      _id: "article-1",
+      page_content: "Long article body.",
+      metadata: {
+        article_id: "article-1",
+        title: "Nvidia product update",
+        source: "Example News",
+        publication_date: "2026-07-16",
+        url: "https://example.com/nvda",
+        ticker: "NVDA",
+        description: "Nvidia announced an update.",
+        event: "Product launch",
+        importance: "High",
+        sentiment: "Positive",
+        sentiment_reasoning: "Demand improved.",
+        key_observations: "Management raised its shipment target.",
+        label_source: "ai",
+        ingested_at: "2026-07-16T00:00:00.000Z",
+      },
+    } as Parameters<typeof astraInput>[0],
+    {
+      id: "astra-current",
+      provider: "astra",
+      query: "Nvidia update",
+      entityIds: ["ticker:NVDA"],
+      tickers: ["NVDA"],
+      criteria: ["current developments"],
+      topic: "news",
+      limit: 4,
+    },
+    "ticker:NVDA"
+  );
+  assert.equal(input.title, "Nvidia product update");
+  assert.match(input.excerpt, /Management raised its shipment target/);
+  assert.match(input.excerpt, /Event: Product launch/);
+  assert.match(input.excerpt, /Importance: High/);
+  assert.match(input.excerpt, /Sentiment for NVDA: Positive/);
+});
+
+test("indices and Australian entities route through market proxies with Astra context", () => {
+  const index = resolveConversationState(
+    "How's the ASX done today?",
+    undefined,
+    []
+  );
+  assert.equal(index.entities[0]?.ticker, "AXJO");
+  const indexPlan = planEvidence({
+    route: "current_finance",
+    message: "How's the ASX done today?",
+    entities: index.entities,
+    state: index.state,
+  });
+  assert.deepEqual(
+    indexPlan.queries.map((query) => query.provider),
+    ["market_proxy", "astra", "tavily"]
+  );
+
+  const comparison = resolveConversationState(
+    "Which is up more this year, Tesla or IXIC?",
+    undefined,
+    []
+  );
+  const comparisonPlan = planEvidence({
+    route: "comparison",
+    message: "Which is up more this year, Tesla or IXIC?",
+    entities: comparison.entities,
+    state: comparison.state,
+  });
+  assert.ok(comparisonPlan.queries.some((query) => query.provider === "quotes"));
+  assert.ok(
+    comparisonPlan.queries.some((query) => query.provider === "market_proxy")
+  );
+  assert.ok(comparisonPlan.queries.some((query) => query.provider === "astra"));
+});
+
+test("private companies keep the news pipeline while skipping market quotes", () => {
+  const resolution = resolveConversationState(
+    "What's new with SpaceX?",
+    undefined,
+    []
+  );
+  assert.equal(resolution.entities[0]?.private, true);
+  const plan = planEvidence({
+    route: "current_finance",
+    message: "What's new with SpaceX?",
+    entities: resolution.entities,
+    state: resolution.state,
+  });
+  assert.equal(plan.queries.some((query) => query.provider === "quotes"), false);
+  assert.equal(
+    plan.queries.some((query) => query.provider === "market_proxy"),
+    false
+  );
+  assert.equal(plan.queries.some((query) => query.provider === "tavily"), true);
 });
 
 test("Big Four comparison plans equal criteria for all entities", () => {
@@ -188,8 +287,12 @@ test("eight-entity comparison plans evidence for every entity", () => {
       criteria: ["valuation", "risk"],
     },
   });
-  assert.equal(plan.queries.length, 9);
+  assert.equal(plan.queries.length, 10);
   assert.equal(plan.queries[0]?.provider, "quotes");
+  assert.equal(
+    plan.queries.filter((query) => query.provider === "astra").length,
+    1
+  );
   assert.equal(
     plan.queries.filter((query) => query.provider === "tavily").length,
     8
@@ -245,6 +348,53 @@ test("fallback exposes verified source links without raw source content", () => 
   assert.doesNotMatch(fallback.text, /Unrelated raw source title/);
   assert.match(fallback.text, /\[Example\]\(https:\/\/example\.com\/source\)/);
   assert.deepEqual(fallback.citationUrls, ["https://example.com/source"]);
+});
+
+test("private-company fallback uses sourced business substance, not only structure", () => {
+  const resolution = resolveConversationState(
+    "What's new with SpaceX?",
+    undefined,
+    []
+  );
+  const plan = planEvidence({
+    route: "current_finance",
+    message: "What's new with SpaceX?",
+    entities: resolution.entities,
+    state: resolution.state,
+  });
+  const reply = buildFallbackReply(
+    { message: "What's new with SpaceX?", history: [] },
+    {
+      route: "current_finance",
+      reasonCode: "degraded_from_data",
+      retrievalRequired: true,
+      deepEligible: true,
+    },
+    resolution.entities,
+    {
+      quotes: [],
+      fundamentals: [],
+      sources: [
+        {
+          id: "S1",
+          kind: "tavily",
+          title: "SpaceX launch update",
+          outlet: "Example",
+          url: "https://example.com/spacex",
+          excerpt:
+            "SpaceX completed a launch and outlined its next operational milestone.",
+          entityIds: [resolution.entities[0].id],
+          criteria: ["current developments"],
+          retrievedAt: new Date().toISOString(),
+        },
+      ],
+      coverage: { [resolution.entities[0].id]: "covered" },
+      plan,
+    }
+  );
+  assert.match(reply.text, /completed a launch/i);
+  assert.match(reply.text, /https:\/\/example\.com\/spacex/);
+  assert.doesNotMatch(reply.text, /^SpaceX is privately held[^.]*\.$/i);
 });
 
 test("trailing historical questions use validated period returns", () => {

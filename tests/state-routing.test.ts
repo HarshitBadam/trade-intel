@@ -328,7 +328,10 @@ test("removing the whole active group pivots instead of keeping it", () => {
     consulting.state,
     []
   );
-  assert.deepEqual(pivoted.state.entities, []);
+  assert.deepEqual(
+    pivoted.state.entities.map((entity) => entity.ticker),
+    ["AXJO"]
+  );
   assert.equal(pivoted.state.jurisdiction, "Australia");
 });
 
@@ -343,10 +346,34 @@ test("forget-those ASX pivot clears the prior consulting group", () => {
     consulting.state,
     []
   );
-  assert.deepEqual(pivoted.entities, []);
-  assert.deepEqual(pivoted.state.entities, []);
+  assert.deepEqual(
+    pivoted.entities.map((entity) => entity.ticker),
+    ["AXJO"]
+  );
+  assert.deepEqual(
+    pivoted.state.entities.map((entity) => entity.ticker),
+    ["AXJO"]
+  );
   assert.equal(pivoted.state.horizon, "today");
   assert.equal(pivoted.state.jurisdiction, "Australia");
+});
+
+test("state commands tolerate one typo only at clause start", () => {
+  const pair = resolveConversationState(
+    "Compare Apple and Microsoft",
+    undefined,
+    []
+  );
+  const typo = resolveConversationState("orget those", pair.state, []);
+  assert.deepEqual(typo.state.entities, []);
+  assert.equal(typo.reasonCode, "entity_correction");
+
+  const ordinary = resolveConversationState("target those", pair.state, []);
+  assert.deepEqual(
+    ordinary.state.entities.map((entity) => entity.ticker),
+    ["AAPL", "MSFT"]
+  );
+  assert.notEqual(ordinary.reasonCode, "entity_correction");
 });
 
 test("expands both MAG7 and Aussie banks in one comparison", () => {

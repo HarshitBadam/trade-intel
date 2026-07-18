@@ -35,6 +35,7 @@ export function fromAlias(alias: WebAlias): FinanceEntity {
     ticker: alias.ticker,
     market: alias.market ?? "web",
     jurisdiction: alias.jurisdiction,
+    ...(alias.private ? { private: true } : {}),
   };
 }
 
@@ -119,11 +120,22 @@ export function resolveGroup(text: string): FinanceEntity[] {
 
 const EXCHANGE_CONTEXT_TICKERS = new Set(["ASX", "LSE", "TSX", "HKEX", "TSE", "NSE", "BSE", "NYSE", "AX"]);
 
+// Bare "the ASX" means the Australian market index only when the message is
+// asking how the market itself is doing ("how's the ASX done today"), never
+// when ASX names the listing venue ("investable on the ASX", "ASX:CBA").
+const ASX_INDEX_CONTEXT =
+  /\bhow(?:'?s| is| has| did| was| are)?\s+(?:the\s+)?asx\b|\b(?:the\s+)?asx\b[^.!?\n]{0,24}\b(?:done|doing|perform\w*|today|up|down|fell|rose|dropped|climbed|this (?:week|month|year)|ytd|year[- ]to[- ]date)\b/i;
+
 export function resolveText(text: string): FinanceEntity[] {
   const clean = text.replace(/\bhey\s*,?\s*sage\b/gi, " ");
   const output: FinanceEntity[] = [];
   const seen = new Set<string>();
   const webTickers = new Set<string>();
+
+  if (ASX_INDEX_CONTEXT.test(clean) && !/\basx\s*:/i.test(clean)) {
+    const index = WEB_ALIASES.find((alias) => alias.name === "All Ordinaries");
+    if (index) addEntity(output, seen, fromAlias(index));
+  }
 
   const matchedAliases = WEB_ALIASES.flatMap((alias) =>
     alias.aliases

@@ -60,9 +60,45 @@ test("deep snapshot is signed, bounded, immutable, and tamper resistant", async 
   assert.equal(parsed?.regularAnswer, "Apple moved on validated market data.");
   assert.deepEqual(parsed?.evidenceIds, ["S1"]);
   assert.deepEqual(parsed?.criteria, ["performance"]);
+  assert.equal(created.offer?.available, true);
   const token = created.offer?.token ?? "";
   const tampered = `${token.slice(0, -1)}${token.endsWith("a") ? "b" : "a"}`;
   assert.equal(parseDeepResearchSnapshot(tampered), null);
+});
+
+test("deep pre-flight keeps an unavailable offer disabled with clear copy", async () => {
+  process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET =
+    "test-only-snapshot-secret-with-sufficient-length";
+  process.env.GROQ_API_KEY = "test-groq-key";
+  process.env.TAVILY_API_KEY = "test-tavily-key";
+  const { createDeepResearchOffer } = await import(
+    "../src/lib/stocksage/deep-snapshot"
+  );
+  const created = createDeepResearchOffer({
+    question: "What is new with Rivian?",
+    reply: { text: "Rivian is being tracked.", live: false },
+    entities: [
+      {
+        id: "ticker:RIVN",
+        name: "Rivian",
+        query: "Rivian RIVN",
+        ticker: "RIVN",
+        market: "us",
+      },
+    ],
+    state: {
+      version: 1,
+      revision: 1,
+      entities: [],
+      explicitEntitySet: ["ticker:RIVN"],
+      criteria: ["outlook"],
+    },
+    sources: [],
+    asOf: new Date().toISOString(),
+  });
+  assert.ok(created.offer);
+  assert.equal(created.offer?.available, false);
+  assert.match(created.offer?.unavailableReason ?? "", /refreshing/i);
 });
 
 test("deep result requires every entity and verifiable citations", () => {

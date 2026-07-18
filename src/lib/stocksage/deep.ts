@@ -19,8 +19,11 @@ import {
 import { unsupportedFigures } from "./figures";
 import {
   hasSmuggledOffTopicTask,
+  hedgedEstimateClaim,
   performsSmuggledTask,
+  proxyMisrepresentation,
 } from "./regular-guards";
+import { roundFiguresForDisplay } from "./rounding";
 import { runIdempotentDeepWork } from "./deep-store";
 import { validateDeepResearchResult } from "./deep-validation";
 import { planEvidence } from "./planning";
@@ -44,9 +47,32 @@ function quoteBlock(context: Awaited<ReturnType<typeof executeEvidencePlan>>): s
   return context.quotes
     .map(
       (quote) =>
-        `${quote.ticker}: as of ${quote.asOf}, $${quote.price.toFixed(2)}, day ${percent(quote.dayPct)}, 1W ${percent(quote.weekPct)}, 1M ${percent(quote.monthPct)}, 1Y ${percent(quote.yearPct)}`
+        `${quote.proxySymbol ? `${quote.proxySymbol} ${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy for requested ${quote.ticker}` : quote.ticker}: as of ${quote.asOf}${quote.eod ? " close (end-of-day)" : ""}, ${
+          quote.isIndex
+            ? `${quote.price.toFixed(2)} points`
+            : `$${quote.price.toFixed(2)}`
+        }${quote.sourceNote ? ` (${quote.sourceNote})` : ""}, day ${percent(quote.dayPct)}, 1W ${percent(quote.weekPct)}, 1M ${percent(quote.monthPct)}, 1Y ${percent(quote.yearPct)}${
+          quote.proxySymbol
+            ? `. Attribute every figure to ${quote.proxySymbol}, never to ${quote.ticker} or the underlying index/listing`
+            : ""
+        }`
     )
     .join("\n");
+}
+
+function subjectName(entities: FinanceEntity[]): string {
+  if (entities.length === 0) return "this topic";
+  if (entities.length === 1) return entities[0].name;
+  return `${entities
+    .slice(0, -1)
+    .map((entity) => entity.name)
+    .join(", ")} and ${entities.at(-1)?.name}`;
+}
+
+function unavailableResearchCopy(entities: FinanceEntity[]): string {
+  return `There isn’t enough current reporting on ${subjectName(
+    entities
+  )} for a deeper report right now — the answer above stands; try again shortly.`;
 }
 
 function sourceBlock(sources: EvidenceSource[]): string {
@@ -192,7 +218,7 @@ async function executeDeepResearch(
       return {
         workId: snapshot.workId,
         status: "failure",
-        text: "I couldn’t retrieve enough verifiable evidence for deeper research. The regular answer is still available.",
+        text: unavailableResearchCopy(entities),
         retryable: true,
       };
     }
@@ -220,8 +246,10 @@ ${snapshot.criteria.join(", ") || "not specified"}
 HORIZON
 ${snapshot.horizon ?? "not specified"}`;
     stage = "synthesis";
+    const today = new Date().toISOString().slice(0, 10);
     const system = `${STOCKSAGE_DEEP_SYSTEM}
 
+Today is ${today}. Treat that as the date anchor. Use "upcoming", "next-gen", "new", "recent", or "latest" only when a retrieved source explicitly dates the claim relative to today.
 Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw URL or invent an ID. The server will turn valid IDs into links.`;
     // The same no-leakage bar as regular synthesis: when the original
     // question smuggled an off-topic task alongside the finance ask, deep
@@ -231,6 +259,8 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
     const accept = (candidate: string) =>
       validCitationUrls(candidate, context.sources).length > 0 &&
       unsupportedFigures(candidate, user).length === 0 &&
+      hedgedEstimateClaim(candidate, user) === null &&
+      proxyMisrepresentation(candidate, entities, context.quotes) === null &&
       !(smuggled && performsSmuggledTask(candidate));
     const langflowText = await langflowDeepSynthesis({ system, user, accept });
     const text =
@@ -246,9 +276,23 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
         accept,
         correction: (draft) => {
           const invented = unsupportedFigures(draft, user);
+          const hedged = hedgedEstimateClaim(draft, user);
+          const proxyError = proxyMisrepresentation(
+            draft,
+            entities,
+            context.quotes
+          );
           return `Rewrite that answer. ${
             invented.length > 0
               ? `These figures are not in the quotes or sources you were given, so remove them without substituting other numbers from memory: ${invented.join(", ")}. `
+              : ""
+          }${
+            hedged
+              ? `Remove this unsupported hedged performance estimate without replacing it from memory: "${hedged}". `
+              : ""
+          }${
+            proxyError
+              ? `Correct this proxy-data misrepresentation: "${proxyError}". Name the ETF/ADR and attribute all proxy figures to it, not the underlying index or local listing. `
               : ""
           }${
             smuggled && performsSmuggledTask(draft)
@@ -263,7 +307,9 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
       context.quotes.map((quote) => quote.ticker)
     );
     const citationUrls = validCitationUrls(cleaned, context.sources);
-    const expanded = expandValidCitations(cleaned, context.sources);
+    const expanded = roundFiguresForDisplay(
+      expandValidCitations(cleaned, context.sources)
+    );
     const validationError = validateDeepResearchResult({
       snapshot,
       text: expanded,
@@ -304,7 +350,7 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
     return {
       workId: snapshot.workId,
       status: "failure",
-      text: "Research deeper couldn’t complete this request. The regular answer remains available.",
+      text: unavailableResearchCopy(snapshotContext(snapshot).entities),
       retryable: true,
     };
   }

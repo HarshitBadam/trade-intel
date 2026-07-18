@@ -1,4 +1,5 @@
 import type { FinanceEntity } from "./types";
+import type { ChatQuote } from "@/lib/market-data";
 
 const GENERIC_ENTITY_TERMS = new Set([
   "bank",
@@ -154,6 +155,117 @@ export function creativeRequestOnly(message: string): boolean {
 
 export function performsSmuggledTask(candidate: string): boolean {
   return PERFORMED_TASK.test(candidate) || looksLikeVerse(candidate);
+}
+
+// Hedging language that models use to smuggle remembered market figures past
+// the unsupported-figure guard ("the Nasdaq has been known to be up around
+// 12-15% YTD… rough estimate"). Small integers in dates and window labels
+// make such numbers look "supported" to the generic tolerance check, so
+// hedged PERFORMANCE percentages get their own stricter rule: the number
+// must match an actual percentage present in the retrieval corpus.
+const HEDGE_WORDS =
+  /\b(?:around|about|roughly|approximately|approx\.?|typically|usually|historically|estimated?|est\.|likely|probably|somewhere (?:around|near|between)|ballpark|rough (?:estimate|figure|number)|(?:has|have) been known to|if i had to guess|i(?:'d| would) (?:estimate|guess)|give or take)\b/i;
+
+const PERFORMANCE_CLAIM =
+  /\b(?:up|down|gain(?:ed|s)?|lost|los(?:s|es)|return(?:ed|s)?|rose|risen|fell|fallen|climbed|dropped|rall(?:y|ied)|perform\w*|ytd|year[- ]to[- ]date|this year|mtd|month[- ]to[- ]date|this (?:week|month|quarter)|over the (?:last|past)|since january|annuali[sz]ed)\b/i;
+
+function corpusPercents(corpus: string): number[] {
+  return [...corpus.matchAll(/(-?\d+(?:\.\d+)?)\s*(?:%|percent\b)/gi)].map(
+    (match) => Math.abs(Number.parseFloat(match[1]))
+  );
+}
+
+// Returns the offending sentence when a hedged numeric market-performance
+// claim cites a percentage (or a range like "12-15%") that no retrieved
+// percentage supports. Hedging words around SUPPORTED figures are fine.
+export function hedgedEstimateClaim(
+  text: string,
+  corpus: string
+): string | null {
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/);
+  let percents: number[] | null = null;
+  for (const sentence of sentences) {
+    if (!HEDGE_WORDS.test(sentence) || !PERFORMANCE_CLAIM.test(sentence)) {
+      continue;
+    }
+    const figures = [
+      ...sentence.matchAll(
+        /(\d+(?:\.\d+)?)(?:\s*(?:-|–|to)\s*(\d+(?:\.\d+)?))?\s*(?:%|percent\b)/gi
+      ),
+    ];
+    if (figures.length === 0) continue;
+    percents ??= corpusPercents(corpus);
+    for (const match of figures) {
+      const values = [match[1], match[2]]
+        .filter((value): value is string => Boolean(value))
+        .map((value) => Math.abs(Number.parseFloat(value)));
+      const supported = values.every((value) =>
+        (percents ?? []).some((candidate) => Math.abs(candidate - value) <= 0.5)
+      );
+      if (!supported) return sentence.trim().slice(0, 160);
+    }
+  }
+  return null;
+}
+
+// Proxy data belongs to the separately traded ETF/ADR, not the requested
+// index or local listing. Require an explicit proxy disclosure and reject any
+// numeric sentence that directly assigns the proxy move to the underlying.
+export function proxyMisrepresentation(
+  text: string,
+  entities: FinanceEntity[],
+  quotes: ChatQuote[]
+): string | null {
+  for (const quote of quotes) {
+    if (!quote.proxySymbol) continue;
+    const symbol = quote.proxySymbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const disclosed =
+      new RegExp(`\\b${symbol}\\b`, "i").test(text) &&
+      /\b(?:ETF|ADR|proxy)\b/i.test(text);
+    if (!disclosed) {
+      return `${quote.proxySymbol} must be identified as an ETF/ADR proxy`;
+    }
+    const entity = entities.find((candidate) => candidate.ticker === quote.ticker);
+    if (!entity) continue;
+    const aliases =
+      quote.ticker === "IXIC"
+        ? ["nasdaq composite", "nasdaq", "ixic"]
+        : quote.ticker === "GSPC"
+          ? ["s&p 500", "s&p", "gspc"]
+          : quote.ticker === "DJI"
+            ? ["dow jones industrial average", "dow jones", "dow", "dji"]
+            : quote.ticker === "AXJO"
+              ? ["all ordinaries", "all ords", "asx 200", "asx", "axjo"]
+              : [entity.name.toLowerCase(), quote.ticker.toLowerCase()];
+    const offending = text
+      .split(/(?<=[.!?])\s+|\n+/)
+      .find(
+        (sentence) => {
+          if (
+            !/(?:[$€£]\s*\d|\d+(?:\.\d+)?\s*%)/.test(sentence) ||
+            !PERFORMANCE_CLAIM.test(sentence)
+          ) {
+            return false;
+          }
+          const lower = sentence.toLowerCase();
+          const proxyIndex = lower.indexOf(quote.proxySymbol!.toLowerCase());
+          const underlyingIndex = aliases.reduce((first, alias) => {
+            const index = lower.indexOf(alias);
+            return index >= 0 && (first < 0 || index < first) ? index : first;
+          }, -1);
+          // Force "EWA, an ETF proxy for the ASX, rose..." rather than "The
+          // ASX, through EWA, rose...". The latter still grammatically assigns
+          // EWA's return to the underlying.
+          if (underlyingIndex >= 0 && underlyingIndex < proxyIndex) return true;
+          return (
+            mentionsEntity(sentence, entity) &&
+            !new RegExp(`\\b${symbol}\\b`, "i").test(sentence)
+          );
+        }
+      );
+    if (offending) return offending.trim().slice(0, 160);
+  }
+  return null;
 }
 
 const CRITERION_EVIDENCE: Record<string, RegExp> = {
