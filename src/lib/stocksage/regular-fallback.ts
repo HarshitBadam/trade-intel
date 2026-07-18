@@ -4,6 +4,7 @@ import {
   expandValidCitations,
   validCitationUrls,
 } from "./citations";
+import { roundFiguresForDisplay } from "./rounding";
 import type { RegularContext } from "./retrieve";
 import type {
   ChatReply,
@@ -70,6 +71,7 @@ export function buildDeterministicRankingReply(
       entity,
       index,
       value: quote ? window.value(quote) : null,
+      quote,
     };
   });
   const ranked = rows
@@ -85,9 +87,17 @@ export function buildDeterministicRankingReply(
   const missing = rows.filter((row) => !Number.isFinite(row.value));
   const lines = ranked.map(
     (row, index) =>
-      `${index + 1}. **${row.entity.ticker ?? casualName(row.entity.name)}** — ${
+      `${index + 1}. **${
+        row.quote?.proxySymbol
+          ? `${row.quote.proxySymbol} ${row.quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy for ${casualName(row.entity.name)}`
+          : row.entity.ticker ?? casualName(row.entity.name)
+      }** — ${
         row.value >= 0 ? "+" : ""
-      }${row.value.toFixed(2)}% ${window.label}`
+      }${row.value.toFixed(2)}% ${window.label}${
+        row.quote?.proxySymbol
+          ? ` (${row.quote.proxySymbol} return, not the underlying index/listing return)`
+          : ""
+      }`
   );
   for (const row of missing) {
     lines.push(
@@ -227,7 +237,17 @@ export function buildFallbackReply(
         })
         .join("; ");
       lines.push(
-        `- **${quote.ticker}** — $${quote.price.toFixed(2)} as of ${humanAsOf(quote.asOf)}; ${changes}.`
+        `- **${quote.proxySymbol ?? quote.ticker}**${
+          quote.proxySymbol
+            ? ` — ${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy requested for ${quote.ticker}`
+            : ""
+        } — ${
+          quote.isIndex
+            ? `${quote.price.toFixed(2)} points`
+            : `$${quote.price.toFixed(2)}`
+        } as of ${humanAsOf(quote.asOf)}${
+          quote.eod ? " close (end-of-day)" : ""
+        }${quote.sourceNote ? `; ${quote.sourceNote}` : ""}; ${changes}.`
       );
     }
   }
@@ -283,8 +303,12 @@ export function buildFallbackReply(
         ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
         : names[0];
     if (missing.length > 0 && lines.length === 0) {
+      const allPrivate =
+        entities.length > 0 && entities.every((entity) => entity.private);
       return {
-        text: `I don’t have current, like-for-like numbers for ${list} in front of me right now, and I’d rather not call this one from stale memory. Ask me again in a bit and I’ll run the comparison properly.`,
+        text: allPrivate
+          ? `${list} are privately held, so there are no public share prices to compare. Current company reporting is temporarily unavailable; try again shortly for a news- and business-based comparison.`
+          : `Current, like-for-like figures for ${list} aren’t available at this moment. Try again shortly and I’ll run the comparison from fresh data.`,
         citationUrls: [],
         retryable: true,
       };
@@ -292,7 +316,7 @@ export function buildFallbackReply(
     if (missing.length > 0) {
       lines.push(
         "",
-        `One gap: I couldn’t pull equivalent current evidence for ${list}, so treat this as partial.`
+        `Coverage is partial for ${list}; the dated figures and sources above are the reliable portion.`
       );
     }
   }
@@ -311,7 +335,7 @@ export function buildFallbackReply(
     /\bfortune\s*(?:100|500)\b/i.test(request.message)
   ) {
     return {
-      text: "I can’t verify the current Fortune revenue ranking from a sufficiently recent source right now. I’d rather not guess at the names or revenue figures—please try again shortly.",
+      text: "The current Fortune revenue ranking isn’t available from a recent source right now. Try again shortly for the names and revenue figures.",
       citationUrls: [],
       retryable: true,
     };
@@ -355,12 +379,25 @@ export function buildFallbackReply(
     };
   }
   if (lines.length === 0) {
+    const allPrivate =
+      entities.length > 0 && entities.every((entity) => entity.private);
+    const privateNames = entities.map((entity) => casualName(entity.name));
+    const privateList =
+      privateNames.length > 1
+        ? `${privateNames.slice(0, -1).join(", ")} and ${privateNames.at(-1)}`
+        : privateNames[0];
     return {
       text:
-        decision.route === "current_finance" ||
-        decision.route === "comparison"
-          ? "I’m having trouble pulling verified current figures at this exact moment, and I don’t want to hand you numbers I can’t stand behind. Give it a minute and ask me again — nothing about your question is lost."
-          : "I hit a snag putting that answer together just now. Ask me again in a moment and I’ll take another run at it.",
+        allPrivate
+          ? `${privateList} ${
+              entities.length === 1 ? "is" : "are"
+            } privately held, so ${
+              entities.length === 1 ? "its shares aren’t" : "their shares aren’t"
+            } publicly traded. Current reporting is temporarily unavailable; try again shortly for the business, news, and risk picture.`
+          : decision.route === "current_finance" ||
+              decision.route === "comparison"
+            ? "Fresh market data isn’t available at this moment. Try again shortly — your conversation and question are still here."
+            : "That answer didn’t come together cleanly. Try again in a moment.",
       citationUrls: [],
       retryable: true,
     };
@@ -371,22 +408,20 @@ export function buildFallbackReply(
   const dimension = askedDimension(request.message, context.plan.criteria);
   if (dimension) {
     lines.unshift(
-      `I can’t give you a verified call on ${dimension} this second — my analysis engine is briefly behind. Here’s what I can stand behind right now:`,
+      `The strongest available read on ${dimension} is in the dated figures and sources below; coverage is partial.`,
       ""
-    );
-    lines.push(
-      "",
-      `Ask again in a moment and I’ll take a proper run at ${dimension}.`
     );
   } else {
     lines.push(
       "",
-      "That’s the verified picture I can stand behind right now — ask again in a bit and I should be able to take it further."
+      "This is the current dated picture; coverage is partial."
     );
   }
   const text = lines.join("\n");
   return {
-    text: expandValidCitations(text, context.sources),
+    text: roundFiguresForDisplay(
+      expandValidCitations(text, context.sources)
+    ),
     citationUrls: validCitationUrls(text, context.sources),
     retryable: true,
   };

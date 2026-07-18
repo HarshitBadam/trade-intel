@@ -28,7 +28,23 @@ function hasExplicitConversationReference(message: string): boolean {
 }
 
 const DEGRADED_RESPONSE =
-  "I'm briefly over capacity and I'd rather not wing an answer without checking the data. Ask me again in a few seconds — nothing about our conversation is lost.";
+  "Fresh market data isn’t available at this moment. Try again shortly — your conversation and question are still here.";
+
+function outageFloor(
+  entities: ReturnType<typeof resolveConversationState>["entities"]
+): string {
+  if (entities.length === 0 || !entities.every((entity) => entity.private)) {
+    return DEGRADED_RESPONSE;
+  }
+  const names = entities.map((entity) => entity.name);
+  const list =
+    names.length > 1
+      ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`
+      : names[0];
+  return `${list} ${names.length === 1 ? "is" : "are"} privately held, so ${
+    names.length === 1 ? "its shares aren’t" : "their shares aren’t"
+  } publicly traded. Current reporting is temporarily unavailable; try again shortly for the business, news, and risk picture.`;
+}
 
 // Production path when every LLM lane is unavailable: keep the analyst
 // voice, preserve state, and never guess at routing. Greetings, farewells,
@@ -85,12 +101,17 @@ export function answerDegraded(
     }
   }
   return immediateResponse({
-    text: DEGRADED_RESPONSE,
+    text: outageFloor(
+      resolution.entities.length > 0
+        ? resolution.entities
+        : resolution.state.entities
+    ),
     state: resolution.state,
     route: "general",
     reasonCode: "all_llm_lanes_unavailable",
     startedAt,
     retryable: true,
+    dataStatus: "unavailable",
   });
 }
 
@@ -175,8 +196,10 @@ export async function answerWithHeuristics(
     context
   );
   const synthesisMs = Date.now() - synthesisStartedAt;
-  const deepEligible =
-    decision.deepEligible && reply.live && !reply.retryable;
+  // Valid finance turns keep the research affordance even when current
+  // evidence is unavailable; createDeepResearchOffer marks it disabled via
+  // available:false instead of making the button disappear.
+  const deepEligible = decision.deepEligible;
   const deep = deepEligible
     ? createDeepResearchOffer({
         question: request.message,

@@ -67,6 +67,19 @@ export type ChatQuote = {
   ticker: string;
   price: number;
   asOf: string;
+  // True when the series is end-of-day/delayed (e.g. Stooq) rather than a
+  // near-live feed — surfaced so answers can label the as-of honestly.
+  eod?: boolean;
+  // Human note about what the series actually is (e.g. "US-listed ADR, USD")
+  // so answers never present a proxy series as the primary listing.
+  sourceNote?: string;
+  // Index level rather than a share price — rendered in points, not dollars.
+  isIndex?: boolean;
+  // A separately traded security used when the requested market/index has no
+  // reliable direct feed. Renderers must name this symbol and describe its
+  // returns as proxy-security returns, never as the requested index's return.
+  proxySymbol?: string;
+  proxyKind?: "etf" | "adr";
   dayPct: number;
   // Prior completed session's own move (what a user means by "yesterday").
   prevSessionPct?: number | null;

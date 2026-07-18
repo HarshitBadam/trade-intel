@@ -6,6 +6,7 @@ import {
   validCitationUrls,
 } from "./citations";
 import { unsupportedFigures } from "./figures";
+import { roundFiguresForDisplay } from "./rounding";
 import { buildChatSystemPrompt } from "./regular-prompt";
 import {
   buildDeterministicRankingReply,
@@ -14,8 +15,10 @@ import {
 import { historyMessages } from "./regular-history";
 import {
   coversEveryEntity,
+  hedgedEstimateClaim,
   missingCriteria,
   opensOnSubject,
+  proxyMisrepresentation,
   repeatedPriorPhrase,
   violatesStyle,
 } from "./regular-guards";
@@ -47,6 +50,11 @@ export async function answerRegularChat(
     context.quotes.length > 0 ||
     context.fundamentals.length > 0 ||
     context.sources.length > 0;
+  const dataStatus = !live
+    ? "unavailable"
+    : Object.values(context.coverage).some((value) => value === "missing")
+      ? "limited"
+      : "full";
   if (
     !live &&
     decision.route !== "stable_finance" &&
@@ -57,6 +65,7 @@ export async function answerRegularChat(
       citationUrls: [],
       retryable: true,
       live,
+      dataStatus: "unavailable",
     };
   }
   const deterministicRanking = buildDeterministicRankingReply(
@@ -66,13 +75,16 @@ export async function answerRegularChat(
     options.timeframe ?? state.horizon
   );
   if (deterministicRanking) {
-    return { ...deterministicRanking, live };
+    return {
+      ...deterministicRanking,
+      live,
+      dataStatus:
+        deterministicRanking.retryable === true ? "limited" : dataStatus,
+    };
   }
   try {
     const requireCitations =
       context.sources.length > 0 &&
-      context.quotes.length === 0 &&
-      context.fundamentals.length === 0 &&
       decision.route !== "stable_finance";
     const requireCoverage =
       decision.route === "comparison" && entities.length >= 2;
@@ -128,6 +140,9 @@ export async function answerRegularChat(
               opensOnSubject(candidate, entities))) &&
           (!guardFigures ||
             unsupportedFigures(candidate, figureCorpus).length === 0) &&
+          (!guardFigures ||
+            hedgedEstimateClaim(candidate, figureCorpus) === null) &&
+          proxyMisrepresentation(candidate, entities, context.quotes) === null &&
           missingCriteria(candidate, requestedCriteria).length === 0 &&
           violatesStyle(candidate, context.sources.length > 0) === null;
         if (!sound) return false;
@@ -145,6 +160,14 @@ export async function answerRegularChat(
           ? unsupportedFigures(draft, figureCorpus)
           : [];
         const style = violatesStyle(draft, context.sources.length > 0);
+        const hedged = guardFigures
+          ? hedgedEstimateClaim(draft, figureCorpus)
+          : null;
+        const proxyError = proxyMisrepresentation(
+          draft,
+          entities,
+          context.quotes
+        );
         const names = entities.map((entity) => entity.name).join(", ");
         const offSubject =
           requireCoverage && !opensOnSubject(draft, entities)
@@ -163,6 +186,14 @@ export async function answerRegularChat(
             ? `These figures are not in the data you were given, so they must go: ${invented.join(", ")}. Do not replace them with other numbers from memory — state only figures present in the data, and where a figure is missing, say what you'd check instead. `
             : ""
         }${style ? `${style} ` : ""}${
+          hedged
+            ? `This hedged market-performance estimate is not in the retrieved figures and must be removed: "${hedged}". Do not replace it with a range or approximation. `
+            : ""
+        }${
+          proxyError
+            ? `You misrepresented proxy data: "${proxyError}". Name the ETF/ADR symbol, call it a proxy, and attribute every figure to that security, never to the requested index or local listing. `
+            : ""
+        }${
           repeated
             ? `You reused near-identical wording from your earlier answers ("…${repeated}…") — same caveats, same closers. Say new things in new words this turn. `
             : ""
@@ -178,15 +209,23 @@ export async function answerRegularChat(
       context.quotes.map((quote) => quote.ticker)
     ).trim();
     return {
-      text: expandValidCitations(cleaned, context.sources),
+      text: roundFiguresForDisplay(
+        expandValidCitations(cleaned, context.sources)
+      ),
       live,
       citationUrls: validCitationUrls(cleaned, context.sources),
+      dataStatus,
     };
   } catch {
   }
 
   const fallback = buildFallbackReply(request, decision, entities, context);
-  return { ...fallback, live };
+  return {
+    ...fallback,
+    text: roundFiguresForDisplay(fallback.text),
+    live,
+    dataStatus: live ? "limited" : "unavailable",
+  };
 }
 
 export {

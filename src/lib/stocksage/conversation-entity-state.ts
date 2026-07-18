@@ -51,7 +51,66 @@ const NARROWING_TO_SUBSET =
 const RESET = /^(?:reset|start (?:over|fresh|again)|clear (?:the )?(?:context|conversation|slate)|new topic)[\s,.!?]*$/i;
 const AUSTRALIAN_BANK_TICKERS = new Set(["CBA", "NAB", "ANZ", "WBC"]);
 const CONSULTING_NAMES = new Set(["Deloitte", "PwC", "EY", "KPMG"]);
-const INDEX_TICKERS = new Set(["IXIC", "GSPC", "DJI"]);
+const INDEX_TICKERS = new Set(["IXIC", "GSPC", "DJI", "AXJO"]);
+
+const STATE_COMMANDS = [
+  "forget",
+  "drop",
+  "remove",
+  "ignore",
+  "skip",
+  "swap",
+  "switch",
+  "replace",
+  "substitute",
+] as const;
+
+function oneEditApart(left: string, right: string): boolean {
+  if (Math.abs(left.length - right.length) > 1) return false;
+  if (left.length === right.length) {
+    let differences = 0;
+    for (let index = 0; index < left.length; index += 1) {
+      if (left[index] !== right[index]) differences += 1;
+    }
+    return differences === 1;
+  }
+  const [shorter, longer] =
+    left.length < right.length ? [left, right] : [right, left];
+  let shortIndex = 0;
+  let longIndex = 0;
+  let skipped = false;
+  while (shortIndex < shorter.length && longIndex < longer.length) {
+    if (shorter[shortIndex] === longer[longIndex]) {
+      shortIndex += 1;
+      longIndex += 1;
+    } else if (skipped) {
+      return false;
+    } else {
+      skipped = true;
+      longIndex += 1;
+    }
+  }
+  return true;
+}
+
+// Fuzzy matching is deliberately confined to a command verb at the start of
+// a clause and to one deletion/substitution. Ordinary prose such as "target
+// those" never enters command parsing.
+export function normalizeStateCommand(message: string): string {
+  return message.replace(
+    /(^|[.!?;]\s*)([a-z]{3,10})(?=\s)/i,
+    (match, prefix: string, token: string) => {
+      const lower = token.toLowerCase();
+      if (STATE_COMMANDS.includes(lower as (typeof STATE_COMMANDS)[number])) {
+        return match;
+      }
+      const command = STATE_COMMANDS.find((candidate) =>
+        oneEditApart(lower, candidate)
+      );
+      return command ? `${prefix}${command}` : match;
+    }
+  );
+}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -177,10 +236,11 @@ export function resolveConversationState(
   previous: ConversationState | undefined,
   history: ChatTurn[] = []
 ): StateResolution {
+  const commandMessage = normalizeStateCommand(message);
   const base = previous
     ? sanitizeConversationState(previous, canonicalizeEntity)
     : stateFromHistory(history);
-  if (RESET.test(message)) {
+  if (RESET.test(commandMessage)) {
     return {
       state: { ...emptyConversationState(), revision: base.revision + 1 },
       entities: [],
@@ -201,8 +261,8 @@ export function resolveConversationState(
   const replacementCorrection = message.match(
     /\bnot\s+(.+?)(?:,|\s+but\s+|\s+instead\s+)(.+?)(?:[.!?]|$)/i
   );
-  const swapIn = message.match(SWAP_IN_CORRECTION);
-  const swap = swapIn ? null : message.match(SWAP_CORRECTION);
+  const swapIn = commandMessage.match(SWAP_IN_CORRECTION);
+  const swap = swapIn ? null : commandMessage.match(SWAP_CORRECTION);
   let removed = meantCorrection
     ? resolveText(meantCorrection[2])
     : replacementCorrection
@@ -213,7 +273,7 @@ export function resolveConversationState(
           ? resolveText(swap[1])
           : [];
   if (removed.length === 0) {
-    const removalMatch = message.match(REMOVAL);
+    const removalMatch = commandMessage.match(REMOVAL);
     if (removalMatch) {
       removed = removalTargets(removalMatch[1], base.entities);
     }
@@ -221,7 +281,7 @@ export function resolveConversationState(
   if (
     removed.length === 0 &&
     base.entities.length > 2 &&
-    NARROWING_TO_SUBSET.test(message)
+    NARROWING_TO_SUBSET.test(commandMessage)
   ) {
     const counts = lastAssistantMentionCounts(base.entities, history);
     const mentioned = base.entities.filter(

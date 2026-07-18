@@ -3,7 +3,11 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { RetrievalProviders } from "./retrieve";
 import { logStockSage } from "./telemetry";
-import type { ChatReply, ConversationState } from "./types";
+import type {
+  ChatDataStatus,
+  ChatReply,
+  ConversationState,
+} from "./types";
 
 export type ChatDependencies = {
   retrievalProviders?: RetrievalProviders;
@@ -22,6 +26,7 @@ export function immediateResponse(args: {
   reasonCode: string;
   startedAt: number;
   retryable?: boolean;
+  dataStatus?: ChatDataStatus;
 }): ChatReply {
   logStockSage({
     event: "request_complete",
@@ -36,6 +41,7 @@ export function immediateResponse(args: {
     kind: "answer",
     responseId: randomUUID(),
     state: args.state,
+    dataStatus: args.dataStatus ?? "full",
     ...(args.retryable !== undefined ? { retryable: args.retryable } : {}),
   };
 }

@@ -1,3 +1,4 @@
+import { MARKET_PROXY_SYMBOLS } from "./entity-catalog";
 import type {
   ChatRoute,
   ConversationState,
@@ -56,6 +57,28 @@ function evidenceFreshnessDays(message: string): number | undefined {
   return historicalPeriod(message) ? undefined : 14;
 }
 
+// The Astra news store holds ~90 days of labeled history, so its freshness
+// window is aligned with the ask rather than inheriting the tight web-search
+// default: explicit today/yesterday news asks stay tight, everything else
+// (risk, outlook, comparisons, general updates) reads the wider recent
+// history. Without this, evidence.ts silently dropped 14-60-day-old stored
+// articles that planning had happily fetched.
+function astraFreshnessDays(
+  message: string,
+  freshnessDays: number | undefined
+): number | undefined {
+  if (/\b(?:today|yesterday|breaking|right now)\b/i.test(message)) {
+    return freshnessDays ?? 7;
+  }
+  return freshnessDays === undefined ? undefined : Math.max(freshnessDays, 60);
+}
+
+function marketProxyEligible(entities: FinanceEntity[]): FinanceEntity[] {
+  return entities.filter(
+    (entity) => entity.ticker && MARKET_PROXY_SYMBOLS[entity.ticker]
+  );
+}
+
 function supportsTrailingQuote(message: string): boolean {
   return /\b(?:today|yesterday|this (?:week|month|year)|month[- ]to[- ]date|mtd|trailing month|ytd|year[- ]to[- ]date|last (?:few days|week|month|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|over the last (?:few days|week|month|year)|[135]\s*[- ]?year)\b/i.test(
     message
@@ -100,6 +123,10 @@ export function planEvidence(args: {
     (entity) => entity.market === "us" && entity.ticker
   );
   const web = args.entities.filter((entity) => entity.market === "web");
+  const marketProxy = marketProxyEligible(args.entities);
+  // The Astra store is keyed by ticker; any tickered entity may have
+  // coverage there (unknown tickers just read empty).
+  const astraEligible = args.entities.filter((entity) => entity.ticker);
   const entityContext = args.entities.map((entity) => entity.query).join("; ");
   const fortuneRanking =
     /\bfortune\s*(?:100|500)\b/i.test(args.message) ||
@@ -137,17 +164,33 @@ export function planEvidence(args: {
         query("quotes-current", "quotes", args.message, us, ["price"], "news", 4)
       );
     }
-    if (!isPriceOnly(args.message) && us.length > 0) {
+    if (
+      marketProxy.length > 0 &&
+      (!historical || supportsTrailingQuote(args.message))
+    ) {
+      queries.push(
+        query(
+          "market-proxy-current",
+          "market_proxy",
+          args.message,
+          marketProxy,
+          ["price"],
+          "news",
+          6
+        )
+      );
+    }
+    if (astraEligible.length > 0) {
       queries.push(
         query(
           "astra-current",
           "astra",
           args.message,
-          us,
+          astraEligible,
           currentCriteria,
           "news",
-          6,
-          freshnessDays
+          isPriceOnly(args.message) ? 4 : 8,
+          astraFreshnessDays(args.message, freshnessDays)
         )
       );
     }
@@ -214,6 +257,40 @@ export function planEvidence(args: {
           criteria,
           "general",
           Math.min(12, us.length)
+        )
+      );
+    }
+    if (
+      marketProxy.length > 0 &&
+      (!historical || supportsTrailingQuote(args.message)) &&
+      args.entities.length <= 12
+    ) {
+      queries.push(
+        query(
+          "market-proxy-comparison",
+          "market_proxy",
+          args.message,
+          marketProxy,
+          criteria,
+          "general",
+          Math.min(6, marketProxy.length)
+        )
+      );
+    }
+    if (astraEligible.length > 0) {
+      queries.push(
+        query(
+          "astra-comparison",
+          "astra",
+          args.message,
+          astraEligible,
+          criteria,
+          topic,
+          Math.min(12, astraEligible.length * 3),
+          astraFreshnessDays(
+            args.message,
+            topic === "news" ? freshnessDays : 60
+          )
         )
       );
     }

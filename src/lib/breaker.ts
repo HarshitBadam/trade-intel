@@ -21,7 +21,8 @@ export type Provider =
   | "langflow-analysis"
   | "tavily"
   | "astra"
-  | "quotes";
+  | "quotes"
+  | "stooq";
 
 const FAILURE_THRESHOLD = 3;
 

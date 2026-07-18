@@ -12,6 +12,7 @@ import { detectCriteria } from "./conversation-attributes";
 import { resolveConversationState } from "./entities";
 import { unsupportedFigures } from "./figures";
 import { planEvidence } from "./planning";
+import { roundFiguresForDisplay } from "./rounding";
 import {
   buildDeterministicRankingReply,
   buildFallbackReply,
@@ -22,9 +23,11 @@ import {
   coversEveryEntity,
   creativeRequestOnly,
   hasSmuggledOffTopicTask,
+  hedgedEstimateClaim,
   missingCriteria,
   opensOnSubject,
   performsSmuggledTask,
+  proxyMisrepresentation,
   repeatedPriorPhrase,
   violatesStyle,
 } from "./regular-guards";
@@ -40,7 +43,11 @@ import {
 import { synthesizeWithFallback } from "./synthesis";
 import { logStockSage } from "./telemetry";
 import type { ChatDependencies } from "./chat-shared";
-import type { ChatReply, ChatRequest } from "./types";
+import type {
+  ChatDataStatus,
+  ChatReply,
+  ChatRequest,
+} from "./types";
 
 // Everything in this file that inspects the message decides only WHAT DATA TO
 // PREFETCH — never what the user meant. Meaning is resolved by the model from
@@ -90,12 +97,6 @@ function isPureSocialTurn(message: string): boolean {
   return FRUSTRATION.test(message) || ABUSE_AT_BOT.test(message);
 }
 
-// Citations are demanded only when the user is actually asking about
-// something current; forcing [S#] chips onto a timeless concept answer
-// produced both rejection loops and citation spam.
-const FRESH_ASK =
-  /\b(?:today|yesterday|latest|now|current(?:ly)?|recent(?:ly)?|lately|news|update|happening|moved?|moving|this (?:week|month|quarter|year)|month[- ]to[- ]date|mtd|trailing month|last (?:few days|week|month|quarter|year)|ytd|year[- ]to[- ]date|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|what(?:'?s| is) up|risks?|outlook|catalysts?)\b/i;
-
 function emptyContext(asOf: string): RegularContext {
   return {
     quotes: [],
@@ -111,6 +112,20 @@ function emptyContext(asOf: string): RegularContext {
       criteria: [],
     },
   };
+}
+
+function dataStatusFor(
+  wantsData: boolean,
+  context: RegularContext
+): ChatDataStatus {
+  if (!wantsData) return "full";
+  const hasData =
+    context.quotes.length > 0 ||
+    context.fundamentals.length > 0 ||
+    context.sources.length > 0;
+  if (!hasData) return "unavailable";
+  const coverage = Object.values(context.coverage);
+  return coverage.some((value) => value === "missing") ? "limited" : "full";
 }
 
 export async function answerWithModel(
@@ -176,6 +191,7 @@ export async function answerWithModel(
     context.quotes.length > 0 ||
     context.fundamentals.length > 0 ||
     context.sources.length > 0;
+  const dataStatus = dataStatusFor(wantsData, context);
   const deterministicRanking = buildDeterministicRankingReply(
     request,
     prefetchEntities,
@@ -198,6 +214,56 @@ export async function answerWithModel(
       kind: "answer",
       responseId: randomUUID(),
       state: resolution.state,
+      dataStatus:
+        deterministicRanking.retryable === true ? "limited" : dataStatus,
+    };
+  }
+
+  // Total data outage is the deterministic floor, not a prompt-writing task.
+  // Letting an LLM answer here produced plausible but stale encyclopedia prose
+  // ("the ASX is an exchange...") and first-person limitation narration. The
+  // fallback is subject-aware, preserves verified private-company facts, and
+  // carries an unavailable research offer without inventing content.
+  if (wantsData && !live) {
+    const fallback = buildFallbackReply(
+      request,
+      {
+        route:
+          prefetchEntities.length >= 2 ? "comparison" : "current_finance",
+        reasonCode: "zero_data_floor",
+        retrievalRequired: true,
+        deepEligible: true,
+      },
+      prefetchEntities,
+      context
+    );
+    const text = roundFiguresForDisplay(fallback.text);
+    const deep = createDeepResearchOffer({
+      question: request.message,
+      reply: { text, live: false, citationUrls: [] },
+      entities: prefetchEntities,
+      state: resolution.state,
+      sources: [],
+      asOf: context.plan.asOf,
+    });
+    logStockSage({
+      event: "request_complete",
+      route: "model_finance",
+      reasonCode: "zero_data_floor",
+      durationMs: Date.now() - startedAt,
+      retrievalMs,
+      providerCount: context.plan.queries.length,
+      sourceCount: 0,
+    });
+    return {
+      ...fallback,
+      text,
+      live: false,
+      kind: "answer",
+      responseId: deep.responseId,
+      deepResearch: deep.offer,
+      state: resolution.state,
+      dataStatus: "unavailable",
     };
   }
 
@@ -218,12 +284,11 @@ export async function answerWithModel(
   // Concept answers with no subjects and no live data may use illustrative
   // numbers; anything tied to real entities or retrieved evidence may not.
   const guardFigures = prefetchEntities.length > 0 || live;
-  const requireCitations =
-    live &&
-    FRESH_ASK.test(request.message) &&
-    context.sources.length > 0 &&
-    context.quotes.length === 0 &&
-    context.fundamentals.length === 0;
+  // Sources are optional for quote-only statements, but once a data-seeking
+  // answer makes fresh/news-type claims while sources exist, at least one
+  // source must survive publication. Quotes/fundamentals no longer disable
+  // this guard.
+  const requireCitations = wantsData && context.sources.length > 0;
   const requestedCriteria = wantsData ? detectCriteria(request.message) : [];
   // A comparison that only ever discusses one side is a silent substitution,
   // not an answer — this parallels the older heuristics path's guard, which
@@ -264,6 +329,16 @@ export async function answerWithModel(
         if (invented.length > 0) {
           return reject("unsupported_figures", invented.join(", "));
         }
+        const hedged = guardFigures
+          ? hedgedEstimateClaim(candidate, figureCorpus)
+          : null;
+        if (hedged) return reject("hedged_estimate", hedged);
+        const proxyError = proxyMisrepresentation(
+          candidate,
+          prefetchEntities,
+          context.quotes
+        );
+        if (proxyError) return reject("proxy_misrepresentation", proxyError);
         if (
           requireCitations &&
           validCitationUrls(candidate, context.sources).length === 0
@@ -308,6 +383,14 @@ export async function answerWithModel(
           ? unsupportedFigures(draft, figureCorpus)
           : [];
         const style = violatesStyle(draft, context.sources.length > 0);
+        const hedged = guardFigures
+          ? hedgedEstimateClaim(draft, figureCorpus)
+          : null;
+        const proxyError = proxyMisrepresentation(
+          draft,
+          prefetchEntities,
+          context.quotes
+        );
         const unmetCriteria = missingCriteria(draft, requestedCriteria);
         const repeated = repeatedPriorPhrase(draft, priorReplies, entities);
         const leaked = offTopicTurn && leaksOffTopicWork(draft);
@@ -343,6 +426,14 @@ export async function answerWithModel(
             ? `These figures are not in the data you were given, so they must go: ${invented.join(
                 ", "
               )}. Do not replace them with other numbers from memory — state only figures present in the data, and where a figure is missing, say what you'd check instead. `
+            : ""
+        }${
+          hedged
+            ? `This hedged market-performance estimate is not supported by a retrieved figure and must be removed: "${hedged}". Do not replace it with a range, approximation, or remembered estimate. `
+            : ""
+        }${
+          proxyError
+            ? `You misrepresented proxy data: "${proxyError}". Name the ETF/ADR symbol, call it a proxy, and attribute every price and return to that ETF/ADR — never to the requested index or local listing. `
             : ""
         }${
           unmetCriteria.length > 0
@@ -383,9 +474,11 @@ export async function answerWithModel(
       context.quotes.map((quote) => quote.ticker)
     ).trim();
     const citationUrls = validCitationUrls(cleaned, context.sources);
-    const finalText = expandValidCitations(cleaned, context.sources);
+    const finalText = roundFiguresForDisplay(
+      expandValidCitations(cleaned, context.sources)
+    );
     const deep =
-      wantsData && live
+      wantsData
         ? createDeepResearchOffer({
             question: request.message,
             reply: { text: finalText, live, citationUrls },
@@ -413,6 +506,7 @@ export async function answerWithModel(
       responseId: deep.responseId,
       deepResearch: deep.offer,
       state: resolution.state,
+      dataStatus,
     };
   } catch {
     // Every LLM lane failed or every draft failed publication checks.
@@ -450,6 +544,7 @@ export async function answerWithModel(
         kind: "answer",
         responseId: randomUUID(),
         state: resolution.state,
+        dataStatus: "full",
       };
     }
     // If the retrieval step already produced verified market data, publish
@@ -481,10 +576,14 @@ export async function answerWithModel(
         kind: "answer",
         responseId: randomUUID(),
         state: resolution.state,
+        dataStatus: "limited",
       };
     }
     // No data either: one honest, retryable, state-preserving reply beats an
     // impersonation.
-    return answerDegraded(request, startedAt);
+    return {
+      ...answerDegraded(request, startedAt),
+      dataStatus: wantsData ? "unavailable" : "full",
+    };
   }
 }

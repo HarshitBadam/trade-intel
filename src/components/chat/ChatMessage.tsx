@@ -1,6 +1,9 @@
 import { RotateCcw, Telescope } from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import type { DeepResearchOffer } from "@/lib/stocksage/types";
+import type {
+  ChatDataStatus,
+  DeepResearchOffer,
+} from "@/lib/stocksage/types";
 
 export type DeepMessageState = {
   status: "idle" | "pending" | "success" | "failure";
@@ -19,6 +22,7 @@ export type ChatMessageModel = {
   deepState?: DeepMessageState;
   error?: boolean;
   retryable?: boolean;
+  dataStatus?: ChatDataStatus;
 };
 
 function CitationChip({
@@ -112,6 +116,11 @@ export function ChatMessage({
   const canResearch =
     message.sender === "ai" &&
     message.deepResearch &&
+    message.deepResearch.available &&
+    (!deep || deep.status === "idle" || (deep.status === "failure" && deep.retryable));
+  const showResearch =
+    message.sender === "ai" &&
+    message.deepResearch &&
     (!deep || deep.status === "idle" || (deep.status === "failure" && deep.retryable));
   return (
     <div
@@ -135,6 +144,14 @@ export function ChatMessage({
               text={message.text}
               citationUrls={message.citationUrls}
             />
+            {message.dataStatus && message.dataStatus !== "full" && (
+              <div
+                className="inline-flex rounded-full bg-muted/70 px-2 py-0.5 text-[0.7rem] font-medium text-muted-foreground"
+                role="status"
+              >
+                live data limited
+              </div>
+            )}
             {message.retryable && (
               <button
                 type="button"
@@ -145,11 +162,18 @@ export function ChatMessage({
                 Try again
               </button>
             )}
-            {canResearch && (
+            {showResearch && (
               <button
                 type="button"
                 onClick={() => onResearch(message.id)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground/75 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canResearch}
+                title={
+                  !message.deepResearch?.available
+                    ? message.deepResearch?.unavailableReason ??
+                      "live research is refreshing — try again shortly"
+                    : undefined
+                }
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground/75 transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Telescope className="h-3.5 w-3.5" />
                 {deep?.status === "failure" ? "Retry research" : "Research deeper"}

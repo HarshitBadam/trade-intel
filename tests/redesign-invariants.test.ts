@@ -155,7 +155,9 @@ test("degraded reply preserves state and is retryable", () => {
     Date.now()
   );
   assert.equal(reply.retryable, true);
-  assert.match(reply.text, /over capacity|ask me again/i);
+  assert.match(reply.text, /fresh market data|try again shortly/i);
+  assert.equal(reply.dataStatus, "unavailable");
+  assert.doesNotMatch(reply.text, /capacity|analysis engine|verifiable evidence/i);
   assert.deepEqual(
     reply.state?.entities.map((entity) => entity.ticker),
     ["AAPL", "MSFT"]

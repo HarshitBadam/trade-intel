@@ -33,7 +33,8 @@ const SnapshotSchema = z.object({
         id: z.string().max(40),
         name: z.string().max(120),
         ticker: z.string().max(12).optional(),
-        market: z.enum(["us", "web"]),
+        market: z.enum(["us", "web", "index", "au"]),
+        private: z.boolean().optional(),
       })
     )
     .max(12),
@@ -88,6 +89,7 @@ export function createDeepResearchOffer(args: {
       name: entity.name,
       ticker: entity.ticker,
       market: entity.market,
+      private: entity.private,
     })),
     criteria: args.state.criteria,
     horizon: args.state.horizon,
@@ -101,7 +103,17 @@ export function createDeepResearchOffer(args: {
   const payload = Buffer.from(JSON.stringify(snapshot)).toString("base64url");
   return {
     responseId,
-    offer: { token: `${payload}.${signature(payload)}`, workId },
+    offer: {
+      token: `${payload}.${signature(payload)}`,
+      workId,
+      available: args.sources.length > 0,
+      ...(args.sources.length === 0
+        ? {
+            unavailableReason:
+              "live research is refreshing — try again shortly",
+          }
+        : {}),
+    },
   };
 }
 
