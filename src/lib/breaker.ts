@@ -28,6 +28,8 @@ const FAILURE_THRESHOLD = 3;
 
 const OPEN_MS = 10 * 60 * 1000;
 const OPEN_S = OPEN_MS / 1000;
+const UNAVAILABLE_MS = 24 * 60 * 60 * 1000;
+const UNAVAILABLE_S = UNAVAILABLE_MS / 1000;
 
 type MemState = { fails: number; openUntil: number };
 const memory = new Map<Provider, MemState>();
@@ -67,6 +69,27 @@ export async function recordFailure(provider: Provider): Promise<void> {
   const state = memState(provider);
   state.fails += 1;
   if (state.fails >= FAILURE_THRESHOLD) state.openUntil = Date.now() + OPEN_MS;
+}
+
+// Configuration failures such as a provider returning "model not found" are
+// not transient. Open the shared model lane immediately so every subsequent
+// turn skips it instead of spending a request before reaching fallbacks.
+export async function recordUnavailable(provider: Provider): Promise<void> {
+  if (hasUpstash) {
+    try {
+      const r = await redis();
+      await r.set(`breaker:${provider}:open`, 1, { ex: UNAVAILABLE_S });
+      return;
+    } catch (error) {
+      console.error(
+        `[breaker] Upstash recordUnavailable failed for ${provider}, using memory:`,
+        error
+      );
+    }
+  }
+  const state = memState(provider);
+  state.fails = FAILURE_THRESHOLD;
+  state.openUntil = Date.now() + UNAVAILABLE_MS;
 }
 
 export async function recordSuccess(provider: Provider): Promise<void> {

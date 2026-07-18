@@ -133,14 +133,29 @@ function mentionsEntity(input: EvidenceInput, entity: FinanceEntity): boolean {
   } catch {
     host = "";
   }
-  const haystack = normalized(
-    `${input.title} ${host} ${input.excerpt.slice(0, 280)}`
-  );
-  return entityTerms(entity).some((term) =>
-    term.length <= 2
-      ? new RegExp(`(?:^| )${term}(?: |$)`).test(haystack)
-      : haystack.includes(term)
-  );
+  const terms = entityTerms(entity);
+  const primary = normalized(`${input.title} ${host}`);
+  if (
+    terms.some((term) =>
+      term.length <= 2
+        ? new RegExp(`(?:^| )${term}(?: |$)`).test(primary)
+        : primary.includes(term)
+    )
+  ) {
+    return true;
+  }
+  // A single incidental body mention is not enough to make an article about
+  // another company relevant (for example, a Nokia headline that mentions
+  // Nvidia once). Two early references still admit generic sector headlines.
+  const excerpt = normalized(input.excerpt.slice(0, 360));
+  const mentions = terms.reduce((total, term) => {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return (
+      total +
+      (excerpt.match(new RegExp(`(?:^| )${escaped}(?= |$)`, "g"))?.length ?? 0)
+    );
+  }, 0);
+  return mentions >= 2;
 }
 
 function balanceByEntity(
@@ -174,8 +189,10 @@ function balanceByEntity(
 const CRITERION_TERMS: Record<string, RegExp> = {
   valuation: /\b(?:valuation|p\/?e|multiple|price to earnings)\b/i,
   performance: /\b(?:performance|return|price|shares?|stock|trading)\b/i,
-  outlook: /\b(?:outlook|forecast|guidance|prospects?)\b/i,
-  risk: /\b(?:risk|regulat|volatility|downside|debt|legal)\b/i,
+  outlook:
+    /\b(?:outlook|forecast|guidance|prospects?|catalysts?|drivers?|tailwinds?|headwinds?|launch|roadmap|demand|orders?|shipments?|capacity|product cycle|next quarter|going forward)\b/i,
+  risk:
+    /\b(?:risk|regulat|volatility|downside|debt|legal|headwinds?|competition|competitive|constraints?|shortage|export controls?|restrictions?|delay|uncertain|pressure)\b/i,
   growth: /\b(?:growth|earnings|revenue|profit)\b/i,
   earnings:
     /\b(?:earnings|revenue|net income|net loss|profitability|operating margin|eps|financial results|quarterly results)\b/i,

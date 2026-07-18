@@ -212,7 +212,9 @@ async function main(): Promise<void> {
       console.log(`\n>>> USER: ${message}`);
       console.log(
         `<<< STOCKSAGE (${elapsed}s${reply.live ? ", live" : ""}${
-          reply.deepResearch ? ", deep-offer" : ""
+          reply.deepResearch
+            ? `, deep-offer:${reply.deepResearch.available ? "available" : "disabled"}`
+            : ""
         }):`
       );
       console.log(
@@ -222,9 +224,31 @@ async function main(): Promise<void> {
           .join("\n")
       );
       state = reply.state ?? state;
-      if (reply.deepResearch?.token) lastOfferToken = reply.deepResearch.token;
+      lastOfferToken = reply.deepResearch?.available
+        ? reply.deepResearch.token
+        : undefined;
       history.push({ role: "user", text: message });
       history.push({ role: "ai", text: reply.text });
+      if (
+        deep &&
+        /^research\b/i.test(message) &&
+        reply.deepResearch?.available
+      ) {
+        const deepStartedAt = Date.now();
+        const research = await runDeepResearch(reply.deepResearch.token);
+        const deepElapsed = ((Date.now() - deepStartedAt) / 1000).toFixed(1);
+        console.log('\n>>> USER clicks "Research deeper" on the available offer');
+        console.log(
+          `<<< DEEP RESEARCH (${deepElapsed}s, ${research.status}):`
+        );
+        console.log(
+          (research.text ?? "(no text)")
+            .split("\n")
+            .map((line) => `    ${line}`)
+            .join("\n")
+        );
+        lastOfferToken = undefined;
+      }
     }
     if (deep && lastOfferToken) {
       const startedAt = Date.now();

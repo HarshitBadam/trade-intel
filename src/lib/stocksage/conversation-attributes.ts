@@ -22,7 +22,10 @@ export function detectCriteria(message: string): string[] {
       /\b(?:risks?|risky|riskier|volatility|downside|regulatory|regulation|balance sheet|debt|safe(?:st|r|ty)?|exposure|concentrat)\b/i,
       "risk",
     ],
-    [/\b(?:outlook|prospects|forecast)\b/i, "outlook"],
+    [
+      /\b(?:outlook|prospects|forecast|catalysts?|drivers?|tailwinds?|headwinds?|what (?:matters|to watch)|developments?)\b/i,
+      "outlook",
+    ],
     [/\b(?:bigger|biggest|largest|market cap|capitali[sz]ation|size)\b/i, "size"],
   ];
   return checks

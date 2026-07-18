@@ -23,6 +23,9 @@ function hasExplicitConversationReference(message: string): boolean {
     /\b(?:a|the)\s+\w+(?:er)?\s+one(?:s)?\b/i.test(message) ||
     /^(?:(?:and|so|ok(?:ay)?)\s+)?(?:why|what (?:changed|happened|moved)|today|yesterday|(?:a\s+)?few days ago|anything notable|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year))\b/i.test(
       message
+    ) ||
+    /\b(?:which developments?\b.*\bmatters?|what\b.*\bmatters?|catalysts?|what should investors? watch)\b/i.test(
+      message
     )
   );
 }
@@ -134,11 +137,19 @@ export async function answerWithHeuristics(
       startedAt,
     });
   }
+  const conversationReference = hasExplicitConversationReference(
+    request.message
+  );
+  const effectiveEntities =
+    resolution.entities.length > 0
+      ? resolution.entities
+      : conversationReference
+        ? resolution.state.entities
+        : [];
   const policyEntities =
-    resolution.reasonCode === "no_entities" &&
-    !hasExplicitConversationReference(request.message)
+    resolution.reasonCode === "no_entities" && !conversationReference
       ? []
-      : resolution.entities;
+      : effectiveEntities;
   const policy = evaluateDomainPolicy(request.message, policyEntities);
   const inheritsScope =
     policy.reasonCode === "out_of_scope" &&
@@ -160,7 +171,7 @@ export async function answerWithHeuristics(
   }
   const decision = routeMessage({
     message: request.message,
-    entities: resolution.entities,
+    entities: effectiveEntities,
     state: resolution.state,
     clarification: resolution.clarification,
   });
@@ -177,13 +188,13 @@ export async function answerWithHeuristics(
   const plan = planEvidence({
     route: decision.route,
     message: request.message,
-    entities: resolution.entities,
+    entities: effectiveEntities,
     state: resolution.state,
   });
   const retrievalStartedAt = Date.now();
   const context = await executeEvidencePlan({
     plan,
-    entities: resolution.entities,
+    entities: effectiveEntities,
     providers: dependencies.retrievalProviders,
   });
   const retrievalMs = Date.now() - retrievalStartedAt;
@@ -191,7 +202,7 @@ export async function answerWithHeuristics(
   const reply = await answerRegularChat(
     request,
     decision,
-    resolution.entities,
+    effectiveEntities,
     resolution.state,
     context
   );
@@ -204,7 +215,7 @@ export async function answerWithHeuristics(
     ? createDeepResearchOffer({
         question: request.message,
         reply,
-        entities: resolution.entities,
+        entities: effectiveEntities,
         state: resolution.state,
         sources: context.sources,
         asOf: plan.asOf,

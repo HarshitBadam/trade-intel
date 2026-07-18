@@ -5,6 +5,7 @@ import {
   validCitationUrls,
 } from "./citations";
 import { roundFiguresForDisplay } from "./rounding";
+import { hasSmuggledOffTopicTask } from "./regular-guards";
 import type { RegularContext } from "./retrieve";
 import type {
   ChatReply,
@@ -168,28 +169,85 @@ export function humanPublishedAt(value: string): string {
   }).format(parsed);
 }
 
-const JUDGMENT_REQUEST =
-  /\b(?:which|who)\b[^.!?]{0,60}\b(?:safest|safer|best|better|riskier|cheapest|strongest|biggest|winner)\b|\b(?:safest|outlook)\b|\bshould i\b|\bwhich (?:one|is|looks)\b/i;
-
-const CRITERION_LABEL: Record<string, string> = {
-  performance: "recent performance",
-  valuation: "valuation",
-  earnings: "earnings",
-  growth: "growth",
-  risk: "relative risk",
-  dividends: "dividends",
-  outlook: "the outlook",
-  size: "relative size",
-  news: "the latest news",
-};
-
-function askedDimension(message: string, criteria: string[]): string | null {
-  const labels = criteria
-    .map((criterion) => CRITERION_LABEL[criterion])
-    .filter(Boolean);
-  if (labels.length > 0) return labels.join(" and ");
-  if (JUDGMENT_REQUEST.test(message)) return "a judgment call like that";
-  return null;
+function comparisonLead(
+  message: string,
+  entities: FinanceEntity[],
+  context: RegularContext
+): string[] {
+  const rows = entities.flatMap((entity) => {
+    const quote = entity.ticker
+      ? context.quotes.find((item) => item.ticker === entity.ticker)
+      : undefined;
+    const fundamentals = entity.ticker
+      ? context.fundamentals.find((item) => item.ticker === entity.ticker)
+      : undefined;
+    if (!quote && !fundamentals) return [];
+    const figures: string[] = [];
+    if (quote) {
+      const periods: { label: string; value: number | null | undefined }[] = [];
+      const add = (
+        pattern: RegExp,
+        label: string,
+        value: number | null | undefined
+      ) => {
+        if (pattern.test(message)) periods.push({ label, value });
+      };
+      add(/\bthis week\b|\blast week\b|\bover the last week\b/i, "one week", quote.weekPct);
+      add(/\b(?:month[- ]to[- ]date|mtd|this month)\b/i, "month to date", quote.mtdPct);
+      add(/\b(?:trailing month|last month|over the (?:last|past) month)\b/i, "trailing month", quote.monthPct);
+      add(/\b(?:ytd|year[- ]to[- ]date|this year)\b/i, "YTD", quote.ytdPct);
+      if (periods.length === 0) {
+        periods.push({ label: "latest session", value: quote.dayPct });
+      }
+      figures.push(
+        `${quote.isIndex ? quote.price.toFixed(2) : `$${quote.price.toFixed(2)}`} at ${humanAsOf(quote.asOf)}${
+          quote.eod ? " close" : ""
+        }`,
+        ...periods.map(
+          (period) =>
+            `${period.label} ${
+              period.value == null
+                ? "not available"
+                : `${period.value >= 0 ? "+" : ""}${period.value.toFixed(2)}%`
+            }`
+        )
+      );
+    }
+    if (fundamentals?.peTtm != null) {
+      figures.push(`P/E ${fundamentals.peTtm.toFixed(1)}x`);
+    }
+    if (fundamentals?.revenueGrowthTtmYoy != null) {
+      figures.push(
+        `revenue growth ${fundamentals.revenueGrowthTtmYoy >= 0 ? "+" : ""}${fundamentals.revenueGrowthTtmYoy.toFixed(1)}%`
+      );
+    }
+    if (fundamentals?.beta != null) {
+      figures.push(`beta ${fundamentals.beta.toFixed(2)}`);
+    }
+    return [
+      {
+        entity,
+        quote,
+        line: `- **${entity.ticker ?? casualName(entity.name)}** — ${figures.join("; ")}.`,
+      },
+    ];
+  });
+  if (rows.length === 0) return [];
+  const names = entities.map((entity) => casualName(entity.name)).join(" vs ");
+  const lines = [`### ${names}`, ...rows.map((row) => row.line)];
+  const quoted = rows.filter((row) => row.quote);
+  if (quoted.length >= 2) {
+    const ordered = [...quoted].sort(
+      (left, right) => right.quote!.dayPct - left.quote!.dayPct
+    );
+    const gap = ordered[0].quote!.dayPct - ordered[1].quote!.dayPct;
+    lines.push(
+      `${ordered[0].entity.ticker ?? casualName(ordered[0].entity.name)} led ${
+        ordered[1].entity.ticker ?? casualName(ordered[1].entity.name)
+      } by ${gap.toFixed(2)} percentage points in the latest session.`
+    );
+  }
+  return lines;
 }
 
 export function buildFallbackReply(
@@ -198,12 +256,15 @@ export function buildFallbackReply(
   entities: FinanceEntity[],
   context: RegularContext
 ): Pick<ChatReply, "text" | "citationUrls" | "retryable"> {
-  const lines: string[] = [];
+  const lines: string[] =
+    decision.route === "comparison"
+      ? comparisonLead(request.message, entities, context)
+      : [];
   const historicalRequest =
     /\b(?:yesterday|last (?:few days|week|month|quarter|year)|over the last|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2})\b/i.test(
       request.message
     );
-  if (context.quotes.length > 0) {
+  if (context.quotes.length > 0 && decision.route !== "comparison") {
     lines.push("### Market snapshot");
     for (const quote of context.quotes) {
       const periods: { label: string; value: number | null | undefined }[] = [];
@@ -236,19 +297,38 @@ export function buildFallbackReply(
           return `${period.label} ${change}`;
         })
         .join("; ");
-      lines.push(
-        `- **${quote.proxySymbol ?? quote.ticker}**${
-          quote.proxySymbol
-            ? ` — ${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy requested for ${quote.ticker}`
-            : ""
-        } — ${
-          quote.isIndex
-            ? `${quote.price.toFixed(2)} points`
-            : `$${quote.price.toFixed(2)}`
-        } as of ${humanAsOf(quote.asOf)}${
-          quote.eod ? " close (end-of-day)" : ""
-        }${quote.sourceNote ? `; ${quote.sourceNote}` : ""}; ${changes}.`
-      );
+      if (quote.proxySymbol) {
+        const entity = entities.find((item) => item.ticker === quote.ticker);
+        const proxyLabel =
+          quote.ticker === "AXJO" && quote.proxySymbol === "EWA"
+            ? "Australian-market ETF proxy"
+            : `${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy for ${
+                entity ? casualName(entity.name) : quote.ticker
+              }`;
+        const distinction =
+          quote.ticker === "AXJO" && quote.proxySymbol === "EWA"
+            ? "This tracks broad Australian equities; it is not the ASX index itself."
+            : `This is ${quote.proxySymbol} performance; it is not ${
+                entity ? casualName(entity.name) : quote.ticker
+              } itself.`;
+        lines.push(
+          `- **${quote.proxySymbol} (${proxyLabel})** — $${quote.price.toFixed(
+            2
+          )} at ${humanAsOf(quote.asOf)}${
+            quote.eod ? " close" : ""
+          }, ${changes.replace(/^latest session /, "")}. ${distinction}`
+        );
+      } else {
+        lines.push(
+          `- **${quote.ticker}** — ${
+            quote.isIndex
+              ? `${quote.price.toFixed(2)} points`
+              : `$${quote.price.toFixed(2)}`
+          } as of ${humanAsOf(quote.asOf)}${
+            quote.eod ? " close (end-of-day)" : ""
+          }${quote.sourceNote ? `; ${quote.sourceNote}` : ""}; ${changes}.`
+        );
+      }
     }
   }
   if (context.sources.length > 0) {
@@ -402,19 +482,16 @@ export function buildFallbackReply(
       retryable: true,
     };
   }
-  // Shape the fallback to the question: if the user asked for a judgment or a
-  // specific dimension, own the gap up front instead of presenting a data dump
-  // as though it were the answer.
-  const dimension = askedDimension(request.message, context.plan.criteria);
-  if (dimension) {
-    lines.unshift(
-      `The strongest available read on ${dimension} is in the dated figures and sources below; coverage is partial.`,
-      ""
-    );
-  } else {
+  if (decision.route !== "comparison") {
     lines.push(
       "",
       "This is the current dated picture; coverage is partial."
+    );
+  }
+  if (hasSmuggledOffTopicTask(request.message)) {
+    lines.unshift(
+      "The calculation is outside my finance lane, so I haven’t evaluated it. Here’s the market part:",
+      ""
     );
   }
   const text = lines.join("\n");

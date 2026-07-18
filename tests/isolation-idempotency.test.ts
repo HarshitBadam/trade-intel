@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   isOpen,
   recordFailure,
+  recordUnavailable,
   resetBreakerMemory,
 } from "../src/lib/breaker";
 import {
@@ -17,6 +18,13 @@ test("analysis failures do not open the chat breaker", async () => {
   await recordFailure("groq-analysis");
   assert.equal(await isOpen("groq-analysis"), true);
   assert.equal(await isOpen("groq-chat"), false);
+});
+
+test("model-not-found disables its shared lane immediately", async () => {
+  resetBreakerMemory();
+  await recordUnavailable("groq-chat");
+  assert.equal(await isOpen("groq-chat"), true);
+  assert.equal(await isOpen("groq-fallback"), false);
 });
 
 test("repeated deep work reuses one task and result", async () => {

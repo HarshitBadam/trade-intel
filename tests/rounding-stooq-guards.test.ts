@@ -167,9 +167,10 @@ test("fallback labels ETF returns without representing them as index returns", (
       },
     }
   );
-  assert.match(reply.text, /\*\*ONEQ\*\*/);
-  assert.match(reply.text, /ETF proxy requested for IXIC/);
-  assert.match(reply.text, /not Nasdaq Composite index returns/);
+  assert.match(reply.text, /\*\*ONEQ \(ETF proxy/);
+  assert.match(reply.text, /ETF proxy for Nasdaq Composite/);
+  assert.match(reply.text, /not Nasdaq Composite itself/);
+  assert.doesNotMatch(reply.text, /proxy requested for/i);
   assert.doesNotMatch(reply.text, /\*\*IXIC\*\* — .*\+12\.50%/);
   assert.match(
     proxyMisrepresentation(
@@ -201,6 +202,34 @@ test("fallback labels ETF returns without representing them as index returns", (
     sourceNote:
       "EWA ETF proxy for broad Australian equities; these are EWA returns",
   };
+  const ewaReply = buildFallbackReply(
+    { message: "How has the ASX done today?", history: [] },
+    {
+      route: "current_finance",
+      reasonCode: "degraded_from_data",
+      retrievalRequired: true,
+      deepEligible: false,
+    },
+    [asxEntity],
+    {
+      quotes: [ewa],
+      fundamentals: [],
+      sources: [],
+      coverage: {},
+      plan: {
+        version: 1,
+        route: "current_finance",
+        asOf: "2026-07-16T00:00:00.000Z",
+        queries: [proxyQuery(["AXJO"])],
+        requiredEntityIds: [],
+        criteria: [],
+      },
+    }
+  );
+  assert.match(ewaReply.text, /EWA \(Australian-market ETF proxy\)/);
+  assert.match(ewaReply.text, /tracks broad Australian equities/i);
+  assert.match(ewaReply.text, /not the ASX index itself/i);
+  assert.doesNotMatch(ewaReply.text, /proxy requested for AXJO/i);
   assert.match(
     proxyMisrepresentation(
       "The ASX, through the EWA ETF proxy, is up 0.42% today.",
