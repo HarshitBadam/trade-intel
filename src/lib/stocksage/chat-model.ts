@@ -22,13 +22,16 @@ import { historyMessages } from "./regular-history";
 import {
   coversEveryEntity,
   creativeRequestOnly,
+  firstPersonVerificationLimitation,
   hasSmuggledOffTopicTask,
   hedgedEstimateClaim,
+  investmentDirectionClaim,
   missingCriteria,
   opensOnSubject,
   performsSmuggledTask,
   proxyMisrepresentation,
   repeatedPriorPhrase,
+  uncitedResearchClaimUnits,
   violatesStyle,
 } from "./regular-guards";
 import { executeEvidencePlan, type RegularContext } from "./retrieve";
@@ -61,7 +64,7 @@ const CLEARLY_ELSEWHERE =
   /\b(?:joke|poem|essay|story|lyrics|weather|recipe|movie|music|celebrity|football|soccer|cricket|basketball|nba|nfl|afl|dating|crush|girlfriend|boyfriend|ask (?:someone|her|him|them) out|homework|python|javascript|typescript|code|script|derive|gravity|physics)\b/i;
 
 const DATA_SEEKING_FOLLOW_UP =
-  /^(?:(?:and|so|then)\s+)?(?:which developments?\b.*\bmatters?|what\b.*\bmatters?|why(?:\s+(?:does|did|is|was|would|could|that|this|it|so))?\b|what are the (?:main|key) catalysts?|which catalyst\b|what should investors? watch\b)/i;
+  /^(?:(?:and|so|then)\s+)?(?:which developments?\b.*\bmatters?|what\b.*\bmatters?|why(?:\s+(?:does|did|is|was|would|could|that|this|it|so))?\b|what are the (?:main|key) catalysts?|which catalyst\b|what should investors? watch\b|summari[sz]e\b.*\b(?:bull|bear|risk|outlook|case))/i;
 
 // A refusal that still performs the task (prints the loop output, states the
 // gravity formula, hands out dating advice) is the leak the audits kept
@@ -197,6 +200,7 @@ export async function answerWithModel(
     context.fundamentals.length > 0 ||
     context.sources.length > 0;
   const dataStatus = dataStatusFor(wantsData, context);
+  const requestedCriteria = wantsData ? detectCriteria(request.message) : [];
   const deterministicRanking = buildDeterministicRankingReply(
     request,
     prefetchEntities,
@@ -221,6 +225,139 @@ export async function answerWithModel(
       state: resolution.state,
       dataStatus:
         deterministicRanking.retryable === true ? "limited" : dataStatus,
+    };
+  }
+
+  const asxProxySnapshot =
+    prefetchEntities.length === 1 &&
+    context.quotes.length === 1 &&
+    context.quotes[0].ticker === "AXJO" &&
+    context.quotes[0].proxySymbol === "EWA" &&
+    /\b(?:today|latest session|doing|done)\b/i.test(request.message);
+  if (asxProxySnapshot) {
+    const fallback = buildFallbackReply(
+      request,
+      {
+        route: "current_finance",
+        reasonCode: "deterministic_proxy_snapshot",
+        retrievalRequired: true,
+        deepEligible: false,
+      },
+      prefetchEntities,
+      context
+    );
+    logStockSage({
+      event: "request_complete",
+      route: "model_finance",
+      reasonCode: "deterministic_proxy_snapshot",
+      durationMs: Date.now() - startedAt,
+      retrievalMs,
+      providerCount: context.plan.queries.length,
+      sourceCount: context.sources.length,
+    });
+    return {
+      ...fallback,
+      live,
+      kind: "answer",
+      responseId: randomUUID(),
+      state: resolution.state,
+      dataStatus,
+    };
+  }
+
+  const deterministicProxyComparison =
+    prefetchEntities.length >= 2 &&
+    context.quotes.some((quote) => Boolean(quote.proxySymbol));
+  if (deterministicProxyComparison) {
+    const fallback = buildFallbackReply(
+      request,
+      {
+        route: "comparison",
+        reasonCode: "deterministic_proxy_comparison",
+        retrievalRequired: true,
+        deepEligible: context.sources.length > 0,
+      },
+      prefetchEntities,
+      context
+    );
+    const citationUrls = fallback.citationUrls ?? [];
+    const deep = createDeepResearchOffer({
+      question: request.message,
+      reply: { text: fallback.text, live, citationUrls },
+      entities: prefetchEntities,
+      state: resolution.state,
+      sources: context.sources,
+      asOf: context.plan.asOf,
+    });
+    logStockSage({
+      event: "request_complete",
+      route: "model_finance",
+      reasonCode: "deterministic_proxy_comparison",
+      durationMs: Date.now() - startedAt,
+      retrievalMs,
+      providerCount: context.plan.queries.length,
+      sourceCount: context.sources.length,
+    });
+    return {
+      ...fallback,
+      live,
+      kind: "answer",
+      responseId: deep.responseId,
+      deepResearch: deep.offer,
+      state: resolution.state,
+      dataStatus,
+    };
+  }
+
+  const sourceLessCurrentResearch =
+    wantsData &&
+    context.sources.length === 0 &&
+    (/\b(?:news|development|catalyst|guidance|outlook|next[- ]quarter|bull case|bear case|risks?)\b/i.test(
+      request.message
+    ) ||
+      requestedCriteria.some((criterion) =>
+        ["risk", "outlook", "earnings"].includes(criterion)
+      ));
+  if (sourceLessCurrentResearch && live) {
+    const fallback = buildFallbackReply(
+      request,
+      {
+        route:
+          prefetchEntities.length >= 2 ? "comparison" : "current_finance",
+        reasonCode: "source_less_research_floor",
+        retrievalRequired: true,
+        deepEligible: false,
+      },
+      prefetchEntities,
+      context
+    );
+    const text = roundFiguresForDisplay(fallback.text);
+    const deep = createDeepResearchOffer({
+      question: request.message,
+      reply: { text, live, citationUrls: [] },
+      entities: prefetchEntities,
+      state: resolution.state,
+      sources: [],
+      asOf: context.plan.asOf,
+    });
+    logStockSage({
+      event: "request_complete",
+      route: "model_finance",
+      reasonCode: "source_less_research_floor",
+      durationMs: Date.now() - startedAt,
+      retrievalMs,
+      providerCount: context.plan.queries.length,
+      sourceCount: 0,
+    });
+    return {
+      ...fallback,
+      text,
+      live,
+      kind: "answer",
+      responseId: deep.responseId,
+      deepResearch: deep.offer,
+      state: resolution.state,
+      dataStatus: "limited",
     };
   }
 
@@ -294,7 +431,6 @@ export async function answerWithModel(
   // source must survive publication. Quotes/fundamentals no longer disable
   // this guard.
   const requireCitations = wantsData && context.sources.length > 0;
-  const requestedCriteria = wantsData ? detectCriteria(request.message) : [];
   // A comparison that only ever discusses one side is a silent substitution,
   // not an answer — this parallels the older heuristics path's guard, which
   // was not carried over when the single-model-call path was introduced.
@@ -344,6 +480,16 @@ export async function answerWithModel(
           context.quotes
         );
         if (proxyError) return reject("proxy_misrepresentation", proxyError);
+        const uncitedClaims = wantsData
+          ? uncitedResearchClaimUnits(candidate, context.sources)
+          : [];
+        if (uncitedClaims.length > 0) {
+          return reject("uncited_research_claims", uncitedClaims.join(" | "));
+        }
+        const direction = investmentDirectionClaim(candidate);
+        if (direction) return reject("investment_direction", direction);
+        const limitation = firstPersonVerificationLimitation(candidate);
+        if (limitation) return reject("first_person_limitation", limitation);
         if (
           requireCitations &&
           validCitationUrls(candidate, context.sources).length === 0
@@ -396,6 +542,11 @@ export async function answerWithModel(
           prefetchEntities,
           context.quotes
         );
+        const uncitedClaims = wantsData
+          ? uncitedResearchClaimUnits(draft, context.sources)
+          : [];
+        const direction = investmentDirectionClaim(draft);
+        const limitation = firstPersonVerificationLimitation(draft);
         const unmetCriteria = missingCriteria(draft, requestedCriteria);
         const repeated = repeatedPriorPhrase(draft, priorReplies, entities);
         const leaked = offTopicTurn && leaksOffTopicWork(draft);
@@ -441,10 +592,24 @@ export async function answerWithModel(
             ? `You misrepresented proxy data: "${proxyError}". Name the ETF/ADR symbol, call it a proxy, and attribute every price and return to that ETF/ADR — never to the requested index or local listing. `
             : ""
         }${
+          uncitedClaims.length > 0
+            ? `These current research claim units have no valid citation in their own sentence or bullet. Add the supporting [S#] to each unit, explicitly frame a cited inference, or remove the unit: ${uncitedClaims
+                .map((unit) => `"${unit}"`)
+                .join(" | ")}. A citation in another bullet does not count. `
+            : ""
+        }${
+          direction
+            ? `Remove this investment-direction language: "${direction}". Describe the evidence neutrally; do not call a move a buying or selling opportunity. `
+            : ""
+        }${
+          limitation
+            ? `Replace this first-person limitation with neutral gap wording: "${limitation}". For example: "Current guidance was not present in the available reporting." `
+            : ""
+        }${
           unmetCriteria.length > 0
             ? `The user specifically asked about ${unmetCriteria.join(
                 " and "
-              )}, and your draft never addressed it. Address it with the data you were given, or say plainly in one clause what you couldn't verify — do not answer a different question. `
+              )}, and your draft never addressed it. Address it with the data you were given, or use one neutral clause naming what was not present in the available reporting — do not answer a different question. `
             : ""
         }${
           wrongOpening
@@ -566,6 +731,17 @@ export async function answerWithModel(
         prefetchEntities,
         context
       );
+      const citationUrls = fallback.citationUrls ?? [];
+      const deep = wantsData
+        ? createDeepResearchOffer({
+            question: request.message,
+            reply: { text: fallback.text, live, citationUrls },
+            entities: prefetchEntities,
+            state: resolution.state,
+            sources: context.sources,
+            asOf: context.plan.asOf,
+          })
+        : { responseId: randomUUID() };
       logStockSage({
         event: "request_complete",
         route: "model_finance",
@@ -579,7 +755,8 @@ export async function answerWithModel(
         ...fallback,
         live,
         kind: "answer",
-        responseId: randomUUID(),
+        responseId: deep.responseId,
+        deepResearch: deep.offer,
         state: resolution.state,
         dataStatus: "limited",
       };

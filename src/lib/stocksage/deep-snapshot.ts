@@ -11,6 +11,7 @@ import {
   STOCKSAGE_DEEP_SNAPSHOT_SECRET,
 } from "@/lib/config";
 import { safeSourceUrl } from "./citations";
+import { detectCriteria } from "./conversation-attributes";
 import type {
   ChatReply,
   ConversationState,
@@ -50,6 +51,128 @@ const SnapshotSchema = z.object({
 
 export type DeepResearchSnapshot = z.infer<typeof SnapshotSchema>;
 
+export type DeepResearchAvailabilityReason =
+  | "available_broad_evidence"
+  | "available_single_criterion"
+  | "no_valid_sources"
+  | "insufficient_independent_sources"
+  | "missing_criteria_coverage";
+
+export type DeepResearchAvailability = {
+  available: boolean;
+  reason: DeepResearchAvailabilityReason;
+  distinctSourceCount: number;
+  coveredCriteria: string[];
+};
+
+export function isDeepResearchOfferAvailable(
+  offer: DeepResearchOffer | undefined
+): offer is DeepResearchOffer & { available: true } {
+  return offer?.available === true;
+}
+
+const RESEARCH_CRITERIA = new Set([
+  "dividends",
+  "earnings",
+  "growth",
+  "outlook",
+  "performance",
+  "risk",
+  "size",
+  "valuation",
+]);
+
+function canonicalSourceUrl(value: string): string | null {
+  const safe = safeSourceUrl(value);
+  if (!safe) return null;
+  const url = new URL(safe);
+  url.hash = "";
+  for (const key of [...url.searchParams.keys()]) {
+    if (/^(?:utm_|fbclid|gclid|source)$/i.test(key)) {
+      url.searchParams.delete(key);
+    }
+  }
+  url.searchParams.sort();
+  return url.toString();
+}
+
+/**
+ * Broad reports need independent evidence and criterion coverage. A focused
+ * one-dimensional question may proceed from one relevant article; quotes and
+ * fundamentals are intentionally absent because they never satisfy preflight.
+ */
+export function assessDeepResearchAvailability(args: {
+  question: string;
+  criteria: string[];
+  sources: EvidenceSource[];
+}): DeepResearchAvailability {
+  const explicitCriteria = detectCriteria(args.question).filter((criterion) =>
+    RESEARCH_CRITERIA.has(criterion)
+  );
+  const requestedCriteria = [
+    ...new Set(
+      (explicitCriteria.length > 0 ? explicitCriteria : args.criteria).filter(
+        (criterion) => RESEARCH_CRITERIA.has(criterion)
+      )
+    ),
+  ];
+  const byUrl = new Map<string, EvidenceSource>();
+  for (const source of args.sources) {
+    const url = canonicalSourceUrl(source.url);
+    if (url && !byUrl.has(url)) byUrl.set(url, source);
+  }
+  const validSources = [...byUrl.values()];
+  const coveredCriteria = requestedCriteria.filter((criterion) =>
+    validSources.some((source) => source.criteria.includes(criterion))
+  );
+  if (validSources.length === 0) {
+    return {
+      available: false,
+      reason: "no_valid_sources",
+      distinctSourceCount: 0,
+      coveredCriteria,
+    };
+  }
+
+  const broadReport =
+    /\b(?:deep research|research|research report|report on)\b/i.test(
+      args.question
+    ) ||
+    requestedCriteria.length >= 2 ||
+    (/\b(?:catalysts?|outlook)\b/i.test(args.question) &&
+      /\brisks?\b/i.test(args.question));
+
+  if (
+    requestedCriteria.length > 0 &&
+    coveredCriteria.length < requestedCriteria.length
+  ) {
+    return {
+      available: false,
+      reason: "missing_criteria_coverage",
+      distinctSourceCount: validSources.length,
+      coveredCriteria,
+    };
+  }
+
+  if (broadReport && validSources.length < 2) {
+    return {
+      available: false,
+      reason: "insufficient_independent_sources",
+      distinctSourceCount: validSources.length,
+      coveredCriteria,
+    };
+  }
+
+  return {
+    available: true,
+    reason: broadReport
+      ? "available_broad_evidence"
+      : "available_single_criterion",
+    distinctSourceCount: validSources.length,
+    coveredCriteria,
+  };
+}
+
 function signature(payload: string): string {
   if (!STOCKSAGE_DEEP_SNAPSHOT_SECRET) {
     throw new Error("Deep Research snapshot signing is unavailable");
@@ -76,6 +199,11 @@ export function createDeepResearchOffer(args: {
     .map(safeSourceUrl)
     .filter((url): url is string => Boolean(url))
     .slice(0, 16);
+  const availability = assessDeepResearchAvailability({
+    question: args.question,
+    criteria: args.state.criteria,
+    sources: args.sources,
+  });
   const snapshot: DeepResearchSnapshot = {
     version: 1,
     responseId,
@@ -106,8 +234,8 @@ export function createDeepResearchOffer(args: {
     offer: {
       token: `${payload}.${signature(payload)}`,
       workId,
-      available: args.sources.length > 0,
-      ...(args.sources.length === 0
+      available: availability.available,
+      ...(!availability.available
         ? {
             unavailableReason:
               "live research is refreshing — try again shortly",

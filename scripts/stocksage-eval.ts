@@ -170,6 +170,9 @@ async function main(): Promise<void> {
   const deep = process.env.EVAL_DEEP === "1";
   const { answerChat } = await import("../src/lib/stocksage/chat");
   const { runDeepResearch } = await import("../src/lib/stocksage/deep");
+  const { isDeepResearchOfferAvailable } = await import(
+    "../src/lib/stocksage/deep-snapshot"
+  );
   type State = Parameters<typeof answerChat>[0]["state"];
   type Turn = { role: "user" | "ai"; text: string };
 
@@ -224,7 +227,7 @@ async function main(): Promise<void> {
           .join("\n")
       );
       state = reply.state ?? state;
-      lastOfferToken = reply.deepResearch?.available
+      lastOfferToken = isDeepResearchOfferAvailable(reply.deepResearch)
         ? reply.deepResearch.token
         : undefined;
       history.push({ role: "user", text: message });
@@ -232,7 +235,7 @@ async function main(): Promise<void> {
       if (
         deep &&
         /^research\b/i.test(message) &&
-        reply.deepResearch?.available
+        isDeepResearchOfferAvailable(reply.deepResearch)
       ) {
         const deepStartedAt = Date.now();
         const research = await runDeepResearch(reply.deepResearch.token);

@@ -20,6 +20,43 @@ type RankingWindow = {
   value: (quote: RegularContext["quotes"][number]) => number | null | undefined;
 };
 
+function quoteDisplayName(
+  entity: FinanceEntity,
+  quote: RegularContext["quotes"][number]
+): string {
+  if (!quote.proxySymbol) return entity.ticker ?? casualName(entity.name);
+  if (quote.ticker === "AXJO" && quote.proxySymbol === "EWA") {
+    return "EWA (Australian-market ETF proxy)";
+  }
+  return `${quote.proxySymbol} (${quote.proxyKind === "adr" ? `${casualName(entity.name)} ADR proxy` : `${casualName(entity.name)} ETF proxy`})`;
+}
+
+function comparisonWindows(message: string): RankingWindow[] {
+  const windows: RankingWindow[] = [];
+  const add = (pattern: RegExp, window: RankingWindow) => {
+    if (pattern.test(message)) windows.push(window);
+  };
+  add(/\bthis week\b|\blast week\b|\bover the last week\b/i, {
+    label: "one week",
+    value: (quote) => quote.weekPct,
+  });
+  add(/\b(?:month[- ]to[- ]date|mtd|this month)\b/i, {
+    label: "month to date",
+    value: (quote) => quote.mtdPct,
+  });
+  add(/\b(?:trailing month|last month|over the (?:last|past) month)\b/i, {
+    label: "trailing month",
+    value: (quote) => quote.monthPct,
+  });
+  add(/\b(?:ytd|year[- ]to[- ]date|this year)\b/i, {
+    label: "YTD",
+    value: (quote) => quote.ytdPct,
+  });
+  return windows.length > 0
+    ? windows
+    : [{ label: "latest session", value: (quote) => quote.dayPct }];
+}
+
 function requestedRankingWindow(
   message: string,
   horizon?: string
@@ -89,14 +126,16 @@ export function buildDeterministicRankingReply(
   const lines = ranked.map(
     (row, index) =>
       `${index + 1}. **${
-        row.quote?.proxySymbol
-          ? `${row.quote.proxySymbol} ${row.quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy for ${casualName(row.entity.name)}`
+        row.quote
+          ? quoteDisplayName(row.entity, row.quote)
           : row.entity.ticker ?? casualName(row.entity.name)
       }** — ${
         row.value >= 0 ? "+" : ""
       }${row.value.toFixed(2)}% ${window.label}${
         row.quote?.proxySymbol
-          ? ` (${row.quote.proxySymbol} return, not the underlying index/listing return)`
+          ? row.quote.proxyKind === "adr"
+            ? ` (${row.quote.proxySymbol} return, not the underlying Australian listing return)`
+            : ` (${row.quote.proxySymbol} return, not the underlying index return)`
           : ""
       }`
   );
@@ -174,6 +213,7 @@ function comparisonLead(
   entities: FinanceEntity[],
   context: RegularContext
 ): string[] {
+  const windows = comparisonWindows(message);
   const rows = entities.flatMap((entity) => {
     const quote = entity.ticker
       ? context.quotes.find((item) => item.ticker === entity.ticker)
@@ -184,21 +224,10 @@ function comparisonLead(
     if (!quote && !fundamentals) return [];
     const figures: string[] = [];
     if (quote) {
-      const periods: { label: string; value: number | null | undefined }[] = [];
-      const add = (
-        pattern: RegExp,
-        label: string,
-        value: number | null | undefined
-      ) => {
-        if (pattern.test(message)) periods.push({ label, value });
-      };
-      add(/\bthis week\b|\blast week\b|\bover the last week\b/i, "one week", quote.weekPct);
-      add(/\b(?:month[- ]to[- ]date|mtd|this month)\b/i, "month to date", quote.mtdPct);
-      add(/\b(?:trailing month|last month|over the (?:last|past) month)\b/i, "trailing month", quote.monthPct);
-      add(/\b(?:ytd|year[- ]to[- ]date|this year)\b/i, "YTD", quote.ytdPct);
-      if (periods.length === 0) {
-        periods.push({ label: "latest session", value: quote.dayPct });
-      }
+      const periods = windows.map((window) => ({
+        label: window.label,
+        value: window.value(quote),
+      }));
       figures.push(
         `${quote.isIndex ? quote.price.toFixed(2) : `$${quote.price.toFixed(2)}`} at ${humanAsOf(quote.asOf)}${
           quote.eod ? " close" : ""
@@ -228,7 +257,17 @@ function comparisonLead(
       {
         entity,
         quote,
-        line: `- **${entity.ticker ?? casualName(entity.name)}** — ${figures.join("; ")}.`,
+        line: `- **${
+          quote
+            ? quoteDisplayName(entity, quote)
+            : entity.ticker ?? casualName(entity.name)
+        }** — ${figures.join("; ")}.${
+          quote?.proxySymbol
+            ? quote.proxyKind === "adr"
+              ? ` These are ${quote.proxySymbol} figures, not the underlying Australian listing return.`
+              : ` These are ${quote.proxySymbol} figures, not the underlying index return.`
+            : ""
+        }`,
       },
     ];
   });
@@ -237,15 +276,23 @@ function comparisonLead(
   const lines = [`### ${names}`, ...rows.map((row) => row.line)];
   const quoted = rows.filter((row) => row.quote);
   if (quoted.length >= 2) {
-    const ordered = [...quoted].sort(
-      (left, right) => right.quote!.dayPct - left.quote!.dayPct
-    );
-    const gap = ordered[0].quote!.dayPct - ordered[1].quote!.dayPct;
-    lines.push(
-      `${ordered[0].entity.ticker ?? casualName(ordered[0].entity.name)} led ${
-        ordered[1].entity.ticker ?? casualName(ordered[1].entity.name)
-      } by ${gap.toFixed(2)} percentage points in the latest session.`
-    );
+    for (const window of windows) {
+      const ordered = quoted
+        .map((row) => ({ ...row, value: window.value(row.quote!) }))
+        .filter(
+          (row): row is typeof row & { value: number } =>
+            typeof row.value === "number" && Number.isFinite(row.value)
+        )
+        .sort((left, right) => right.value - left.value);
+      if (ordered.length < 2) continue;
+      const gap = ordered[0].value - ordered[1].value;
+      lines.push(
+        `${quoteDisplayName(ordered[0].entity, ordered[0].quote!)} led ${quoteDisplayName(
+          ordered[1].entity,
+          ordered[1].quote!
+        )} by ${gap.toFixed(2)} percentage points over ${window.label}.`
+      );
+    }
   }
   return lines;
 }
@@ -299,20 +346,34 @@ export function buildFallbackReply(
         .join("; ");
       if (quote.proxySymbol) {
         const entity = entities.find((item) => item.ticker === quote.ticker);
-        const proxyLabel =
-          quote.ticker === "AXJO" && quote.proxySymbol === "EWA"
-            ? "Australian-market ETF proxy"
-            : `${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy for ${
-                entity ? casualName(entity.name) : quote.ticker
-              }`;
+        if (
+          quote.ticker === "AXJO" &&
+          quote.proxySymbol === "EWA" &&
+          periods.length === 1 &&
+          periods[0].label === "latest session" &&
+          periods[0].value != null
+        ) {
+          const verb = periods[0].value >= 0 ? "rose" : "fell";
+          lines.push(
+            `EWA, an Australian-market ETF proxy, ${verb} ${Math.abs(
+              periods[0].value
+            ).toFixed(
+              2
+            )}% in its latest session. It tracks broad Australian equities; this is not an ASX index return.`
+          );
+          continue;
+        }
+        const displayName = entity
+          ? quoteDisplayName(entity, quote)
+          : `${quote.proxySymbol} (${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy)`;
         const distinction =
           quote.ticker === "AXJO" && quote.proxySymbol === "EWA"
-            ? "This tracks broad Australian equities; it is not the ASX index itself."
+            ? "It tracks broad Australian equities; this is not an ASX index return."
             : `This is ${quote.proxySymbol} performance; it is not ${
                 entity ? casualName(entity.name) : quote.ticker
               } itself.`;
         lines.push(
-          `- **${quote.proxySymbol} (${proxyLabel})** — $${quote.price.toFixed(
+          `- **${displayName}** — $${quote.price.toFixed(
             2
           )} at ${humanAsOf(quote.asOf)}${
             quote.eod ? " close" : ""
@@ -485,7 +546,12 @@ export function buildFallbackReply(
   if (decision.route !== "comparison") {
     lines.push(
       "",
-      "This is the current dated picture; coverage is partial."
+      context.sources.length === 0 &&
+        /\b(?:news|development|catalyst|outlook|guidance|risks?|bull case|bear case)\b/i.test(
+          request.message
+        )
+        ? "No specific news catalyst is attached to these market figures in the available reporting."
+        : "This is the current dated picture; coverage is partial."
     );
   }
   if (hasSmuggledOffTopicTask(request.message)) {

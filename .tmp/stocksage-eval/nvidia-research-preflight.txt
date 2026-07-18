@@ -1,0 +1,39 @@
+
+> tradeintel@0.1.0 eval:stocksage
+> tsx --conditions=react-server scripts/stocksage-eval.ts --chat Research Nvidia's next-quarter catalysts and risks.
+
+
+========================================================================
+SCENARIO: adhoc
+========================================================================
+[chat] Tavily retrieval failed: Error: Tavily responded with 432
+    at Object.searchTavily (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/tavily.ts:67:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async <anonymous> (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:360:41)
+    at async Promise.all (index 0)
+    at async runTavilyQueue (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:365:5)
+    at async Promise.all (index 2)
+    at async executeEvidencePlan (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:367:35)
+    at async answerWithModel (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/chat-model.ts:191:7)
+    at async main (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/scripts/stocksage-eval.ts:198:21)
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"The bull case rests on Blackwell ramping into full production and data center demand staying sticky despite macro noise."}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"The available reporting doesn’t cover specific next-quarter catalysts or risks. | Guidance on upcoming quarters wasn’t p"}
+[stocksage] {"event":"regular_synthesis","provider":"groq-chat","model":"qwen/qwen3.6-27b","name":"SynthesisValidationError"}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"**Catalysts for Q4 2026** | - **AI‑chip demand** – Nvidia’s data‑center GPUs continue to ride the surge in generative‑AI"}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"**Catalysts for Q4 2026** | - **AI‑chip demand** – Nvidia’s data‑center GPUs keep riding the surge in generative‑AI work"}
+[stocksage] {"event":"regular_synthesis","provider":"cerebras-chat","model":"gpt-oss-120b","name":"SynthesisValidationError"}
+[stocksage] {"event":"regular_synthesis","provider":"gemini-chat","model":"gemini-2.5-flash-lite","name":"LlmRequestError","vendor":"gemini","status":429,"retryAfterMs":5000}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"Nvidia’s upcoming quarter will hinge on a few key drivers and potential headwinds. | - **AI‑accelerator sales**: The com"}
+[stocksage] {"event":"regular_synthesis","provider":"groq-oss","model":"openai/gpt-oss-20b","name":"LlmRequestError","vendor":"groq","status":429,"retryAfterMs":8000}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"degraded_from_data","durationMs":11554,"retrievalMs":1400,"providerCount":3,"sourceCount":1}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":["risk","outlook"]}
+
+>>> USER: Research Nvidia's next-quarter catalysts and risks.
+<<< STOCKSAGE (11.6s, live, deep-offer:disabled):
+    ### Market snapshot
+    - **NVDA** — $202.38 as of Jul 17; latest session -2.45%.
+    
+    ### Best current sources
+    - **Nvidia** — SK Hynix's Nasdaq listing gives U.S. — The Motley Fool (2026-07-15) [The Motley Fool](https://www.fool.com/investing/2026/07/15/sk-hynix-controls-more-than-half-the-hbm-market-nv/?source=iedfolrf0000001)
+    
+    This is the current dated picture; coverage is partial.

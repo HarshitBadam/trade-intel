@@ -61,7 +61,7 @@ export async function answerRegularChat(
     entities.some((entity) => /^Fortune (?:100|500)$/.test(entity.name))
   ) {
     return {
-      text: "I can’t verify the current Fortune revenue ranking from a sufficiently recent source right now, and I’d rather not guess at the names or the order — the list changes every year. Ask me again shortly and I should be able to pull it.",
+      text: "A sufficiently recent source for the current Fortune revenue ranking was not available, so the names and order are omitted rather than guessed. Try again shortly for a fresh ranking.",
       citationUrls: [],
       retryable: true,
       live,
@@ -178,7 +178,7 @@ export async function answerRegularChat(
           unmetCriteria.length > 0
             ? `The user specifically asked about ${unmetCriteria.join(
                 " and "
-              )}, and your draft never addressed it. Address it with the data you were given, or say plainly in one clause what you couldn't verify — do not answer a different question. `
+              )}, and your draft never addressed it. Address it with the data you were given, or use one neutral clause naming what was not present in the available reporting — do not answer a different question. `
             : "";
         const repeated = repeatedPriorPhrase(draft, priorReplies, entities);
         return `Rewrite that answer. ${offSubject}${criteriaGap}${

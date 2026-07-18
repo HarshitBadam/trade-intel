@@ -1,4 +1,4 @@
-import type { FinanceEntity } from "./types";
+import type { EvidenceSource, FinanceEntity } from "./types";
 import type { ChatQuote } from "@/lib/market-data";
 
 const GENERIC_ENTITY_TERMS = new Set([
@@ -225,6 +225,35 @@ export function proxyMisrepresentation(
     if (!disclosed) {
       return `${quote.proxySymbol} must be identified as an ETF/ADR proxy`;
     }
+    const unlabeledProxyFigure = text
+      .split(/(?<=[.!?])\s+|\n+/)
+      .find(
+        (unit) =>
+          new RegExp(`\\b${symbol}\\b`, "i").test(unit) &&
+          /(?:[$€£]\s*\d|\d+(?:\.\d+)?\s*%)/.test(unit) &&
+          !new RegExp(
+            `\\b${symbol}\\b[^\\n.!?]{0,90}\\b${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy\\b`,
+            "i"
+          ).test(unit)
+      );
+    if (unlabeledProxyFigure) {
+      return `${quote.proxySymbol} figure must label the instrument as a ${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy in the same line`;
+    }
+    if (
+      quote.proxyKind === "adr" &&
+      !/\bnot the underlying Australian listing return\b/i.test(text)
+    ) {
+      return `${quote.proxySymbol} must say its return is not the underlying Australian listing return`;
+    }
+    if (quote.ticker === "AXJO" && quote.proxySymbol === "EWA") {
+      if (
+        !/\bEWA,\s+an Australian-market ETF proxy\b/i.test(text) ||
+        !/\bthis is not an ASX index return\b/i.test(text) ||
+        /\b(?:proxy for (?:the )?ASX|ASX proxy)\b/i.test(text)
+      ) {
+        return "EWA must be described as an Australian-market ETF proxy, with an explicit statement that this is not an ASX index return";
+      }
+    }
     const entity = entities.find((candidate) => candidate.ticker === quote.ticker);
     if (!entity) continue;
     const aliases =
@@ -266,6 +295,75 @@ export function proxyMisrepresentation(
     if (offending) return offending.trim().slice(0, 160);
   }
   return null;
+}
+
+const RESEARCH_CLAIM =
+  /\b(?:guidance|demand|orders?|AI workloads?|rollout|launch(?:es|ed|ing)?|refresh|next[- ]gen(?:eration)?|new (?:product|chip|platform)|chip releases?|gpu makers?|supply(?: chain)?|bottlenecks?|partnership|component availability|pricing power|cap[- ]?ex|capital spending|enterprise (?:tech )?spending|antitrust|regulat(?:ion|ory|ors?|ory scrutiny)|litigation|investigation|earnings report|earnings (?:approaches|date)|adoption|market share|competitive pressure|competitors? capture|catalysts?|headwinds?|tailwinds?|technical pullback|run-up|market volatility|company-specific news|selling pressure|driving the stock|reaction to|expected to|keep(?:s|ing)? (?:expanding|growing)|(?:could|would|may|might|will|likely to) (?:boost|curb|drive|erode|impose|lift|reinforce|weigh|lead|increase|decrease|raise|reduce|support|pressure))\b/i;
+const RECENCY_CLAIM =
+  /\b(?:latest|recent|new|next[- ]gen(?:eration)?|upcoming|next quarter|this quarter|currently|ongoing|approaches)\b/i;
+const INVESTMENT_DIRECTION =
+  /\b(?:buying opportunity|selling opportunity|buy(?:ing)? the dip|time to buy|time to sell|should buy|should sell|a buy\b|a sell\b|accumulate|dump the stock)\b/i;
+const ANALYTICAL_INFERENCE =
+  /\b(?:this (?:suggests|implies|indicates)|an inference from|on that evidence|based on (?:that|these cited facts))\b/i;
+
+function claimUnits(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .flatMap((line) => line.split(/(?<=[.!?])\s+/))
+    .map((unit) => unit.trim())
+    .filter(
+      (unit) =>
+        unit.length > 0 &&
+        !/^(?:#{1,6}\s*)?(?:\*\*)?(?:bull case|bear case|risks?|catalysts?|outlook|verdict|evidence checked)(?:\*\*)?:?\s*$/i.test(
+          unit
+        )
+    );
+}
+
+function hasValidSourceId(unit: string, sources: EvidenceSource[]): boolean {
+  const ids = new Set(sources.map((source) => source.id.toUpperCase()));
+  return [...unit.matchAll(/\[(S\d+)\]/gi)].some((match) =>
+    ids.has(match[1].toUpperCase())
+  );
+}
+
+/**
+ * Practical publication floor for current research prose. Citation validity is
+ * checked per sentence/bullet, so one sourced bullet cannot launder unrelated
+ * model-memory claims elsewhere in the answer.
+ */
+export function uncitedResearchClaimUnits(
+  text: string,
+  sources: EvidenceSource[]
+): string[] {
+  return claimUnits(text).filter((unit) => {
+    if (
+      !RESEARCH_CLAIM.test(unit) &&
+      !(RECENCY_CLAIM.test(unit) && /\b(?:product|event|earnings|report|chip|development|risk|outlook)\b/i.test(unit))
+    ) {
+      return false;
+    }
+    if (hasValidSourceId(unit, sources)) return false;
+    // An inference is acceptable only when its cited premises travel with it.
+    if (ANALYTICAL_INFERENCE.test(unit) && hasValidSourceId(unit, sources)) {
+      return false;
+    }
+    return true;
+  });
+}
+
+export function investmentDirectionClaim(text: string): string | null {
+  return claimUnits(text).find((unit) => INVESTMENT_DIRECTION.test(unit)) ?? null;
+}
+
+export function firstPersonVerificationLimitation(text: string): string | null {
+  return (
+    claimUnits(text).find((unit) =>
+      /\bI\s+(?:couldn['’]?t|could not|can['’]?t|cannot)\s+(?:verify|confirm|find|check|pull|get)\b/i.test(
+        unit
+      )
+    ) ?? null
+  );
 }
 
 const CRITERION_EVIDENCE: Record<string, RegExp> = {
