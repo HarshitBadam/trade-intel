@@ -2,6 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { validateDeepResearchResult } from "../src/lib/stocksage/deep-validation";
 import type { DeepResearchSnapshot } from "../src/lib/stocksage/deep-snapshot";
+import type { EvidenceSource } from "../src/lib/stocksage/types";
+
+function source(
+  id: string,
+  url: string,
+  outlet: string,
+  criteria: string[]
+): EvidenceSource {
+  return {
+    id,
+    kind: "tavily",
+    title: `${outlet} Nvidia report`,
+    outlet,
+    url,
+    excerpt: "Current reporting relevant to Nvidia investors.",
+    entityIds: ["ticker:NVDA"],
+    criteria,
+    retrievedAt: new Date().toISOString(),
+  };
+}
 
 test("deep snapshot is signed, bounded, immutable, and tamper resistant", async () => {
   process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET =
@@ -99,6 +119,107 @@ test("deep pre-flight keeps a quote-only offer disabled with clear copy", async 
   assert.ok(created.offer);
   assert.equal(created.offer?.available, false);
   assert.match(created.offer?.unavailableReason ?? "", /refreshing/i);
+});
+
+test("deep availability distinguishes broad reports from focused questions", async () => {
+  const {
+    assessDeepResearchAvailability,
+    createDeepResearchOffer,
+    isDeepResearchOfferAvailable,
+  } = await import("../src/lib/stocksage/deep-snapshot");
+  const skHynix = source(
+    "S1",
+    "https://example.com/sk-hynix-hbm?source=feed",
+    "Example Markets",
+    ["risk", "outlook"]
+  );
+  const broadQuestion = "Research Nvidia's next-quarter catalysts and risks.";
+  const narrow = assessDeepResearchAvailability({
+    question: broadQuestion,
+    criteria: ["risk", "outlook"],
+    sources: [skHynix],
+  });
+  assert.deepEqual(narrow, {
+    available: false,
+    reason: "insufficient_independent_sources",
+    distinctSourceCount: 1,
+    coveredCriteria: ["risk", "outlook"],
+  });
+
+  const broad = assessDeepResearchAvailability({
+    question: broadQuestion,
+    criteria: ["risk", "outlook"],
+    sources: [
+      skHynix,
+      source(
+        "S2",
+        "https://another.example/nvidia-product-cycle",
+        "Another Outlet",
+        ["outlook", "risk"]
+      ),
+    ],
+  });
+  assert.equal(broad.available, true);
+  assert.equal(broad.reason, "available_broad_evidence");
+  assert.equal(broad.distinctSourceCount, 2);
+
+  const focused = assessDeepResearchAvailability({
+    question: "What regulatory risk matters most for Nvidia?",
+    criteria: ["risk"],
+    sources: [source("S1", "https://example.com/regulation", "Example", ["risk"])],
+  });
+  assert.deepEqual(focused, {
+    available: true,
+    reason: "available_single_criterion",
+    distinctSourceCount: 1,
+    coveredCriteria: ["risk"],
+  });
+
+  const offer = createDeepResearchOffer({
+    question: broadQuestion,
+    reply: { text: "A regular answer remains available.", live: true },
+    entities: [
+      {
+        id: "ticker:NVDA",
+        name: "Nvidia",
+        query: "Nvidia",
+        ticker: "NVDA",
+        market: "us",
+      },
+    ],
+    state: {
+      version: 1,
+      revision: 1,
+      entities: [],
+      explicitEntitySet: ["ticker:NVDA"],
+      criteria: ["risk", "outlook"],
+    },
+    sources: [skHynix],
+    asOf: new Date().toISOString(),
+  });
+  assert.equal(offer.offer?.available, false);
+  assert.equal(
+    offer.offer?.unavailableReason,
+    "live research is refreshing — try again shortly"
+  );
+  assert.equal(isDeepResearchOfferAvailable(offer.offer), false);
+});
+
+test("deep availability requires coverage of every requested report criterion", async () => {
+  const { assessDeepResearchAvailability } = await import(
+    "../src/lib/stocksage/deep-snapshot"
+  );
+  const result = assessDeepResearchAvailability({
+    question: "Research Nvidia's catalysts and risks.",
+    criteria: ["risk", "outlook"],
+    sources: [
+      source("S1", "https://one.example/risk", "One", ["risk"]),
+      source("S2", "https://two.example/competition", "Two", ["risk"]),
+    ],
+  });
+  assert.equal(result.available, false);
+  assert.equal(result.reason, "missing_criteria_coverage");
+  assert.deepEqual(result.coveredCriteria, ["risk"]);
 });
 
 test("deep result requires every entity and verifiable citations", () => {

@@ -18,10 +18,13 @@ import {
 } from "./deep-snapshot";
 import { unsupportedFigures } from "./figures";
 import {
+  firstPersonVerificationLimitation,
   hasSmuggledOffTopicTask,
   hedgedEstimateClaim,
+  investmentDirectionClaim,
   performsSmuggledTask,
   proxyMisrepresentation,
+  uncitedResearchClaimUnits,
 } from "./regular-guards";
 import { roundFiguresForDisplay } from "./rounding";
 import { runIdempotentDeepWork } from "./deep-store";
@@ -47,13 +50,17 @@ function quoteBlock(context: Awaited<ReturnType<typeof executeEvidencePlan>>): s
   return context.quotes
     .map(
       (quote) =>
-        `${quote.proxySymbol ? `${quote.proxySymbol} ${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy for requested ${quote.ticker}` : quote.ticker}: as of ${quote.asOf}${quote.eod ? " close (end-of-day)" : ""}, ${
+        `${quote.proxySymbol ? `${quote.proxySymbol} (${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy for requested ${quote.ticker})` : quote.ticker}: as of ${quote.asOf}${quote.eod ? " close (end-of-day)" : ""}, ${
           quote.isIndex
             ? `${quote.price.toFixed(2)} points`
             : `$${quote.price.toFixed(2)}`
         }${quote.sourceNote ? ` (${quote.sourceNote})` : ""}, day ${percent(quote.dayPct)}, 1W ${percent(quote.weekPct)}, 1M ${percent(quote.monthPct)}, 1Y ${percent(quote.yearPct)}${
           quote.proxySymbol
-            ? `. Attribute every figure to ${quote.proxySymbol}, never to ${quote.ticker} or the underlying index/listing`
+            ? `. Start every quote line with ${quote.proxySymbol}. Attribute every figure to ${quote.proxySymbol}, never to ${quote.ticker} or the underlying index/listing${
+                quote.proxyKind === "adr"
+                  ? '; say "not the underlying Australian listing return"'
+                  : ""
+              }`
             : ""
         }`
     )
@@ -258,6 +265,9 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
     const smuggled = hasSmuggledOffTopicTask(snapshot.question);
     const accept = (candidate: string) =>
       validCitationUrls(candidate, context.sources).length > 0 &&
+      uncitedResearchClaimUnits(candidate, context.sources).length === 0 &&
+      investmentDirectionClaim(candidate) === null &&
+      firstPersonVerificationLimitation(candidate) === null &&
       unsupportedFigures(candidate, user).length === 0 &&
       hedgedEstimateClaim(candidate, user) === null &&
       proxyMisrepresentation(candidate, entities, context.quotes) === null &&
@@ -282,6 +292,12 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
             entities,
             context.quotes
           );
+          const uncitedClaims = uncitedResearchClaimUnits(
+            draft,
+            context.sources
+          );
+          const direction = investmentDirectionClaim(draft);
+          const limitation = firstPersonVerificationLimitation(draft);
           return `Rewrite that answer. ${
             invented.length > 0
               ? `These figures are not in the quotes or sources you were given, so remove them without substituting other numbers from memory: ${invented.join(", ")}. `
@@ -293,6 +309,20 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
           }${
             proxyError
               ? `Correct this proxy-data misrepresentation: "${proxyError}". Name the ETF/ADR and attribute all proxy figures to it, not the underlying index or local listing. `
+              : ""
+          }${
+            uncitedClaims.length > 0
+              ? `These research sentences or bullets need a valid [S#] in the same unit or must be removed: ${uncitedClaims
+                  .map((unit) => `"${unit}"`)
+                  .join(" | ")}. A citation elsewhere does not support them. `
+              : ""
+          }${
+            direction
+              ? `Remove this investment-direction wording and describe the evidence neutrally: "${direction}". `
+              : ""
+          }${
+            limitation
+              ? `Replace this first-person verification limitation with neutral gap wording: "${limitation}". `
               : ""
           }${
             smuggled && performsSmuggledTask(draft)

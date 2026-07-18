@@ -7,14 +7,17 @@ import {
   resetStooqCache,
 } from "../src/lib/market-data/stooq";
 import {
+  firstPersonVerificationLimitation,
   hedgedEstimateClaim,
+  investmentDirectionClaim,
   proxyMisrepresentation,
+  uncitedResearchClaimUnits,
 } from "../src/lib/stocksage/regular-guards";
 import { buildFallbackReply } from "../src/lib/stocksage/regular-fallback";
 import { retrieveMarketProxy } from "../src/lib/stocksage/retrieve";
 import { roundFiguresForDisplay } from "../src/lib/stocksage/rounding";
 import type { ChatQuote } from "../src/lib/market-data/types";
-import type { EvidenceQuery } from "../src/lib/stocksage/types";
+import type { EvidenceQuery, EvidenceSource } from "../src/lib/stocksage/types";
 
 const STOOQ_FIXTURE = `Date,Open,High,Low,Close,Volume
 2025-12-30,98,101,97,100,1000
@@ -167,8 +170,7 @@ test("fallback labels ETF returns without representing them as index returns", (
       },
     }
   );
-  assert.match(reply.text, /\*\*ONEQ \(ETF proxy/);
-  assert.match(reply.text, /ETF proxy for Nasdaq Composite/);
+  assert.match(reply.text, /\*\*ONEQ \(Nasdaq Composite ETF proxy\)/);
   assert.match(reply.text, /not Nasdaq Composite itself/);
   assert.doesNotMatch(reply.text, /proxy requested for/i);
   assert.doesNotMatch(reply.text, /\*\*IXIC\*\* — .*\+12\.50%/);
@@ -182,11 +184,19 @@ test("fallback labels ETF returns without representing them as index returns", (
   );
   assert.equal(
     proxyMisrepresentation(
-      "ONEQ, an ETF proxy for the Nasdaq Composite, is up 12.5% YTD; that is ONEQ's return, not the index return.",
+      "ONEQ (Nasdaq Composite ETF proxy) is up 12.5% YTD; that is ONEQ's return, not the index return.",
       [entity],
       [proxy]
     ),
     null
+  );
+  assert.match(
+    proxyMisrepresentation(
+      "ONEQ (Nasdaq Composite proxy) was down 2.97% this week.",
+      [entity],
+      [proxy]
+    ) ?? "",
+    /ETF proxy in the same line/
   );
   const asxEntity = {
     id: "ticker:AXJO",
@@ -226,9 +236,9 @@ test("fallback labels ETF returns without representing them as index returns", (
       },
     }
   );
-  assert.match(ewaReply.text, /EWA \(Australian-market ETF proxy\)/);
+  assert.match(ewaReply.text, /EWA, an Australian-market ETF proxy/);
   assert.match(ewaReply.text, /tracks broad Australian equities/i);
-  assert.match(ewaReply.text, /not the ASX index itself/i);
+  assert.match(ewaReply.text, /not an ASX index return/i);
   assert.doesNotMatch(ewaReply.text, /proxy requested for AXJO/i);
   assert.match(
     proxyMisrepresentation(
@@ -240,12 +250,174 @@ test("fallback labels ETF returns without representing them as index returns", (
   );
   assert.equal(
     proxyMisrepresentation(
-      "EWA, a US-listed ETF proxy for broad Australian equities rather than the ASX itself, is up 0.42% today.",
+      "EWA, an Australian-market ETF proxy, rose 0.42% in its latest session. It tracks broad Australian equities; this is not an ASX index return.",
       [asxEntity],
       [ewa]
     ),
     null
   );
+});
+
+test("research grounding is enforced per claim unit", () => {
+  const sources: EvidenceSource[] = [
+    {
+      id: "S1",
+      kind: "tavily",
+      title: "HBM supply",
+      outlet: "Example",
+      publishedAt: "2026-07-15",
+      url: "https://example.com/hbm",
+      excerpt: "SK Hynix supplies HBM.",
+      entityIds: ["ticker:NVDA"],
+      criteria: ["risk"],
+      retrievedAt: "2026-07-16",
+    },
+  ];
+  const draft = [
+    "- HBM supply stability may support availability [S1].",
+    "- An H100 refresh would reinforce the AI narrative.",
+    "- A next-gen Tensor-core launch could lift the stock.",
+    "- Emerging Chinese GPU makers are narrowing the gap.",
+    "- Enterprise capex could slow data-center orders.",
+  ].join("\n");
+  assert.deepEqual(uncitedResearchClaimUnits(draft, sources), [
+    "- An H100 refresh would reinforce the AI narrative.",
+    "- A next-gen Tensor-core launch could lift the stock.",
+    "- Emerging Chinese GPU makers are narrowing the gap.",
+    "- Enterprise capex could slow data-center orders.",
+  ]);
+  assert.deepEqual(
+    uncitedResearchClaimUnits(
+      "- An H100 refresh was reported [S1].\n- A next-gen launch is expected [S1].",
+      sources
+    ),
+    []
+  );
+  assert.deepEqual(
+    uncitedResearchClaimUnits(
+      "The upcoming earnings report will test these catalysts.",
+      sources
+    ),
+    ["The upcoming earnings report will test these catalysts."]
+  );
+  assert.deepEqual(
+    uncitedResearchClaimUnits(
+      "This strategic relationship could lead to increased sales and revenue.",
+      sources
+    ),
+    ["This strategic relationship could lead to increased sales and revenue."]
+  );
+  assert.deepEqual(
+    uncitedResearchClaimUnits(
+      "It could be a technical pullback, a reaction to market volatility, or company-specific news.",
+      []
+    ),
+    [
+      "It could be a technical pullback, a reaction to market volatility, or company-specific news.",
+    ]
+  );
+});
+
+test("publication guards reject investment direction and first-person gaps", () => {
+  assert.match(
+    investmentDirectionClaim("The dip looks like a buying opportunity.") ?? "",
+    /buying opportunity/
+  );
+  assert.match(
+    firstPersonVerificationLimitation(
+      "What I couldn't verify right now: current guidance."
+    ) ?? "",
+    /couldn't verify/
+  );
+  assert.equal(
+    firstPersonVerificationLimitation(
+      "Current guidance was not present in the available reporting."
+    ),
+    null
+  );
+});
+
+test("proxy comparison preserves instruments and requested horizons", () => {
+  const entities = [
+    {
+      id: "ticker:TSLA",
+      name: "Tesla",
+      query: "Tesla",
+      ticker: "TSLA",
+      market: "us" as const,
+    },
+    {
+      id: "ticker:IXIC",
+      name: "Nasdaq Composite",
+      query: "Nasdaq Composite",
+      ticker: "IXIC",
+      market: "index" as const,
+    },
+  ];
+  const quotes: ChatQuote[] = [
+    {
+      ...quote("TSLA", -15),
+      weekPct: -6,
+      mtdPct: -9,
+      monthPct: -5,
+    },
+    {
+      ...quote("IXIC", 10),
+      proxySymbol: "ONEQ",
+      proxyKind: "etf",
+      weekPct: -2,
+      mtdPct: -3,
+      monthPct: -4,
+    },
+  ];
+  const context = {
+    quotes,
+    fundamentals: [],
+    sources: [],
+    coverage: {},
+    plan: {
+      version: 1 as const,
+      route: "comparison" as const,
+      asOf: "2026-07-16",
+      queries: [proxyQuery(["TSLA", "IXIC"])],
+      requiredEntityIds: [],
+      criteria: [],
+    },
+  };
+  const ytd = buildFallbackReply(
+    { message: "Compare Tesla with IXIC this year.", history: [] },
+    {
+      route: "comparison",
+      reasonCode: "test",
+      retrievalRequired: true,
+      deepEligible: false,
+    },
+    entities,
+    context
+  ).text;
+  assert.match(ytd, /ONEQ \(Nasdaq Composite ETF proxy\).*\$100\.00.*YTD \+10\.00%/);
+  assert.doesNotMatch(ytd, /\*\*IXIC\*\* — \$100\.00/);
+  assert.match(ytd, /ONEQ .* led TSLA .* over YTD/i);
+  assert.doesNotMatch(ytd, /latest session/i);
+
+  const multi = buildFallbackReply(
+    {
+      message: "Compare this week, month to date, and trailing month.",
+      history: [],
+    },
+    {
+      route: "comparison",
+      reasonCode: "test",
+      retrievalRequired: true,
+      deepEligible: false,
+    },
+    entities,
+    context
+  ).text;
+  assert.match(multi, /over one week/i);
+  assert.match(multi, /over month to date/i);
+  assert.match(multi, /over trailing month/i);
+  assert.doesNotMatch(multi, /over latest session/i);
 });
 
 test("hedged estimate guard rejects unsupported performance guesses only", () => {
