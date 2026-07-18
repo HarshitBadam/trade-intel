@@ -99,6 +99,65 @@ test("social-only recovery after finance uses zero providers and keeps state", a
   assert.equal(new Set(replies).size, replies.length);
 });
 
+test("creative request and farewell bypass inherited finance state", async () => {
+  const finance = await answerChat(request("What's the latest Nvidia news?"), {
+    retrievalProviders: setup().providers,
+  });
+  const history = [
+    { role: "user" as const, text: "What's the latest Nvidia news?" },
+    { role: "ai" as const, text: finance.text },
+  ];
+
+  const creativeSetup = setup();
+  const creative = await answerChat(
+    request("Write a haiku about Nvidia's price.", {
+      state: finance.state,
+      history,
+    }),
+    { retrievalProviders: creativeSetup.providers }
+  );
+  assert.match(creative.text, /financial markets/i);
+  assert.doesNotMatch(creative.text, /fresh market data|try again|research deeper/i);
+  assert.equal(creative.deepResearch, undefined);
+  assert.equal(creative.dataStatus, "full");
+  assert.deepEqual(creativeSetup.calls, { quotes: 0, astra: 0, tavily: 0 });
+  assert.equal(creative.state?.entities[0]?.ticker, "NVDA");
+
+  const farewellSetup = setup();
+  const farewell = await answerChat(
+    request("All good then, sayonara.", {
+      state: creative.state,
+      history: [
+        ...history,
+        { role: "user", text: "Write a haiku about Nvidia's price." },
+        { role: "ai", text: creative.text },
+      ],
+    }),
+    { retrievalProviders: farewellSetup.providers }
+  );
+  assert.match(farewell.text, /sayonara|catch you|take it easy|later|all the best|go well/i);
+  assert.doesNotMatch(farewell.text, /fresh market data|try again|research deeper/i);
+  assert.equal(farewell.deepResearch, undefined);
+  assert.equal(farewell.dataStatus, "full");
+  assert.deepEqual(farewellSetup.calls, { quotes: 0, astra: 0, tavily: 0 });
+  assert.equal(farewell.state?.entities[0]?.ticker, "NVDA");
+});
+
+test("development follow-up with active entity retrieves evidence", async () => {
+  const state = (
+    await answerChat(request("What's the latest Nvidia news?"), {
+      retrievalProviders: setup().providers,
+    })
+  ).state;
+  const { calls, providers } = setup();
+  await answerChat(
+    request("Which development matters most for investors?", { state }),
+    { retrievalProviders: providers }
+  );
+  assert.equal(calls.astra, 1);
+  assert.equal(calls.tavily, 1);
+});
+
 test("capability questions use the social help path", async () => {
   const { calls, providers } = setup();
   const reply = await answerChat(

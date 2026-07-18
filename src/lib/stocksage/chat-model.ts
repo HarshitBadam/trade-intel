@@ -60,6 +60,9 @@ const TIME_OR_MARKET =
 const CLEARLY_ELSEWHERE =
   /\b(?:joke|poem|essay|story|lyrics|weather|recipe|movie|music|celebrity|football|soccer|cricket|basketball|nba|nfl|afl|dating|crush|girlfriend|boyfriend|ask (?:someone|her|him|them) out|homework|python|javascript|typescript|code|script|derive|gravity|physics)\b/i;
 
+const DATA_SEEKING_FOLLOW_UP =
+  /^(?:(?:and|so|then)\s+)?(?:which developments?\b.*\bmatters?|what\b.*\bmatters?|why(?:\s+(?:does|did|is|was|would|could|that|this|it|so))?\b|what are the (?:main|key) catalysts?|which catalyst\b|what should investors? watch\b)/i;
+
 // A refusal that still performs the task (prints the loop output, states the
 // gravity formula, hands out dating advice) is the leak the audits kept
 // finding. An off-topic decline needs none of these: code punctuation,
@@ -153,6 +156,8 @@ export async function answerWithModel(
     !social &&
     !creativeOnly &&
     (entities.length > 0 ||
+      (resolution.state.entities.length > 0 &&
+        DATA_SEEKING_FOLLOW_UP.test(request.message)) ||
       (!elsewhere && TIME_OR_MARKET.test(request.message)));
   const offTopicTurn =
     !social && !wantsData && (elsewhere || smuggled || creativeOnly);

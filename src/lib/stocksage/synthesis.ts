@@ -22,6 +22,7 @@ import {
   isOpen,
   recordCooldown,
   recordFailure,
+  recordUnavailable,
   recordSuccess,
   type Provider,
 } from "@/lib/breaker";
@@ -178,6 +179,7 @@ export async function synthesizeWithFallback(
       if (remainingMs < 1_000) continue;
       if (
         (await isOpen(candidate.provider)) ||
+        (await isOpen(candidate.quotaProvider)) ||
         (await isCoolingDown(candidate.quotaProvider))
       ) {
         continue;
@@ -242,7 +244,9 @@ export async function synthesizeWithFallback(
           summary.retryAfterMs ?? 60_000
         );
       }
-      if (shouldTripLlmCircuit(error)) {
+      if (summary.status === 404) {
+        await recordUnavailable(candidate.quotaProvider);
+      } else if (shouldTripLlmCircuit(error)) {
         await recordFailure(candidate.provider);
       }
       console.error(

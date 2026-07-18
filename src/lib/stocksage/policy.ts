@@ -317,7 +317,8 @@ export function evaluateDomainPolicy(
     return {
       action: "respond",
       reasonCode: "out_of_scope",
-      response: scopeResponse,
+      response:
+        "I stick to financial markets and company research, so I can’t write the creative piece. I can help with the price move or market context behind the subject.",
     };
   }
   if (SPORTS.test(text) && !COMPANY_ANALYSIS.test(text)) {

@@ -129,6 +129,9 @@ function retryAfterMs(response: Response): number {
 // gpt-oss models emit chain-of-thought unless told not to; other vendors
 // reject those parameters, so they are added per vendor+model.
 function reasoningParams(args: LlmChatArgs): Record<string, unknown> {
+  if (args.vendor === "groq" && /\bqwen\b/.test(args.model)) {
+    return { reasoning_effort: "none", include_reasoning: false };
+  }
   if (!/\bgpt-oss\b/.test(args.model)) return {};
   if (args.vendor === "groq") {
     return { reasoning_effort: "low", include_reasoning: false };

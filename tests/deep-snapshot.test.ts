@@ -66,7 +66,7 @@ test("deep snapshot is signed, bounded, immutable, and tamper resistant", async 
   assert.equal(parseDeepResearchSnapshot(tampered), null);
 });
 
-test("deep pre-flight keeps an unavailable offer disabled with clear copy", async () => {
+test("deep pre-flight keeps a quote-only offer disabled with clear copy", async () => {
   process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET =
     "test-only-snapshot-secret-with-sufficient-length";
   process.env.GROQ_API_KEY = "test-groq-key";
@@ -76,7 +76,7 @@ test("deep pre-flight keeps an unavailable offer disabled with clear copy", asyn
   );
   const created = createDeepResearchOffer({
     question: "What is new with Rivian?",
-    reply: { text: "Rivian is being tracked.", live: false },
+    reply: { text: "Rivian is trading at a current quoted price.", live: true },
     entities: [
       {
         id: "ticker:RIVN",

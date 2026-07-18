@@ -20,9 +20,11 @@ import {
 } from "./chat-shared";
 import {
   classifyHighStakes,
+  evaluateDomainPolicy,
   hardSafetyFloor,
   pickHighStakesReply,
 } from "./policy";
+import { creativeRequestOnly } from "./regular-guards";
 import {
   CASUAL_ACKNOWLEDGEMENT,
   FAREWELL,
@@ -97,6 +99,21 @@ export async function answerChat(
     request.state,
     request.history
   );
+  // A creative request remains outside the product lane even when its subject
+  // is an inherited or explicitly named stock. This must run before the model
+  // path so an outage cannot turn it into market-data boilerplate.
+  if (creativeRequestOnly(normalized)) {
+    const policy = evaluateDomainPolicy(normalized, []);
+    return immediateResponse({
+      text:
+        policy.response ??
+        "I stick to financial markets and company research, so I can’t write the creative piece.",
+      state: socialResolution.state,
+      route: "out_of_scope",
+      reasonCode: "out_of_scope",
+      startedAt,
+    });
+  }
   const socialDecision = routeMessage({
     message: normalized,
     entities: socialResolution.entities,

@@ -137,6 +137,74 @@ test("today question uses bounded planned current providers", async () => {
   assert.equal(context.sources.length, 2);
 });
 
+test("risk and catalyst research keeps relevant Astra evidence", async () => {
+  const initial = resolveConversationState(
+    "What's the latest cited Nvidia news?",
+    undefined,
+    []
+  );
+  const compared = resolveConversationState(
+    "Compare Nvidia and AMD",
+    initial.state,
+    []
+  );
+  const resolution = resolveConversationState(
+    "Research Nvidia's next-quarter catalysts and risks.",
+    compared.state,
+    []
+  );
+  const nvidia = resolution.entities.find((entity) => entity.ticker === "NVDA");
+  assert.ok(nvidia);
+  const plan = planEvidence({
+    route: "current_finance",
+    message: "Research Nvidia's next-quarter catalysts and risks.",
+    entities: [nvidia],
+    state: { ...resolution.state, entities: [nvidia] },
+    asOf: "2026-07-18T00:00:00.000Z",
+  });
+  const astra = plan.queries.find((query) => query.provider === "astra");
+  assert.equal(astra?.freshnessDays, 60);
+  assert.ok(astra?.criteria.includes("risk"));
+  assert.ok(astra?.criteria.includes("outlook"));
+
+  const context = await executeEvidencePlan({
+    plan,
+    entities: [nvidia],
+    providers: {
+      quotes: async () => [],
+      astra: async (query) => [
+        {
+          kind: "astra",
+          title: "Nvidia Blackwell shipments accelerate",
+          outlet: "Example Markets",
+          publishedAt: "2026-07-17T00:00:00.000Z",
+          url: "https://example.com/nvidia-blackwell",
+          excerpt:
+            "Nvidia said Blackwell demand and shipments are accelerating into the next product cycle.",
+          entityIds: query.entityIds,
+          criteria: query.criteria,
+          queryId: query.id,
+        },
+        {
+          kind: "astra",
+          title: "Nokia outlines network product roadmap",
+          outlet: "Example Markets",
+          publishedAt: "2026-07-17T00:00:00.000Z",
+          url: "https://example.com/nokia-roadmap",
+          excerpt:
+            "Nokia discussed demand and named Nvidia once among many technology partners.",
+          entityIds: query.entityIds,
+          criteria: query.criteria,
+          queryId: query.id,
+        },
+      ],
+      tavily: async () => [],
+    },
+  });
+  assert.equal(context.sources.length, 1);
+  assert.match(context.sources[0]?.title ?? "", /Nvidia Blackwell/);
+});
+
 test("Astra reader consumes nested metadata and surfaces stored enrichment", () => {
   const input = astraInput(
     {
@@ -548,6 +616,131 @@ test("fallback renders MTD separately from trailing month in multi-window asks",
   assert.match(reply.text, /one week \+3\.00%/i);
   assert.match(reply.text, /month to date \+1\.50%/i);
   assert.match(reply.text, /trailing month \+4\.00%/i);
+});
+
+test("degraded comparison leads with side-by-side figures and conclusion", () => {
+  const resolution = resolveConversationState(
+    "Compare Apple and Microsoft",
+    undefined,
+    []
+  );
+  const context = {
+    quotes: [
+      {
+        ticker: "AAPL",
+        price: 210,
+        asOf: "2026-07-17",
+        dayPct: 1.2,
+        fewDaysPct: 2,
+        weekPct: 3,
+        monthPct: 4,
+        yearPct: 5,
+      },
+      {
+        ticker: "MSFT",
+        price: 510,
+        asOf: "2026-07-17",
+        dayPct: 0.4,
+        fewDaysPct: 1,
+        weekPct: 2,
+        monthPct: 3,
+        yearPct: 6,
+      },
+    ],
+    fundamentals: [
+      {
+        ticker: "AAPL",
+        asOf: "2026-07-17",
+        peTtm: 31.2,
+        revenueGrowthTtmYoy: 5.1,
+        beta: 1.1,
+        earnings: null,
+      },
+      {
+        ticker: "MSFT",
+        asOf: "2026-07-17",
+        peTtm: 36.4,
+        revenueGrowthTtmYoy: 15.2,
+        beta: 0.9,
+        earnings: null,
+      },
+    ],
+    sources: [],
+    coverage: {
+      "ticker:AAPL": "covered" as const,
+      "ticker:MSFT": "covered" as const,
+    },
+    plan: planEvidence({
+      route: "comparison",
+      message: "Compare Apple and Microsoft",
+      entities: resolution.entities,
+      state: resolution.state,
+    }),
+  };
+  const reply = buildFallbackReply(
+    { message: "Compare Apple and Microsoft", history: [] },
+    {
+      route: "comparison",
+      reasonCode: "degraded_from_data",
+      retrievalRequired: true,
+      deepEligible: false,
+    },
+    resolution.entities,
+    context
+  );
+  assert.match(reply.text, /^### Apple vs Microsoft/);
+  assert.match(reply.text, /\*\*AAPL\*\*[\s\S]*\$210\.00[\s\S]*P\/E 31\.2x/);
+  assert.match(reply.text, /\*\*MSFT\*\*[\s\S]*\$510\.00[\s\S]*P\/E 36\.4x/);
+  assert.match(reply.text, /AAPL led MSFT by 0\.80 percentage points/i);
+  assert.doesNotMatch(reply.text, /strongest available read|valuation and recent/i);
+});
+
+test("blended degraded fallback declines math without leaking its result", () => {
+  const resolution = resolveConversationState(
+    "What's 2**10 and how's Nvidia doing?",
+    undefined,
+    []
+  );
+  const context = {
+    quotes: [
+      {
+        ticker: "NVDA",
+        price: 180,
+        asOf: "2026-07-17",
+        dayPct: 1.5,
+        fewDaysPct: 2,
+        weekPct: 3,
+        monthPct: 4,
+        yearPct: 5,
+      },
+    ],
+    fundamentals: [],
+    sources: [],
+    coverage: {},
+    plan: planEvidence({
+      route: "current_finance",
+      message: "What's 2**10 and how's Nvidia doing?",
+      entities: resolution.entities,
+      state: resolution.state,
+    }),
+  };
+  const reply = buildFallbackReply(
+    {
+      message: "What's 2**10 and how's Nvidia doing?",
+      history: [],
+    },
+    {
+      route: "current_finance",
+      reasonCode: "degraded_from_data",
+      retrievalRequired: true,
+      deepEligible: false,
+    },
+    resolution.entities,
+    context
+  );
+  assert.match(reply.text, /calculation is outside my finance lane/i);
+  assert.match(reply.text, /\*\*NVDA\*\*[\s\S]*\$180\.00/);
+  assert.doesNotMatch(reply.text, /1024|2\s*\*\*\s*10\s*=/);
 });
 
 test("pronoun current query is grounded with the resolved company", async () => {

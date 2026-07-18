@@ -46,7 +46,7 @@ export const GROQ_API_KEY = process.env.GROQ_API_KEY;
 export const GROQ_ANALYSIS_MODEL =
   process.env.GROQ_ANALYSIS_MODEL ?? "llama-3.1-8b-instant";
 export const GROQ_CHAT_MODEL =
-  process.env.GROQ_CHAT_MODEL ?? "meta-llama/llama-4-scout-17b-16e-instruct";
+  process.env.GROQ_CHAT_MODEL ?? "qwen/qwen3.6-27b";
 export const GROQ_FALLBACK_MODEL =
   process.env.GROQ_FALLBACK_MODEL ?? "llama-3.3-70b-versatile";
 // Groq quotas are per model, so an extra model family is an extra 429 budget.
