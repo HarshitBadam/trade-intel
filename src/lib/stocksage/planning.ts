@@ -10,7 +10,7 @@ import type {
 const DEFAULT_COMPARISON_CRITERIA = [
   "valuation",
   "performance",
-  "outlook",
+  "growth",
   "risk",
 ];
 
@@ -325,5 +325,8 @@ export function planEvidence(args: {
           ? args.state.criteria
           : DEFAULT_COMPARISON_CRITERIA
         : [],
+    explicitCriteria:
+      args.route === "comparison" ? [...args.state.criteria] : currentCriteria,
+    horizon: args.state.horizon,
   };
 }

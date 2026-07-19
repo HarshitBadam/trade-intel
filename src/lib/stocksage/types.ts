@@ -86,6 +86,49 @@ export type EvidenceSource = {
   criteria: string[];
   retrievedAt: string;
   queryId?: string;
+  ticker?: string;
+  event?: string;
+  importance?: string;
+  keyObservations?: string;
+  sentiment?: string;
+  sentimentReasoning?: string;
+  relevanceScore?: number;
+};
+
+export type EvidenceRejectionReason =
+  | "low_provider_score"
+  | "unsafe_authority"
+  | "stale"
+  | "stale_content"
+  | "entity_mismatch"
+  | "missing_entity"
+  | "criterion_mismatch"
+  | "duplicate"
+  | "invalid_source";
+
+export type EvidenceDiagnostics = {
+  inputCount: number;
+  acceptedCount: number;
+  cacheHitCount: number;
+  rejected: Partial<Record<EvidenceRejectionReason, number>>;
+};
+
+export type EvidenceBundle = {
+  version: 1;
+  asOf: string;
+  entityIds: string[];
+  criteria: string[];
+  horizon?: string;
+  quotes: import("@/lib/market-data").ChatQuote[];
+  fundamentals: import("@/lib/market-data").ChatFundamentals[];
+  sources: EvidenceSource[];
+  criteriaCoverage: Record<string, string[]>;
+  freshness: Record<string, string | undefined>;
+  proxyIdentity: Record<
+    string,
+    { symbol: string; kind: "etf" | "adr"; note?: string }
+  >;
+  diagnostics: EvidenceDiagnostics;
 };
 
 export type EvidenceProvider =
@@ -114,6 +157,8 @@ export type EvidencePlan = {
   queries: EvidenceQuery[];
   requiredEntityIds: string[];
   criteria: string[];
+  explicitCriteria?: string[];
+  horizon?: string;
 };
 
 export type RouteDecision = {

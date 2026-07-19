@@ -213,7 +213,16 @@ function comparisonLead(
   entities: FinanceEntity[],
   context: RegularContext
 ): string[] {
-  const windows = comparisonWindows(message);
+  const asksNonPerformanceCriteria =
+    /\b(?:growth|valuation|risk|earnings|dividend|outlook)\b/i.test(message);
+  const asksPerformance =
+    /\b(?:performance|return|price|today|week|month|year|ytd|mtd)\b/i.test(
+      message
+    );
+  const windows =
+    asksNonPerformanceCriteria && !asksPerformance
+      ? []
+      : comparisonWindows(message);
   const rows = entities.flatMap((entity) => {
     const quote = entity.ticker
       ? context.quotes.find((item) => item.ticker === entity.ticker)
@@ -223,7 +232,7 @@ function comparisonLead(
       : undefined;
     if (!quote && !fundamentals) return [];
     const figures: string[] = [];
-    if (quote) {
+    if (quote && windows.length > 0) {
       const periods = windows.map((window) => ({
         label: window.label,
         value: window.value(quote),
@@ -294,6 +303,69 @@ function comparisonLead(
       );
     }
   }
+  const fundamentalRows = rows.flatMap((row) => {
+    const item = row.entity.ticker
+      ? context.fundamentals.find(
+          (fundamental) => fundamental.ticker === row.entity.ticker
+        )
+      : undefined;
+    return item ? [{ entity: row.entity, item }] : [];
+  });
+  const compareMetric = (
+    requested: RegExp,
+    label: string,
+    value: (row: (typeof fundamentalRows)[number]) => number | null,
+    preference: "higher" | "lower"
+  ) => {
+    if (!requested.test(message) || fundamentalRows.length < 2) return;
+    const available = fundamentalRows
+      .map((row) => ({ ...row, value: value(row) }))
+      .filter(
+        (row): row is typeof row & { value: number } =>
+          typeof row.value === "number" && Number.isFinite(row.value)
+      )
+      .sort((left, right) =>
+        preference === "higher"
+          ? right.value - left.value
+          : left.value - right.value
+      );
+    if (available.length < 2) return;
+    const difference = Math.abs(available[0].value - available[1].value);
+    if (difference < 0.05) {
+      lines.push(
+        `${label} is effectively similar at the displayed precision for ${casualName(
+          available[0].entity.name
+        )} and ${casualName(available[1].entity.name)}.`
+      );
+      return;
+    }
+    lines.push(
+      `${casualName(available[0].entity.name)} has the ${
+        preference === "higher" ? "stronger" : "lower"
+      } ${label === "P/E" ? "P/E" : label.toLowerCase()} figure on these numbers.`
+    );
+  };
+  const generic = !/\b(?:growth|valuation|risk|earnings|performance|return)\b/i.test(
+    message
+  );
+  compareMetric(
+    generic ? /./ : /\bgrowth\b/i,
+    "Revenue growth",
+    (row) => row.item.revenueGrowthTtmYoy,
+    "higher"
+  );
+  compareMetric(
+    generic ? /./ : /\bvaluation\b|\bp\/?e\b/i,
+    "P/E",
+    (row) => row.item.peTtm,
+    "lower"
+  );
+  compareMetric(
+    generic ? /./ : /\brisk\b|\bvolatil/i,
+    "Beta",
+    (row) => row.item.beta,
+    "lower"
+  );
   return lines;
 }
 
@@ -392,7 +464,12 @@ export function buildFallbackReply(
       }
     }
   }
-  if (context.sources.length > 0) {
+  const comparisonNeedsArticles =
+    decision.route !== "comparison" ||
+    /\b(?:news|development|event|security|cyber|legal|regulat|lawsuit|catalyst|outlook)\b/i.test(
+      request.message
+    );
+  if (context.sources.length > 0 && comparisonNeedsArticles) {
     if (lines.length > 0) lines.push("");
     const displayedSources =
       decision.route === "comparison"
@@ -457,7 +534,11 @@ export function buildFallbackReply(
     if (missing.length > 0) {
       lines.push(
         "",
-        `Coverage is partial for ${list}; the dated figures and sources above are the reliable portion.`
+        `Coverage is partial for ${list}; ${
+          comparisonNeedsArticles && context.sources.length > 0
+            ? "the dated figures and cited reporting above are the reliable portion"
+            : "the dated figures above are the reliable portion"
+        }.`
       );
     }
   }

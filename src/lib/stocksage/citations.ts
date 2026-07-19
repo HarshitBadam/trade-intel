@@ -12,6 +12,13 @@ export type EvidenceInput = {
   criteria?: string[];
   retrievedAt?: string;
   queryId?: string;
+  ticker?: string;
+  event?: string;
+  importance?: string;
+  keyObservations?: string;
+  sentiment?: string;
+  sentimentReasoning?: string;
+  relevanceScore?: number;
 };
 
 function compact(value: string, limit: number): string {
@@ -93,6 +100,17 @@ export function createEvidenceSources(
       criteria: input.criteria ?? [],
       retrievedAt: input.retrievedAt ?? new Date().toISOString(),
       queryId: input.queryId,
+      ticker: input.ticker,
+      event: input.event ? compact(input.event, 240) : undefined,
+      importance: input.importance ? compact(input.importance, 40) : undefined,
+      keyObservations: input.keyObservations
+        ? compact(input.keyObservations, 500)
+        : undefined,
+      sentiment: input.sentiment ? compact(input.sentiment, 40) : undefined,
+      sentimentReasoning: input.sentimentReasoning
+        ? compact(input.sentimentReasoning, 400)
+        : undefined,
+      relevanceScore: input.relevanceScore,
     });
     if (sources.length >= limit) break;
   }

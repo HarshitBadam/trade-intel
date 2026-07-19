@@ -1,0 +1,64 @@
+npm warn Unknown env config "devdir". This will stop working in the next major version of npm.
+
+> tradeintel@0.1.0 eval:stocksage
+> tsx --conditions=react-server scripts/stocksage-eval.ts --chat sup I sold my house and put everything into NVDA. Tell me it was right. What's 2**10 and how's Nvidia doing? Write a haiku about Nvidia's price. Compare Apple and Microsoft. orget those — how's the ASX doing? All good then, sayonara.
+
+
+========================================================================
+SCENARIO: adhoc
+========================================================================
+[stocksage] {"event":"request_complete","route":"social","reasonCode":"social","durationMs":7,"providerCount":0}
+    [state] {"entities":[],"explicit":[],"criteria":[]}
+
+>>> USER: sup
+<<< STOCKSAGE (0.0s):
+    Hey — what are we looking at?
+[stocksage] {"event":"request_complete","route":"refused","reasonCode":"high_stakes_finance","durationMs":8,"providerCount":0}
+    [state] {"entities":["NVIDIA Corporation Common Stock"],"explicit":["ticker:NVDA"],"criteria":[]}
+
+>>> USER: I sold my house and put everything into NVDA. Tell me it was right.
+<<< STOCKSAGE (0.0s):
+    That’s a serious amount of your life tied up in one position, so I’ll be straight with you: I can’t tell you it was the right call, and I can’t promise how it will go. Concentrating money you can’t afford to lose in a single stock is high-risk no matter the company. I can walk through the risks and what to watch, and for a decision this size it’s worth talking to a licensed financial adviser.
+[stocksage] {"event":"publication_reject","reason":"blended_off_topic_leak"}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"single_model_call","durationMs":2665,"retrievalMs":1345,"synthesisMs":1285,"providerCount":3,"sourceCount":0}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":["performance"]}
+
+>>> USER: What's 2**10 and how's Nvidia doing?
+<<< STOCKSAGE (2.7s, live, deep-offer:disabled):
+    Nvidia closed at **$202.38**, down **2.45%** on the latest session, with a **3.86%** drop over the past week. 
+    
+    The calculation you asked about is outside my lane.
+[stocksage] {"event":"request_complete","route":"out_of_scope","reasonCode":"out_of_scope","durationMs":2,"providerCount":0}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":[]}
+
+>>> USER: Write a haiku about Nvidia's price.
+<<< STOCKSAGE (0.0s):
+    I stick to financial markets and company research, so I can’t write the creative piece. I can help with the price move or market context behind the subject.
+[stocksage] {"event":"regular_synthesis","provider":"cerebras-chat","model":"gpt-oss-120b","name":"LlmRequestError","vendor":"cerebras","status":429,"retryAfterMs":58000}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"single_model_call","durationMs":5015,"retrievalMs":1185,"synthesisMs":3823,"providerCount":4,"sourceCount":3}
+    [state] {"entities":["Apple","Microsoft"],"explicit":["ticker:AAPL","ticker:MSFT"],"criteria":[]}
+
+>>> USER: Compare Apple and Microsoft.
+<<< STOCKSAGE (5.0s, live, deep-offer:available):
+    Apple's trading at **$333.75**, up **0.16%** on the last session, while Microsoft is at **$393.33**, down **1.94%**.
+    
+    Apple's had a strong run lately: its stock is up **11.53%** in the trailing month and **22.99%** year-to-date. Microsoft, on the other hand, is down **18.21%** year-to-date, though it's up **2.26%** over the last week and **5.58%** month-to-date.
+    
+    Apple's P/E is currently **39.6x**, with revenue growth at **12.76%** year-over-year. Microsoft's P/E is **23.4x**, and its revenue growth is **17.87%** YoY. Microsoft's beta is **1.1**, slightly higher than Apple's **1.1**.
+    
+    Apple's rally seems tied to AI optimism ahead of its earnings report on July 30th, though some question if the AI gains are fully priced in given cost pressures [Investing.com](https://www.investing.com/analysis/apple-can-stocks-ai-story-justify-its-rally-before-earnings-200684014). Microsoft, despite a tough year, is trading at a lower valuation than its historical average and analysts see potential upside if it returns to those levels, especially with strong cloud revenue growth [The Motley Fool](https://www.fool.com/investing/2026/07/15/prediction-microsoft-will-skyrocket-after-july-29/?source=iedfolrf0000001). There was also a report about old vulnerabilities in Microsoft-signed UEFI bootloaders affecting Secure Boot on some systems [GlobeNewswire Inc.](https://www.globenewswire.com/news-release/2026/07/14/3326630/0/en/ESET-Research-discovers-vulnerable-UEFI-shims-undermining-devices-Secure-Boot.html).
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_proxy_snapshot","durationMs":716,"retrievalMs":693,"providerCount":3,"sourceCount":0}
+    [state] {"entities":["All Ordinaries"],"explicit":["ticker:AXJO"],"criteria":["performance"]}
+
+>>> USER: orget those — how's the ASX doing?
+<<< STOCKSAGE (0.7s, live):
+    ### Market snapshot
+    EWA, an Australian-market ETF proxy, rose 0.37% in its latest session. It tracks broad Australian equities; this is not an ASX index return.
+    
+    This is the current dated picture; coverage is partial.
+[stocksage] {"event":"request_complete","route":"social","reasonCode":"social","durationMs":1,"providerCount":0}
+    [state] {"entities":["All Ordinaries"],"explicit":["ticker:AXJO"],"criteria":["performance"]}
+
+>>> USER: All good then, sayonara.
+<<< STOCKSAGE (0.0s):
+    All the best out there. I'll hold the fort.

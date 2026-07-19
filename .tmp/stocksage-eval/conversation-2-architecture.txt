@@ -1,0 +1,73 @@
+
+> tradeintel@0.1.0 eval:stocksage
+> tsx --conditions=react-server scripts/stocksage-eval.ts --chat How's the ASX done today? Compare Macquarie with the Australian big four. Which has performed best this year? What about the other big four? Compare Tesla with IXIC this year. Compare this week, month to date, and trailing month.
+
+
+========================================================================
+SCENARIO: adhoc
+========================================================================
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_proxy_snapshot","durationMs":1292,"retrievalMs":1271,"providerCount":3,"sourceCount":0}
+    [state] {"entities":["All Ordinaries"],"explicit":["ticker:AXJO"],"horizon":"today","criteria":["performance"]}
+
+>>> USER: How's the ASX done today?
+<<< STOCKSAGE (1.3s, live):
+    ### Market snapshot
+    EWA, an Australian-market ETF proxy, rose 0.37% in its latest session. It tracks broad Australian equities; this is not an ASX index return.
+    
+    This is the current dated picture; coverage is partial.
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_proxy_comparison","durationMs":2979,"retrievalMs":2945,"providerCount":7,"sourceCount":0}
+    [state] {"entities":["Macquarie Group","Commonwealth Bank","National Australia Bank","ANZ Group","Westpac"],"explicit":["ticker:MQG","ticker:CBA","ticker:NAB","ticker:ANZ","ticker:WBC"],"criteria":[]}
+
+>>> USER: Compare Macquarie with the Australian big four.
+<<< STOCKSAGE (3.0s, live, deep-offer:disabled):
+    ### Macquarie Group vs Commonwealth Bank vs National Australia Bank vs ANZ Group vs Westpac
+    - **MQBKY (Macquarie Group ADR proxy)** — $181.51 at Jul 17; latest session +1.06%. These are MQBKY figures, not the underlying Australian listing return.
+    - **CMWAY (Commonwealth Bank ADR proxy)** — $120.73 at Jul 17; latest session +0.01%. These are CMWAY figures, not the underlying Australian listing return.
+    - **NABZY (National Australia Bank ADR proxy)** — $13.96 at Jul 17; latest session +0.72%. These are NABZY figures, not the underlying Australian listing return.
+    - **ANZGY (ANZ Group ADR proxy)** — $25.26 at Jul 17; latest session +0.08%. These are ANZGY figures, not the underlying Australian listing return.
+    - **WBKCY (Westpac ADR proxy)** — $53.26 at Jul 17; latest session +1.97%. These are WBKCY figures, not the underlying Australian listing return.
+    WBKCY (Westpac ADR proxy) led MQBKY (Macquarie Group ADR proxy) by 0.91 percentage points over latest session.
+    
+    Coverage is partial for Macquarie Group, Commonwealth Bank, National Australia Bank, ANZ Group and Westpac; the dated figures above are the reliable portion.
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_numeric_ranking","durationMs":304,"retrievalMs":300,"providerCount":7,"sourceCount":0}
+    [state] {"entities":["Macquarie Group","Commonwealth Bank","National Australia Bank","ANZ Group","Westpac"],"explicit":["ticker:MQG","ticker:CBA","ticker:NAB","ticker:ANZ","ticker:WBC"],"horizon":"this year","criteria":[]}
+
+>>> USER: Which has performed best this year?
+<<< STOCKSAGE (0.3s, live):
+    1. **MQBKY (Macquarie Group ADR proxy)** — +33.99% YTD (MQBKY return, not the underlying Australian listing return)
+    2. **CMWAY (Commonwealth Bank ADR proxy)** — +13.35% YTD (CMWAY return, not the underlying Australian listing return)
+    3. **ANZGY (ANZ Group ADR proxy)** — +4.29% YTD (ANZGY return, not the underlying Australian listing return)
+    4. **NABZY (National Australia Bank ADR proxy)** — -0.78% YTD (NABZY return, not the underlying Australian listing return)
+    5. **WBKCY (Westpac ADR proxy)** — -14.06% YTD (WBKCY return, not the underlying Australian listing return)
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"zero_data_floor","durationMs":121,"retrievalMs":119,"providerCount":4,"sourceCount":0}
+    [state] {"entities":["Deloitte","PwC","EY","KPMG"],"explicit":["name:deloitte","name:pwc","name:ey","name:kpmg"],"horizon":"this year","criteria":[]}
+
+>>> USER: What about the other big four?
+<<< STOCKSAGE (0.1s, deep-offer:disabled):
+    Deloitte, PwC, EY and KPMG are privately held, so there are no public share prices to compare. Current company reporting is temporarily unavailable; try again shortly for a news- and business-based comparison.
+[stocksage] {"event":"evidence_diagnostics","accepted":2,"cacheHits":2,"rejected":{"entity_mismatch":1}}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_proxy_comparison","durationMs":774,"retrievalMs":770,"providerCount":5,"sourceCount":2}
+    [state] {"entities":["Tesla","Nasdaq Composite"],"explicit":["ticker:TSLA","ticker:IXIC"],"horizon":"this year","criteria":[]}
+
+>>> USER: Compare Tesla with IXIC this year.
+<<< STOCKSAGE (0.8s, live, deep-offer:disabled):
+    ### Tesla vs Nasdaq Composite
+    - **TSLA** — $380.90 at Jul 17; YTD -15.32%; P/E 370.4x; revenue growth +2.3%; beta 1.81.
+    - **ONEQ (Nasdaq Composite ETF proxy)** — $100.55 at Jul 17; YTD +10.19%. These are ONEQ figures, not the underlying index return.
+    ONEQ (Nasdaq Composite ETF proxy) led TSLA by 25.51 percentage points over YTD.
+    
+    Coverage is partial for Nasdaq Composite; the dated figures above are the reliable portion.
+[stocksage] {"event":"evidence_diagnostics","accepted":2,"cacheHits":2,"rejected":{"entity_mismatch":1}}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_proxy_comparison","durationMs":577,"retrievalMs":573,"providerCount":5,"sourceCount":2}
+    [state] {"entities":["Tesla","Nasdaq Composite"],"explicit":["ticker:TSLA","ticker:IXIC"],"horizon":"this week vs month to date vs trailing month","criteria":[]}
+
+>>> USER: Compare this week, month to date, and trailing month.
+<<< STOCKSAGE (0.6s, live, deep-offer:disabled):
+    ### Tesla vs Nasdaq Composite
+    - **TSLA** — $380.90 at Jul 17; one week -6.60%; month to date -9.45%; trailing month -5.89%; P/E 370.4x; revenue growth +2.3%; beta 1.81.
+    - **ONEQ (Nasdaq Composite ETF proxy)** — $100.55 at Jul 17; one week -2.97%; month to date -2.68%; trailing month -3.35%. These are ONEQ figures, not the underlying index return.
+    ONEQ (Nasdaq Composite ETF proxy) led TSLA by 3.63 percentage points over one week.
+    ONEQ (Nasdaq Composite ETF proxy) led TSLA by 6.77 percentage points over month to date.
+    ONEQ (Nasdaq Composite ETF proxy) led TSLA by 2.54 percentage points over trailing month.
+    
+    Coverage is partial for Nasdaq Composite; the dated figures above are the reliable portion.

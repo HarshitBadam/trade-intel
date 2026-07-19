@@ -1,0 +1,139 @@
+npm warn Unknown env config "devdir". This will stop working in the next major version of npm.
+
+> tradeintel@0.1.0 eval:stocksage
+> tsx --conditions=react-server scripts/stocksage-eval.ts --chat What's the latest cited Nvidia news? Which development matters most for investors? Compare Nvidia and AMD on growth, valuation and risk. Research Nvidia's next-quarter catalysts and risks. Summarise the bull and bear cases plainly.
+
+
+========================================================================
+SCENARIO: adhoc
+========================================================================
+[chat] Tavily retrieval failed: Error: Tavily responded with 432
+    at Object.searchTavily (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/tavily.ts:67:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async <anonymous> (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:360:41)
+    at async Promise.all (index 0)
+    at async runTavilyQueue (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:365:5)
+    at async Promise.all (index 2)
+    at async executeEvidencePlan (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:367:35)
+    at async answerWithModel (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/chat-model.ts:191:7)
+    at async main (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/scripts/stocksage-eval.ts:198:21)
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"source_less_research_floor","durationMs":1790,"retrievalMs":1716,"providerCount":3,"sourceCount":0}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":[]}
+
+>>> USER: What's the latest cited Nvidia news?
+<<< STOCKSAGE (1.8s, live, deep-offer:disabled):
+    ### Market snapshot
+    - **NVDA** — $202.38 as of Jul 17; latest session -2.45%.
+    
+    No specific news catalyst is attached to these market figures in the available reporting.
+[chat] Tavily retrieval failed: Error: Tavily responded with 432
+    at Object.searchTavily (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/tavily.ts:67:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async <anonymous> (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:360:41)
+    at async Promise.all (index 0)
+    at async runTavilyQueue (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:365:5)
+    at async Promise.all (index 2)
+    at async executeEvidencePlan (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:367:35)
+    at async answerWithModel (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/chat-model.ts:191:7)
+    at async main (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/scripts/stocksage-eval.ts:198:21)
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"source_less_research_floor","durationMs":427,"retrievalMs":421,"providerCount":3,"sourceCount":0}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":["outlook"]}
+
+>>> USER: Which development matters most for investors?
+<<< STOCKSAGE (0.4s, live, deep-offer:disabled):
+    ### Market snapshot
+    - **NVDA** — $202.38 as of Jul 17; latest session -2.45%.
+    
+    No specific news catalyst is attached to these market figures in the available reporting.
+[chat] Tavily retrieval failed: Error: Tavily responded with 432
+    at Object.searchTavily (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/tavily.ts:67:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async <anonymous> (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:360:41)
+    at async Promise.all (index 0)
+    at async runTavilyQueue (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:365:5)
+    at async Promise.all (index 2)
+    at async executeEvidencePlan (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:367:35)
+    at async answerWithModel (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/chat-model.ts:191:7)
+    at async main (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/scripts/stocksage-eval.ts:198:21)
+[chat] Tavily retrieval failed: Error: Tavily responded with 432
+    at Object.searchTavily (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/tavily.ts:67:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async <anonymous> (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:360:41)
+    at async Promise.all (index 1)
+    at async runTavilyQueue (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:365:5)
+    at async Promise.all (index 2)
+    at async executeEvidencePlan (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/retrieve.ts:367:35)
+    at async answerWithModel (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/src/lib/stocksage/chat-model.ts:191:7)
+    at async main (/Users/harshitrao/Desktop/Projects/Hexcode2025_Frontend/scripts/stocksage-eval.ts:198:21)
+[stocksage] {"event":"publication_reject","reason":"missing_citations"}
+[stocksage] {"event":"regular_synthesis","provider":"groq-chat","model":"qwen/qwen3.6-27b","name":"LlmRequestError","vendor":"groq","status":429,"retryAfterMs":15000}
+[stocksage] {"event":"publication_reject","reason":"missing_citations"}
+[stocksage] {"event":"publication_reject","reason":"missing_citations"}
+[stocksage] {"event":"regular_synthesis","provider":"cerebras-chat","model":"gpt-oss-120b","name":"SynthesisValidationError"}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"The available reporting also notes that AMD's market opportunity forecast for agentic AI nearly doubled, and a partnersh"}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"No specific news catalyst is attached to these market figures in the available reporting."}
+[stocksage] {"event":"regular_synthesis","provider":"gemini-chat","model":"gemini-2.5-flash-lite","name":"SynthesisValidationError"}
+[stocksage] {"event":"publication_reject","reason":"missing_citations"}
+[stocksage] {"event":"regular_synthesis","provider":"groq-oss","model":"openai/gpt-oss-20b","name":"LlmRequestError","vendor":"groq","status":429,"retryAfterMs":12000}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"Current guidance was not present in the available reporting."}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"single_model_call","durationMs":14700,"retrievalMs":1027,"synthesisMs":13661,"providerCount":4,"sourceCount":3}
+    [state] {"entities":["Nvidia","Advanced Micro Devices, Inc. Common Stock"],"explicit":["ticker:NVDA","ticker:AMD"],"criteria":["valuation","growth","risk"]}
+
+>>> USER: Compare Nvidia and AMD on growth, valuation and risk.
+<<< STOCKSAGE (14.7s, live, deep-offer:available):
+    Nvidia and AMD have distinct growth, valuation, and risk profiles. 
+    
+    Growth-wise, Nvidia's announcement of Cosmos 3 Edge, a 4-billion-parameter model for on-device vision reasoning and robot policy deployment on Jetson platforms, as reported by GlobeNewswire Inc. [GlobeNewswire Inc.](https://www.globenewswire.com/news-release/2026/07/16/3328205/0/en/Japan-s-Robotics-and-Manufacturing-Leaders-Build-on-NVIDIA-Cosmos-to-Advance-Physical-AI-Frontier.html), suggests the company is advancing its position in AI. AMD, on the other hand, has seen its stock surge 279% over the past year, according to The Motley Fool [The Motley Fool](https://www.fool.com/investing/2026/07/15/wall-street-says-this-artificial-intelligence-ai-s/?source=iedfolrf0000001), and is expected to capitalize on the agentic AI boom.
+    
+    In terms of valuation, AMD trades at a higher multiple, with a forward earnings multiple of 79.4x, as noted by The Motley Fool [The Motley Fool](https://www.fool.com/investing/2026/07/15/wall-street-says-this-artificial-intelligence-ai-s/?source=iedfolrf0000001), compared to Nvidia's more conservative valuation.
+    
+    On the risk front, both companies have relatively high betas, indicating their stock prices can be more volatile than the broader market. Nvidia's expansion into Japan with major manufacturers [GlobeNewswire Inc.](https://www.globenewswire.com/news-release/2026/07/16/3328205/0/en/Japan-s-Robotics-and-Manufacturing-Leaders-Build-on-NVIDIA-Cosmos-to-Advance-Physical-AI-Frontier.html) and AMD's partnership with 5C to collaborate on next-gen data center construction [Investing.com](https://www.investing.com/analysis/amds-5c-deal-positions-it-as-a-direct-nvidia-rival-200683984) are strategic moves that could impact their growth trajectories.
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"**Catalysts for the next quarter** | - **AI‑driven demand** – Nvidia’s revenue growth of +70.7 % YoY (TTM) shows its AI "}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"**Catalysts for the next quarter** | - **AI‑driven demand** – Nvidia’s revenue growth of +70.7 % YoY (TTM) shows its AI "}
+[stocksage] {"event":"regular_synthesis","provider":"cerebras-chat","model":"gpt-oss-120b","name":"SynthesisValidationError"}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"Nvidia's next-quarter catalysts and risks revolve around its AI hardware dominance and the broader semiconductor market "}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"Nvidia's next-quarter catalysts and risks center on its AI hardware leadership and the wider semiconductor landscape. | "}
+[stocksage] {"event":"regular_synthesis","provider":"gemini-chat","model":"gemini-2.5-flash-lite","name":"SynthesisValidationError"}
+[stocksage] {"event":"publication_reject","reason":"unsupported_figures","detail":"279 %"}
+[stocksage] {"event":"regular_synthesis","provider":"groq-oss","model":"openai/gpt-oss-20b","name":"LlmRequestError","vendor":"groq","status":429,"retryAfterMs":33000}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"For Nvidia, next-quarter catalysts could include continued strong demand for its AI-focused products, particularly in th"}
+[stocksage] {"event":"regular_synthesis","provider":"groq-fallback","model":"llama-3.3-70b-versatile","name":"LlmRequestError","vendor":"groq","status":429,"retryAfterMs":19000}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"### Nvidia's Next Quarter Catalysts and Risks | Nvidia's next quarter is expected to be driven by several catalysts and "}
+[stocksage] {"event":"regular_synthesis","provider":"groq-chat-small","model":"llama-3.1-8b-instant","name":"LlmRequestError","vendor":"groq","status":429,"retryAfterMs":262000}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"degraded_from_data","durationMs":12132,"retrievalMs":599,"providerCount":3,"sourceCount":1}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":["risk","outlook"]}
+
+>>> USER: Research Nvidia's next-quarter catalysts and risks.
+<<< STOCKSAGE (12.1s, live, deep-offer:disabled):
+    ### Market snapshot
+    - **NVDA** — $202.38 as of Jul 17; latest session -2.45%.
+    
+    ### Best current sources
+    - **Nvidia** — SK Hynix's Nasdaq listing gives U.S. — The Motley Fool (2026-07-15) [The Motley Fool](https://www.fool.com/investing/2026/07/15/sk-hynix-controls-more-than-half-the-hbm-market-nv/?source=iedfolrf0000001)
+    
+    This is the current dated picture; coverage is partial.
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"Bull case: Nvidia’s AI accelerator demand remains insatiable, backed by **70.7%** YoY revenue growth and a recent earnin"}
+[stocksage] {"event":"regular_synthesis","provider":"groq-chat","model":"qwen/qwen3.6-27b","name":"LlmRequestError","vendor":"groq","status":429,"retryAfterMs":20000}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"**Bull case** – Nvidia’s AI chips remain in high demand, bolstered by a dominant HBM supplier (SK Hynix controls >56% of"}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"Strong revenue growth (+70.7% YoY) and an earnings beat (EPS 1.87 vs 1.79 est.) show pricing power, while its cash‑rich "}
+[stocksage] {"event":"regular_synthesis","provider":"cerebras-chat","model":"gpt-oss-120b","name":"SynthesisValidationError"}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"The bear case would likely focus on increasing competition, potential supply chain vulnerabilities, and the risk of a sl"}
+[stocksage] {"event":"publication_reject","reason":"uncited_research_claims","detail":"The bear case would likely focus on increasing competition, potential supply chain vulnerabilities, and the risk of a sl"}
+[stocksage] {"event":"regular_synthesis","provider":"gemini-chat","model":"gemini-2.5-flash-lite","name":"SynthesisValidationError"}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"degraded_from_data","durationMs":8309,"retrievalMs":704,"providerCount":3,"sourceCount":1}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"criteria":["risk","outlook"]}
+
+>>> USER: Summarise the bull and bear cases plainly.
+<<< STOCKSAGE (8.3s, live, deep-offer:disabled):
+    ### Market snapshot
+    - **NVDA** — $202.38 as of Jul 17; latest session -2.45%.
+    
+    ### Best current sources
+    - **Nvidia** — SK Hynix's Nasdaq listing gives U.S. — The Motley Fool (2026-07-15) [The Motley Fool](https://www.fool.com/investing/2026/07/15/sk-hynix-controls-more-than-half-the-hbm-market-nv/?source=iedfolrf0000001)
+    
+    This is the current dated picture; coverage is partial.
+npm notice
+npm notice New minor version of npm available! 11.7.0 -> 11.18.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.18.0
+npm notice To update run: npm install -g npm@11.18.0
+npm notice

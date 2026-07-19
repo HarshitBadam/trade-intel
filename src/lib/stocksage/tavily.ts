@@ -1,13 +1,28 @@
 import "server-only";
 
 import { z } from "zod";
-import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
+import {
+  isCoolingDown,
+  isOpen,
+  recordCooldown,
+  recordFailure,
+  recordSuccess,
+  recordUnavailable,
+} from "@/lib/breaker";
 import { hasTavily, TAVILY_API_KEY } from "@/lib/config";
 import type { EvidenceInput } from "./citations";
 import type { EvidenceQuery } from "./types";
 
 const TAVILY_URL = "https://api.tavily.com/search";
 const TAVILY_TIMEOUT_MS = 8_000;
+const TAVILY_QUOTA_COOLDOWN_MS = 60 * 60 * 1000;
+
+class TavilyHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`Tavily responded with ${status}`);
+    this.name = "TavilyHttpError";
+  }
+}
 
 const TavilyResponseSchema = z.object({
   results: z
@@ -38,7 +53,8 @@ export async function searchTavily(
     query.provider !== "tavily" ||
     !hasTavily ||
     !TAVILY_API_KEY ||
-    (await isOpen("tavily"))
+    (await isOpen("tavily")) ||
+    (await isCoolingDown("tavily"))
   ) {
     return [];
   }
@@ -64,7 +80,7 @@ export async function searchTavily(
     });
 
     if (!response.ok) {
-      throw new Error(`Tavily responded with ${response.status}`);
+      throw new TavilyHttpError(response.status);
     }
 
     const parsed = TavilyResponseSchema.safeParse(await response.json());
@@ -88,8 +104,26 @@ export async function searchTavily(
       };
     });
   } catch (error) {
-    await recordFailure("tavily");
-    console.error("[chat] Tavily retrieval failed:", error);
+    if (error instanceof TavilyHttpError && error.status === 432) {
+      await Promise.all([
+        recordCooldown("tavily", TAVILY_QUOTA_COOLDOWN_MS),
+        recordUnavailable("tavily"),
+      ]);
+    } else {
+      await recordFailure("tavily");
+    }
+    console.error(
+      `[stocksage] ${JSON.stringify({
+        event: "retrieval_failure",
+        provider: "tavily",
+        reason:
+          error instanceof TavilyHttpError
+            ? `http_${error.status}`
+            : error instanceof Error
+              ? error.name
+              : "unknown",
+      })}`
+    );
     return [];
   }
 }

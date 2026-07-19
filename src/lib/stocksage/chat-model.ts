@@ -11,6 +11,7 @@ import {
 import { detectCriteria } from "./conversation-attributes";
 import { resolveConversationState } from "./entities";
 import { unsupportedFigures } from "./figures";
+import { buildGroundedDeterministicReply } from "./grounded-answer";
 import { planEvidence } from "./planning";
 import { roundFiguresForDisplay } from "./rounding";
 import {
@@ -85,7 +86,7 @@ function leaksOffTopicWork(candidate: string): boolean {
 // Small talk has no retrieved evidence behind it, so it must not assert what
 // markets are doing today ("quiet day", "seeing movement in tech").
 const SOCIAL_MARKET_CLAIM =
-  /\b(?:markets?|stocks?|tech|nasdaq|s&p|dow)\b[^.!?\n]{0,50}\b(?:up|down|red|green|quiet|choppy|volatile|rall(?:y(?:ing)?|ied)|sell(?:ing)?[- ]?off|surg(?:e|ing)|slid(?:e|ing)?|dropp(?:ed|ing)|climb(?:ed|ing)|mov(?:ed|ing)|movement|action)\b|\b(?:quiet|choppy|volatile|busy|wild|red|green|movement|action)\b[^.!?\n]{0,30}\b(?:markets?|stocks?|session|day)\b/i;
+  /\b(?:markets?|stocks?|tech|nasdaq|s&p|dow)\b[^.!?\n]{0,50}\b(?:up|down|red|green|quiet|choppy|volatile|rall(?:y(?:ing)?|ied)|sell(?:ing)?[- ]?off|surg(?:e|ing)|slid(?:e|ing)?|dropp(?:ed|ing)|climb(?:ed|ing)|mov(?:ed|ing)|movement|action)\b|\b(?:quiet|choppy|volatile|busy|wild|red|green|movement|action)\b[^.!?\n]{0,30}\b(?:markets?|stocks?|session|day)\b|\bgood session\b/i;
 
 function isPureSocialTurn(message: string): boolean {
   // The anchored whole-message patterns (greetings, farewells,
@@ -306,6 +307,83 @@ export async function answerWithModel(
       deepResearch: deep.offer,
       state: resolution.state,
       dataStatus,
+    };
+  }
+
+  const deterministicStructuredComparison =
+    prefetchEntities.length >= 2 &&
+    (context.quotes.length >= 2 || context.fundamentals.length >= 2);
+  if (deterministicStructuredComparison) {
+    const fallback = buildFallbackReply(
+      request,
+      {
+        route: "comparison",
+        reasonCode: "deterministic_structured_comparison",
+        retrievalRequired: true,
+        deepEligible: context.sources.length > 0,
+      },
+      prefetchEntities,
+      context
+    );
+    const citationUrls = fallback.citationUrls ?? [];
+    const deep = createDeepResearchOffer({
+      question: request.message,
+      reply: { text: fallback.text, live, citationUrls },
+      entities: prefetchEntities,
+      state: resolution.state,
+      sources: context.sources,
+      asOf: context.plan.asOf,
+    });
+    logStockSage({
+      event: "request_complete",
+      route: "model_finance",
+      reasonCode: "deterministic_structured_comparison",
+      durationMs: Date.now() - startedAt,
+      retrievalMs,
+      providerCount: context.plan.queries.length,
+      sourceCount: context.sources.length,
+    });
+    return {
+      ...fallback,
+      live,
+      kind: "answer",
+      responseId: deep.responseId,
+      deepResearch: deep.offer,
+      state: resolution.state,
+      dataStatus,
+    };
+  }
+
+  const grounded = wantsData
+    ? buildGroundedDeterministicReply(request, prefetchEntities, context)
+    : null;
+  if (grounded) {
+    const citationUrls = grounded.citationUrls ?? [];
+    const deep = createDeepResearchOffer({
+      question: request.message,
+      reply: { text: grounded.text, live, citationUrls },
+      entities: prefetchEntities,
+      state: resolution.state,
+      sources: context.sources,
+      asOf: context.plan.asOf,
+    });
+    logStockSage({
+      event: "request_complete",
+      route: "model_finance",
+      reasonCode: "deterministic_grounded_answer",
+      durationMs: Date.now() - startedAt,
+      retrievalMs,
+      providerCount: context.plan.queries.length,
+      sourceCount: context.sources.length,
+    });
+    return {
+      ...grounded,
+      live,
+      kind: "answer",
+      responseId: deep.responseId,
+      deepResearch: deep.offer,
+      state: resolution.state,
+      dataStatus: grounded.retryable ? "limited" : dataStatus,
     };
   }
 

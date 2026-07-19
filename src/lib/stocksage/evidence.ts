@@ -1,6 +1,8 @@
 import type { EvidenceInput } from "./citations";
 import type {
+  EvidenceDiagnostics,
   EvidencePlan,
+  EvidenceRejectionReason,
   EvidenceSource,
   FinanceEntity,
 } from "./types";
@@ -126,7 +128,7 @@ function entityTerms(entity: FinanceEntity): string[] {
   return [...new Set(terms)];
 }
 
-function mentionsEntity(input: EvidenceInput, entity: FinanceEntity): boolean {
+function entityProminence(input: EvidenceInput, entity: FinanceEntity): number {
   let host = "";
   try {
     host = new URL(input.url).hostname;
@@ -142,7 +144,7 @@ function mentionsEntity(input: EvidenceInput, entity: FinanceEntity): boolean {
         : primary.includes(term)
     )
   ) {
-    return true;
+    return 4;
   }
   // A single incidental body mention is not enough to make an article about
   // another company relevant (for example, a Nokia headline that mentions
@@ -155,7 +157,14 @@ function mentionsEntity(input: EvidenceInput, entity: FinanceEntity): boolean {
       (excerpt.match(new RegExp(`(?:^| )${escaped}(?= |$)`, "g"))?.length ?? 0)
     );
   }, 0);
-  return mentions >= 2;
+  if (mentions >= 3) return 3;
+  if (
+    mentions >= 2 &&
+    input.ticker?.trim().toUpperCase() === entity.ticker?.trim().toUpperCase()
+  ) {
+    return 3;
+  }
+  return mentions >= 2 ? 2 : 0;
 }
 
 function balanceByEntity(
@@ -190,17 +199,20 @@ const CRITERION_TERMS: Record<string, RegExp> = {
   valuation: /\b(?:valuation|p\/?e|multiple|price to earnings)\b/i,
   performance: /\b(?:performance|return|price|shares?|stock|trading)\b/i,
   outlook:
-    /\b(?:outlook|forecast|guidance|prospects?|catalysts?|drivers?|tailwinds?|headwinds?|launch|roadmap|demand|orders?|shipments?|capacity|product cycle|next quarter|going forward)\b/i,
+    /\b(?:outlooks?|forecasts?|guidance|prospects?|catalysts?|drivers?|tailwinds?|headwinds?|launch(?:es|ed|ing)?|roadmaps?|demand|orders?|shipments?|capacity|product cycles?|next quarter|going forward|expan(?:d|ds|ded|ding|sion)|adopt(?:s|ed|ing|ion))\b/i,
   risk:
-    /\b(?:risk|regulat|volatility|downside|debt|legal|headwinds?|competition|competitive|constraints?|shortage|export controls?|restrictions?|delay|uncertain|pressure)\b/i,
-  growth: /\b(?:growth|earnings|revenue|profit)\b/i,
+    /\b(?:risks?|regulat\w*|volatility|downside|debt|legal|headwinds?|competition|competitive|constraints?|shortages?|export controls?|restrictions?|delays?|uncertain(?:ty)?|pressure|depend(?:s|ed|ence|ency)?|concentrat\w*|cyclical)\b/i,
+  growth: /\b(?:growth|grow(?:s|ing|th)?|grew|earnings|revenue|profit|expan(?:d|ds|ded|ding|sion))\b/i,
   earnings:
     /\b(?:earnings|revenue|net income|net loss|profitability|operating margin|eps|financial results|quarterly results)\b/i,
   dividends: /\b(?:dividend|yield|income)\b/i,
   size: /\b(?:market cap|capitali[sz]ation|assets|revenue|largest|biggest|size|valued at)\b/i,
   "revenue ranking": /\b(?:fortune|rank(?:ed|ing)?|revenue|sales)\b/i,
-  "current developments": /\b(?:update|news|today|recent|report|announce|earnings|price|shares?|stock|rose|fell|guidance|regulat|lawsuit)\b/i,
+  "current developments": /\b(?:updates?|news|today|recent(?:ly)?|reports?|report(?:ed|ing)?|announc(?:e|es|ed|ing|ement)|earnings|prices?|shares?|stocks?|rose|fell|guidance|regulat\w*|lawsuits?|launch(?:es|ed|ing)?|partnerships?|invest(?:s|ed|ment)|expan(?:d|ds|ded|ding|sion)|adopt(?:s|ed|ing|ion))\b/i,
 };
+
+const SECURITY_EVENT =
+  /\b(?:UEFI|secure boot|bootloaders?|cybersecurity|vulnerabilit(?:y|ies)|malware|ransomware|data breach)\b/i;
 
 function matchedCriteria(
   input: EvidenceInput,
@@ -245,38 +257,84 @@ function contentDateCompatible(
   return years.length === 0 || Math.max(...years) >= asOfYear - 1;
 }
 
-export function filterEvidence(args: {
+export function filterEvidenceWithDiagnostics(args: {
   inputs: EvidenceInput[];
   plan: EvidencePlan;
   entities: FinanceEntity[];
-}): EvidenceSource[] {
+}): { sources: EvidenceSource[]; diagnostics: EvidenceDiagnostics } {
+  const rejected: EvidenceDiagnostics["rejected"] = {};
+  const reject = (reason: EvidenceRejectionReason): [] => {
+    rejected[reason] = (rejected[reason] ?? 0) + 1;
+    return [];
+  };
   const byId = new Map(args.entities.map((entity) => [entity.id, entity]));
   const freshnessByQuery = new Map(
     args.plan.queries.map((query) => [query.id, query.freshnessDays])
   );
   const accepted = args.inputs.flatMap((input) => {
-    if (input.score !== undefined && input.score < 0.15) return [];
-    if (!acceptableAuthority(input)) return [];
+    if (input.score !== undefined && input.score < 0.15) {
+      return reject("low_provider_score");
+    }
+    if (!acceptableAuthority(input)) return reject("unsafe_authority");
     const freshnessDays = input.queryId
       ? freshnessByQuery.get(input.queryId)
       : undefined;
-    if (!freshEnough(input, args.plan, freshnessDays)) return [];
-    if (!contentDateCompatible(input, args.plan, freshnessDays)) return [];
+    if (!freshEnough(input, args.plan, freshnessDays)) return reject("stale");
+    if (!contentDateCompatible(input, args.plan, freshnessDays)) {
+      return reject("stale_content");
+    }
     const assigned = (input.entityIds ?? [])
       .map((id) => byId.get(id))
       .filter((entity): entity is FinanceEntity => Boolean(entity));
     if (
       assigned.length > 0 &&
-      !assigned.some((entity) => mentionsEntity(input, entity))
+      !assigned.some((entity) => entityProminence(input, entity) >= 2)
     ) {
-      return [];
+      return reject("entity_mismatch");
     }
     if (assigned.length === 0 && args.plan.requiredEntityIds.length > 0) {
-      return [];
+      return reject("missing_entity");
     }
     const criteria = matchedCriteria(input, input.criteria ?? []);
-    if ((input.criteria?.length ?? 0) > 0 && criteria.length === 0) return [];
-    return [{ ...input, criteria }];
+    if ((input.criteria?.length ?? 0) > 0 && criteria.length === 0) {
+      return reject("criterion_mismatch");
+    }
+    if (
+      args.plan.route === "comparison" &&
+      (args.plan.explicitCriteria?.length ?? 0) === 0 &&
+      SECURITY_EVENT.test(`${input.title} ${input.excerpt}`)
+    ) {
+      return reject("criterion_mismatch");
+    }
+    const prominence = Math.max(
+      0,
+      ...assigned.map((entity) => entityProminence(input, entity))
+    );
+    const published = input.publishedAt ? Date.parse(input.publishedAt) : 0;
+    const ageDays =
+      Number.isFinite(published) && published > 0
+        ? Math.max(0, (Date.parse(args.plan.asOf) - published) / 86_400_000)
+        : 365;
+    const freshnessScore = Math.max(0, 3 - ageDays / 30);
+    const importance =
+      input.importance?.toLowerCase() === "high"
+        ? 3
+        : input.importance?.toLowerCase() === "medium"
+          ? 2
+          : 1;
+    return [
+      {
+        ...input,
+        criteria,
+        relevanceScore:
+          prominence * 3 +
+          criteria.length * 3 +
+          evidenceAuthority(input) +
+          freshnessScore +
+          importance +
+          (input.score ?? 0),
+      },
+    ];
   });
   // Relevance gate: when the user asked for specific criteria, sources that
   // address none of them are tangential — keep one only where dropping it
@@ -295,28 +353,39 @@ export function filterEvidence(args: {
           const coveredEntities = new Set(
             onCriterion.flatMap((input) => input.entityIds ?? [])
           );
-          const coverageFillers = accepted.filter(
-            (input) =>
-              matchedCriteria(input, planCriteria).length === 0 &&
-              (input.entityIds ?? []).some(
-                (entityId) => !coveredEntities.has(entityId)
-              )
-          );
-          return [...onCriterion, ...coverageFillers];
+          void coveredEntities;
+          return onCriterion;
         })();
   const ranked = [...relevant].sort(
     (left, right) =>
+      (right.relevanceScore ?? 0) - (left.relevanceScore ?? 0) ||
       matchedCriteria(right, planCriteria).length -
         matchedCriteria(left, planCriteria).length ||
       evidenceAuthority(right) - evidenceAuthority(left) ||
       (right.score ?? 0) - (left.score ?? 0)
   );
   const balanced = balanceByEntity(ranked, args.plan.requiredEntityIds);
-  const limit = Math.min(
-    12,
-    Math.max(8, args.plan.requiredEntityIds.length)
-  );
-  return createEvidenceSources(balanced, limit);
+  const limit = Math.min(4, Math.max(2, args.plan.requiredEntityIds.length));
+  const sources = createEvidenceSources(balanced, limit);
+  const invalidOrDuplicate = Math.max(0, balanced.slice(0, limit).length - sources.length);
+  if (invalidOrDuplicate > 0) rejected.invalid_source = invalidOrDuplicate;
+  return {
+    sources,
+    diagnostics: {
+      inputCount: args.inputs.length,
+      acceptedCount: sources.length,
+      cacheHitCount: 0,
+      rejected,
+    },
+  };
+}
+
+export function filterEvidence(args: {
+  inputs: EvidenceInput[];
+  plan: EvidencePlan;
+  entities: FinanceEntity[];
+}): EvidenceSource[] {
+  return filterEvidenceWithDiagnostics(args).sources;
 }
 
 export function evidenceCoverage(args: {
