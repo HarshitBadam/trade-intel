@@ -26,8 +26,10 @@ import {
 } from "./policy";
 import { creativeRequestOnly } from "./regular-guards";
 import {
+  ABUSE_AT_BOT,
   CASUAL_ACKNOWLEDGEMENT,
   FAREWELL,
+  FRUSTRATION,
   HELP,
   SOCIAL,
 } from "./social-patterns";
@@ -52,19 +54,30 @@ export async function answerChat(
   }
 
   const base = baseConversationState(request.state, request.history);
-  const floor = hardSafetyFloor(normalized, base.entities);
+  // Resolve the current message before policy classification. Otherwise a
+  // newly named (or safely typo-recovered) company is invisible to the safety
+  // floor, which can downgrade "sell my house and put it all into X" to a
+  // generic position reply and preserve stale entities from the prior turn.
+  const initialResolution = resolveConversationState(
+    normalized,
+    request.state,
+    request.history
+  );
+  const policyEntities =
+    initialResolution.entities.length > 0
+      ? initialResolution.entities
+      : initialResolution.state.entities.length > 0
+        ? initialResolution.state.entities
+        : base.entities;
+  const floor = hardSafetyFloor(normalized, policyEntities);
   if (floor?.response) {
-    const resolved = resolveConversationState(
-      normalized,
-      request.state,
-      request.history
-    );
+    const resolved = initialResolution;
     // High-stakes refusals rotate through context-aware variants; the IDs
     // already shown ride in conversation state so a session never sees the
     // same body twice.
     const highStakes =
       floor.reasonCode === "high_stakes_finance"
-        ? classifyHighStakes(normalized, base.entities)
+        ? classifyHighStakes(normalized, policyEntities)
         : null;
     const picked = highStakes
       ? pickHighStakesReply(
@@ -94,11 +107,7 @@ export async function answerChat(
   // Closed-class social turns are deterministic and need neither retrieval
   // nor synthesis. Resolve state first so a farewell or acknowledgement does
   // not erase finance context needed by a later follow-up.
-  const socialResolution = resolveConversationState(
-    normalized,
-    request.state,
-    request.history
-  );
+  const socialResolution = initialResolution;
   // A creative request remains outside the product lane even when its subject
   // is an inherited or explicitly named stock. This must run before the model
   // path so an outage cannot turn it into market-data boilerplate.
@@ -124,7 +133,9 @@ export async function answerChat(
     SOCIAL.test(normalized) ||
     FAREWELL.test(normalized) ||
     CASUAL_ACKNOWLEDGEMENT.test(normalized) ||
-    HELP.test(normalized);
+    HELP.test(normalized) ||
+    FRUSTRATION.test(normalized) ||
+    ABUSE_AT_BOT.test(normalized);
   if (closedSocial && socialDecision.route === "social") {
     const text = immediateReply(socialDecision, normalized);
     if (text) {
@@ -143,7 +154,7 @@ export async function answerChat(
   // data. Deterministic code above this line handles only hard safety; below,
   // it only decides what data to prefetch.
   if (hasAnySynthesisLlm) {
-    return answerWithModel(scoped, dependencies, startedAt);
+    return answerWithModel(scoped, dependencies, startedAt, initialResolution);
   }
   // No LLM configured at all (offline dev/tests): deterministic brain is the
   // only brain, so use it fully.

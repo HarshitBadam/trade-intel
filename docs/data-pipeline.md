@@ -8,7 +8,7 @@ Everything runs behind one endpoint, `/api/cron/news`, protected by a bearer tok
 
 | Scheduler | Cadence | Defined in |
 |-----------|---------|------------|
-| Upstash QStash | Every 5 minutes | `scripts/setup-qstash.ts` |
+| Upstash QStash | Every 20 minutes | `scripts/setup-qstash.ts` |
 | Vercel cron | Once a day (backstop) | `vercel.json` |
 
 `.github/workflows/news-cron.yml` remains available for manual diagnostics and

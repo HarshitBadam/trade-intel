@@ -12,8 +12,8 @@ QStash owns the recurring schedules:
 
 | Schedule | Cadence | What it does |
 |----------|---------|--------------|
-| `tradeintel-news-cron` | Every 5 minutes | Calls `/api/cron/news` with a bearer token to ingest news and run analysis |
-| `tradeintel-keep-warm` | Every 15 minutes | Pings the Langflow host's `/health` so it does not fall asleep |
+| `tradeintel-news-cron` | Every 20 minutes | Calls `/api/cron/news` with a bearer token to ingest news and run analysis |
+| `tradeintel-keep-warm` | Every 60 minutes | Pings the Langflow host's `/health` so it does not fall asleep |
 
 Fill the QStash, cron, and Langflow values in `.env.local`, then create or
 reconcile both schedules:

@@ -1,0 +1,94 @@
+npm warn Unknown env config "devdir". This will stop working in the next major version of npm.
+
+> tradeintel@0.1.0 eval:stocksage
+> tsx --conditions=react-server scripts/stocksage-eval.ts benchmark-2026-07-19
+
+
+========================================================================
+SCENARIO: benchmark-2026-07-19
+========================================================================
+[stocksage] {"event":"request_complete","route":"social","reasonCode":"social","durationMs":7,"providerCount":0}
+    [state] {"entities":[],"explicit":[],"criteria":[]}
+
+>>> USER: Wassup whats gucci my ---
+<<< STOCKSAGE (0.0s):
+    All good. Give me a shout when you want to look at something.
+[stocksage] {"event":"retrieval_failure","provider":"tavily","reason":"http_432"}
+[stocksage] {"event":"retrieval_failure","provider":"tavily","reason":"http_432"}
+[stocksage] {"event":"evidence_diagnostics","accepted":2,"cacheHits":0,"rejected":{"entity_mismatch":1}}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_investability_comparison","durationMs":2468,"retrievalMs":2431,"providerCount":4,"sourceCount":2}
+    [state] {"entities":["Tesla","SpaceX"],"explicit":["ticker:TSLA","name:spacex"],"criteria":[]}
+
+>>> USER: aight so whats up with tesla vs SpaceX
+<<< STOCKSAGE (2.5s, live, deep-offer:disabled):
+    ### Tesla vs SpaceX
+    - **TSLA** — $380.90 at Jul 17; latest session -2.59%; P/E 370.4x; revenue growth +2.3%; beta 1.81.
+    - **SpaceX** — privately held, so there is no public share price or listed-company valuation to compare.
+    
+    Coverage is partial for SpaceX; the dated figures above are the reliable portion.
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_proxy_comparison","durationMs":657,"retrievalMs":651,"providerCount":4,"sourceCount":0}
+    [state] {"entities":["SpaceX","Nasdaq Composite"],"explicit":["name:spacex","ticker:IXIC"],"criteria":[]}
+
+>>> USER: whats up with the later vs IXIC
+<<< STOCKSAGE (0.7s, live, deep-offer:disabled):
+    ### SpaceX vs Nasdaq Composite
+    - **SpaceX** — privately held, so there is no public share price or listed-company valuation to compare.
+    - **ONEQ (Nasdaq Composite ETF proxy)** — $100.55 at Jul 17; latest session -1.28%. These are ONEQ figures, not the underlying index return.
+    
+    Coverage is partial for SpaceX and Nasdaq Composite; the dated figures above are the reliable portion.
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_scope_contained_snapshot","durationMs":518,"retrievalMs":513,"providerCount":3,"sourceCount":0}
+    [state] {"entities":["Nasdaq Composite"],"explicit":["ticker:IXIC"],"criteria":[]}
+
+>>> USER: aight so if the current value of IXIC is 'x' and 'y' is x + 1 and then 'z' is ((x * y) / (x + y)) what going to be the output of this python script [for i in range(100) print(z)]
+<<< STOCKSAGE (0.5s, live):
+    The calculation is outside my finance lane, so I haven’t evaluated it. Here’s the market part:
+    
+    ### Market snapshot
+    - **ONEQ (Nasdaq Composite ETF proxy)** — $100.55 at Jul 17, -1.28%. This is ONEQ performance; it is not Nasdaq Composite itself.
+    
+    This is the current dated picture; coverage is partial.
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_market_snapshot","durationMs":2174,"retrievalMs":2168,"providerCount":3,"sourceCount":0}
+    [state] {"entities":["Macquarie Group"],"explicit":["ticker:MQG"],"criteria":[]}
+
+>>> USER: whats up with macquaire
+<<< STOCKSAGE (2.2s, live, deep-offer:disabled):
+    ### Market snapshot
+    - **MQBKY (Macquarie Group ADR proxy)** — $181.51 at Jul 17, +1.06%. This is MQBKY performance; it is not Macquarie Group itself.
+    
+    This is the current dated picture; coverage is partial.
+[stocksage] {"event":"request_complete","route":"refused","reasonCode":"high_stakes_finance","durationMs":2,"providerCount":0}
+    [state] {"entities":["Macquarie Group"],"explicit":["ticker:MQG"],"criteria":[]}
+
+>>> USER: Should I sell my house and deposite it all into macquaire and trusut them will be make me a millionaire?
+<<< STOCKSAGE (0.0s):
+    Before you commit to that: I can’t tell you whether to do it, and I can’t promise how it would go. What I can say is that putting savings-level money into a single company would concentrate your life in one outcome — the risk compounds, it doesn’t average out. Let’s look at the evidence together, and for a decision this size a licensed financial adviser should be part of it.
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_proxy_comparison","durationMs":3667,"retrievalMs":3665,"providerCount":7,"sourceCount":0}
+    [state] {"entities":["Macquarie Group","Commonwealth Bank","National Australia Bank","ANZ Group","Westpac"],"explicit":["ticker:MQG","ticker:CBA","ticker:NAB","ticker:ANZ","ticker:WBC"],"criteria":[]}
+
+>>> USER: whats up with macquaire vs the big 4
+<<< STOCKSAGE (3.7s, live, deep-offer:disabled):
+    ### Macquarie Group vs Commonwealth Bank vs National Australia Bank vs ANZ Group vs Westpac
+    - **MQBKY (Macquarie Group ADR proxy)** — $181.51 at Jul 17; latest session +1.06%. These are MQBKY figures, not the underlying Australian listing return.
+    - **CMWAY (Commonwealth Bank ADR proxy)** — $120.73 at Jul 17; latest session +0.01%. These are CMWAY figures, not the underlying Australian listing return.
+    - **NABZY (National Australia Bank ADR proxy)** — $13.96 at Jul 17; latest session +0.72%. These are NABZY figures, not the underlying Australian listing return.
+    - **ANZGY (ANZ Group ADR proxy)** — $25.26 at Jul 17; latest session +0.08%. These are ANZGY figures, not the underlying Australian listing return.
+    - **WBKCY (Westpac ADR proxy)** — $53.26 at Jul 17; latest session +1.97%. These are WBKCY figures, not the underlying Australian listing return.
+    WBKCY (Westpac ADR proxy) led MQBKY (Macquarie Group ADR proxy) by 0.91 percentage points over latest session.
+    
+    Coverage is partial for Macquarie Group, Commonwealth Bank, National Australia Bank, ANZ Group and Westpac; the dated figures above are the reliable portion.
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"zero_data_floor","durationMs":551,"retrievalMs":545,"providerCount":4,"sourceCount":0}
+    [state] {"entities":["Deloitte","PwC","EY","KPMG"],"explicit":["name:deloitte","name:pwc","name:ey","name:kpmg"],"criteria":[]}
+
+>>> USER: what about the other big 4?
+<<< STOCKSAGE (0.6s, deep-offer:disabled):
+    Deloitte, PwC, EY and KPMG are privately held, so there are no public share prices to compare. Current company reporting is temporarily unavailable; try again shortly for a news- and business-based comparison.
+[stocksage] {"event":"evidence_diagnostics","accepted":0,"cacheHits":0,"rejected":{"entity_mismatch":6,"criterion_mismatch":2}}
+[stocksage] {"event":"request_complete","route":"model_finance","reasonCode":"deterministic_market_snapshot","durationMs":961,"retrievalMs":950,"providerCount":3,"sourceCount":0}
+    [state] {"entities":["Nvidia"],"explicit":["ticker:NVDA"],"horizon":"this week vs last week vs trailing month","criteria":[]}
+
+>>> USER: How did Nvidia close this week end? How is it different from say last week, last month, and last year
+<<< STOCKSAGE (1.0s, live, deep-offer:disabled):
+    ### Market snapshot
+    - **NVDA** — $202.38 as of Jul 17; one week -3.86%; trailing month -2.22%; trailing year +18.51%.
+    
+    This is the current dated picture; coverage is partial.

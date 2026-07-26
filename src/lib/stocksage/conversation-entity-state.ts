@@ -15,6 +15,7 @@ import {
   resolveText,
 } from "./entity-resolution";
 import { sanitizeConversationState } from "./state";
+import { isWithinOneEdit } from "./text-normalization";
 import type {
   ChatTurn,
   ConversationState,
@@ -65,34 +66,6 @@ const STATE_COMMANDS = [
   "substitute",
 ] as const;
 
-function oneEditApart(left: string, right: string): boolean {
-  if (Math.abs(left.length - right.length) > 1) return false;
-  if (left.length === right.length) {
-    let differences = 0;
-    for (let index = 0; index < left.length; index += 1) {
-      if (left[index] !== right[index]) differences += 1;
-    }
-    return differences === 1;
-  }
-  const [shorter, longer] =
-    left.length < right.length ? [left, right] : [right, left];
-  let shortIndex = 0;
-  let longIndex = 0;
-  let skipped = false;
-  while (shortIndex < shorter.length && longIndex < longer.length) {
-    if (shorter[shortIndex] === longer[longIndex]) {
-      shortIndex += 1;
-      longIndex += 1;
-    } else if (skipped) {
-      return false;
-    } else {
-      skipped = true;
-      longIndex += 1;
-    }
-  }
-  return true;
-}
-
 // Fuzzy matching is deliberately confined to a command verb at the start of
 // a clause and to one deletion/substitution. Ordinary prose such as "target
 // those" never enters command parsing.
@@ -105,11 +78,30 @@ export function normalizeStateCommand(message: string): string {
         return match;
       }
       const command = STATE_COMMANDS.find((candidate) =>
-        oneEditApart(lower, candidate)
+        isWithinOneEdit(lower, candidate)
       );
       return command ? `${prefix}${command}` : match;
     }
   );
+}
+
+function normalizeOrderedReference(
+  message: string,
+  hasExplicitPair: boolean
+): string {
+  if (!hasExplicitPair) return message;
+  const hasReferenceContext =
+    /\b(?:what about|how about|wb|vs\.?|versus|against|compare|look|doing|perform)\b/i.test(
+      message
+    );
+  if (!hasReferenceContext) return message;
+  return message.replace(/\bthe\s+([a-z]{4,8})\b/gi, (match, token: string) => {
+    const lower = token.toLowerCase();
+    const candidates = ["former", "latter"].filter(
+      (candidate) => lower !== candidate && isWithinOneEdit(lower, candidate)
+    );
+    return candidates.length === 1 ? `the ${candidates[0]}` : match;
+  });
 }
 
 function escapeRegExp(value: string): string {
@@ -236,10 +228,13 @@ export function resolveConversationState(
   previous: ConversationState | undefined,
   history: ChatTurn[] = []
 ): StateResolution {
-  const commandMessage = normalizeStateCommand(message);
   const base = previous
     ? sanitizeConversationState(previous, canonicalizeEntity)
     : stateFromHistory(history);
+  const commandMessage = normalizeOrderedReference(
+    normalizeStateCommand(message),
+    base.explicitEntitySet.length === 2
+  );
   if (RESET.test(commandMessage)) {
     return {
       state: { ...emptyConversationState(), revision: base.revision + 1 },
@@ -360,11 +355,11 @@ export function resolveConversationState(
     }
   }
   const byId = new Map(base.entities.map((entity) => [entity.id, entity]));
-  const subsetMatch = message.match(
+  const subsetMatch = commandMessage.match(
     /\b(?:only\s+)?the\s+(former|latter)\s+two\b/i
   );
   const orderedMatches = [
-    ...message.matchAll(/\b(former|latter|first one|second one)\b/gi),
+    ...commandMessage.matchAll(/\b(former|latter|first one|second one)\b/gi),
   ];
   const orderedMatch = orderedMatches[0];
   // True when an ordered reference ("the former") is paired with a newly
@@ -481,7 +476,7 @@ export function resolveConversationState(
       ? correctedBase
       : comparisonFollowUp ||
           contextualFollowUp ||
-          referencesPlural ||
+          (referencesPlural && direct.length === 0) ||
           (referencesSingular &&
             direct.length === 0 &&
             grouped.length === 0)
@@ -563,7 +558,7 @@ export function resolveConversationState(
         ? "entity_correction"
         : grouped.length > 0
           ? "canonical_group_expanded"
-          : ORDERED_REFERENCE.test(message)
+          : ORDERED_REFERENCE.test(commandMessage)
             ? "ordered_reference_resolved"
             : anchor.length > 0
               ? "anchored_reference_resolved"
