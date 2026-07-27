@@ -1,3 +1,4 @@
+import "./no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveConversationState } from "../src/lib/stocksage/entities";

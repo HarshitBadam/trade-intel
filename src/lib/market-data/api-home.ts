@@ -30,12 +30,12 @@ export async function getMoversData(): Promise<Movers> {
   if (hasPrices) {
     try {
       const live = await getGroupedDailyCached();
-      if (live && live.length > 0) return summarizeMovers(live);
+      if (live && live.length > 0) return summarizeMovers(live, "live");
     } catch (error) {
       console.error("Movers fetch failed, using fallback:", error);
     }
   }
-  return summarizeMovers(mockMovers());
+  return summarizeMovers(mockMovers(), "sample");
 }
 
 export async function getQuoteData(ticker: string): Promise<Quote> {
@@ -84,7 +84,8 @@ export async function getHeadlineData(ticker: string): Promise<Headline> {
   if (hasAstra) {
     try {
       const news = await getNewsCached(symbol);
-      if (news.length > 0) return newsToHeadline(symbol, pickTopArticle(news));
+      if (news.length > 0)
+        return newsToHeadline(symbol, pickTopArticle(news), "live");
     } catch (error) {
       console.error("Astra headline fetch failed, using fallback:", error);
     }

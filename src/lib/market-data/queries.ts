@@ -11,6 +11,7 @@ import {
 } from "@/data/fallbacks";
 import { hasAstra, hasAlpaca, hasFinnhub, hasPolygon } from "@/lib/config";
 import type { News } from "@/components/news/RecentInfluential";
+import type { NewsVerdict } from "@/components/news/VerdictModal";
 import type { NewsSummary, PopularityData, BarPoint, AnalysisDoc, StoredArticle } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -135,6 +136,31 @@ async function fetchColdAlpacaNews(ticker: string): Promise<News[]> {
   }
 }
 
+// The stored doc is written only on a fully successful analysis run, but the
+// collection also holds legacy/partial rows (a news_loaded_at touch creates one
+// before any verdict exists), so the display-critical fields are re-checked here
+// rather than assumed. Article ids on key drivers are dropped: the UI renders
+// drivers as plain text, and shipping them would bloat every details payload.
+function toVerdict(doc: AnalysisDoc | null): NewsVerdict | undefined {
+  if (!doc?.overall_sentiment || !doc.summary?.trim()) return undefined;
+  return {
+    overallSentiment: doc.overall_sentiment,
+    sentimentScore: typeof doc.sentiment_score === "number" ? doc.sentiment_score : 0,
+    confidence: doc.confidence,
+    summary: doc.summary.trim(),
+    keyDrivers: (doc.key_drivers ?? [])
+      .filter((driver) => driver.text?.trim())
+      .map((driver) => ({
+        text: driver.text.trim(),
+        sentiment: driver.sentiment,
+      })),
+    risks: (doc.risks ?? []).map((risk) => risk.trim()).filter(Boolean),
+    analyzedAt: doc.analyzed_at,
+    articleCount: doc.article_count,
+    sourceWindowDays: doc.source_window_days,
+  };
+}
+
 // Staleness is judged from analyzed_at ONLY — never from article dates.
 export function buildNewsSummary(
   articles: News[],
@@ -147,14 +173,18 @@ export function buildNewsSummary(
     const updatedAt =
       analyzedAt ?? analysisDoc?.news_loaded_at ?? latestNewsTimestamp(articles);
     const recent = windowNews(articles, POPULARITY_WINDOW_DAYS, now);
+    const verdict = toVerdict(analysisDoc);
     if (analyzedAt) {
       const analyzedMs = Date.parse(analyzedAt);
       const fresh =
         !Number.isNaN(analyzedMs) &&
         now - analyzedMs <= ANALYSIS_TTL_DAYS * DAY_MS;
-      return summarizeNews(recent, fresh ? "fresh" : "stale", updatedAt);
+      return {
+        ...summarizeNews(recent, fresh ? "fresh" : "stale", updatedAt),
+        verdict,
+      };
     }
-    return summarizeNews(recent, "live", updatedAt);
+    return { ...summarizeNews(recent, "live", updatedAt), verdict };
   }
   return summarizeNews([], priorityStarted ? "analyzing" : "unavailable");
 }
@@ -221,6 +251,7 @@ export function buildStockData(
     news: news.news,
     newsStatus: news.status,
     newsUpdatedAt: news.updatedAt,
+    newsVerdict: news.verdict,
   };
 }
 

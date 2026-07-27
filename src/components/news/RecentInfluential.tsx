@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { NewsCard } from "./NewsCard";
 import { Bar } from "./Bar";
 import { NewsModal, type NewsArticle } from "./NewsModal";
+import { VerdictModal, type NewsVerdict } from "./VerdictModal";
 
 export type News = {
   _id: string;
@@ -36,6 +37,8 @@ interface RecentInfluentialProps {
   news?: News[];
   status?: NewsStatus;
   updatedAt?: string;
+  verdict?: NewsVerdict;
+  ticker?: string;
   positiveSentimentPercentage: number;
   negativeSentimentPercentage: number;
 }
@@ -54,9 +57,11 @@ function timeAgo(iso?: string): string {
 function StatusBadge({
   status,
   updatedAt,
+  onOpen,
 }: {
   status?: NewsStatus;
   updatedAt?: string;
+  onOpen?: () => void;
 }) {
   if (!status) return null;
 
@@ -97,11 +102,30 @@ function StatusBadge({
   };
 
   const { label, dot, text } = config[status];
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${text}`}>
+  const content = (
+    <>
       <span className={`h-2 w-2 rounded-full ${dot}`} />
       {label}
-    </span>
+    </>
+  );
+
+  if (!onOpen) {
+    return (
+      <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${text}`}>
+        {content}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title="View the full AI verdict"
+      className={`inline-flex items-center gap-1.5 rounded-md text-xs font-medium underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-80 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${text}`}
+    >
+      {content}
+    </button>
   );
 }
 
@@ -122,10 +146,13 @@ export function RecentInfluential({
   news = [], 
   status,
   updatedAt,
+  verdict,
+  ticker,
   positiveSentimentPercentage, 
   negativeSentimentPercentage 
 }: RecentInfluentialProps) {
   const [selected, setSelected] = useState<NewsArticle | null>(null);
+  const [verdictOpen, setVerdictOpen] = useState(false);
 
   // Chromium drops paint invalidations for content inside a `backdrop-filter`
   // ancestor (this panel is a frosted `.glass-card` in dark mode). So when the
@@ -209,7 +236,11 @@ export function RecentInfluential({
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex items-center justify-between mb-6 gap-3">
             <h2 className="text-xl font-bold">Recent Influential</h2>
-            <StatusBadge status={status} updatedAt={updatedAt} />
+            <StatusBadge
+              status={status}
+              updatedAt={updatedAt}
+              onOpen={verdict ? () => setVerdictOpen(true) : undefined}
+            />
           </div>
           {/* Cap the list height so it scrolls internally. On `lg` the panel is
               absolutely positioned to the chart's height, so `flex-1` bounds it
@@ -260,6 +291,11 @@ export function RecentInfluential({
       )}
 
       <NewsModal article={selected} onClose={() => setSelected(null)} />
+      <VerdictModal
+        verdict={verdictOpen ? (verdict ?? null) : null}
+        ticker={ticker}
+        onClose={() => setVerdictOpen(false)}
+      />
     </div>
   );
 }

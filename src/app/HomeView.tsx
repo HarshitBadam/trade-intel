@@ -111,6 +111,11 @@ export default function HomeView({ initial }: HomeViewProps) {
     ? initial.movers.shifts.map(moverToShift)
     : undefined;
 
+  const sampleSections = [
+    initial.movers.status === "sample" ? "movers" : null,
+    activeHeadline?.status === "sample" ? "top news" : null,
+  ].filter((s): s is string => s !== null);
+
   const [openArticle, setOpenArticle] = useState<NewsArticle | null>(null);
   const topNewsArticle: NewsArticle | null = activeHeadline
     ? {
@@ -148,6 +153,19 @@ export default function HomeView({ initial }: HomeViewProps) {
         <p className="text-muted-foreground">
           Track and analyze stock performance with real-time data.
         </p>
+        {sampleSections.length > 0 && (
+          <p
+            role="status"
+            className="mt-3 inline-flex items-center gap-2 rounded-md border border-border bg-accent/10 px-3 py-2 text-sm text-muted-foreground"
+          >
+            <span className="text-[10px] uppercase tracking-wide font-medium border border-border rounded-full px-2 py-0.5">
+              Illustrative
+            </span>
+            The live feed is unavailable, so {sampleSections.join(" and ")}{" "}
+            {sampleSections.length > 1 ? "are" : "is"} showing sample data — not
+            real prices.
+          </p>
+        )}
       </div>
 
       <SearchBar />

@@ -2,6 +2,7 @@ import { getDetailsData } from "@/lib/market-data";
 import DetailsView from "./DetailsView";
 import { triggerPriorityAnalysis } from "./priority";
 import type { News, NewsStatus } from "@/components/news/RecentInfluential";
+import type { NewsVerdict } from "@/components/news/VerdictModal";
 import type { BarPoint } from "@/lib/market-data/types";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,8 @@ export type StockData = {
   news: News[];
   newsStatus: NewsStatus;
   newsUpdatedAt?: string;
+  /** Holistic AI verdict for the ticker; absent until a run has succeeded. */
+  newsVerdict?: NewsVerdict;
 };
 
 export default async function Page({
