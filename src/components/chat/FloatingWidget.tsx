@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getSummary, researchDeeper } from "@/app/actions";
+import { checkDeepResearch, getSummary, researchDeeper } from "@/app/actions";
 import type {
   ChatRequest,
   ChatTurn,
@@ -7,6 +7,9 @@ import type {
 } from "@/lib/stocksage/types";
 import type { ChatMessageModel } from "./ChatMessage";
 import { FloatingWidgetView } from "./FloatingWidgetView";
+
+const DEEP_POLL_INTERVAL_MS = 2_000;
+const DEEP_POLL_LIMIT_MS = 150_000;
 
 const initialMessages: ChatMessageModel[] = [
   {
@@ -231,19 +234,37 @@ export function FloatingWidget({
       )
     );
     try {
-      const result = await researchDeeper(target.deepResearch.token);
+      let job = await researchDeeper(target.deepResearch.token);
+      // The work now runs on a queue, so the widget waits by polling instead
+      // of holding the server action open. The regular answer stays visible
+      // throughout.
+      for (
+        let waited = 0;
+        job.status === "pending" && waited < DEEP_POLL_LIMIT_MS;
+        waited += DEEP_POLL_INTERVAL_MS
+      ) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, DEEP_POLL_INTERVAL_MS)
+        );
+        job = await checkDeepResearch(job.workId);
+      }
+      const settled =
+        job.status === "pending"
+          ? {
+              status: "failure" as const,
+              text: "That deeper pass is taking longer than expected. The answer above still stands; run it again when you're ready.",
+              retryable: true,
+            }
+          : {
+              status: job.reply.status,
+              text: job.reply.text,
+              citationUrls: job.reply.citationUrls,
+              retryable: job.reply.retryable,
+            };
       setMessages((previous) =>
         previous.map((message) =>
           message.id === messageId
-            ? {
-                ...message,
-                deepState: {
-                  status: result.status,
-                  text: result.text,
-                  citationUrls: result.citationUrls,
-                  retryable: result.retryable,
-                },
-              }
+            ? { ...message, deepState: settled }
             : message
         )
       );

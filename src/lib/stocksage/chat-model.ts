@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { budgetFor, withDeadline } from "./budget";
 import { answerDegraded } from "./chat-heuristics";
 import { createDeepResearchOffer } from "./deep-snapshot";
 import { buildGroundedDeterministicReply } from "./grounded-answer";
@@ -23,13 +24,14 @@ import {
   SOCIAL,
 } from "./social-patterns";
 import { logStockSage } from "./telemetry";
-import type { ChatDependencies } from "./chat-shared";
+import type { ChatDependencies, ExecutorOptions } from "./chat-shared";
 import { synthesizeModelAnswer } from "./chat-model-synthesis";
 import { deterministicModelAnswer } from "./chat-model-deterministic";
 import type {
   ChatDataStatus,
   ChatReply,
   ChatRequest,
+  Turn,
 } from "./types";
 
 
@@ -105,25 +107,52 @@ export async function answerWithModel(
   request: ChatRequest,
   dependencies: ChatDependencies,
   startedAt: number,
-  presolved?: StateResolution
+  presolved?: StateResolution,
+  options: ExecutorOptions = {}
 ): Promise<ChatReply> {
-  const resolution =
-    presolved ??
-    resolveConversationState(request.message, request.state, request.history);
+  const turn = options.turn;
+  const budget = options.budget ?? budgetFor("regular", startedAt);
+  const telemetry = {
+    latencyClass: budget.latencyClass,
+    ...(turn
+      ? {
+          decisionKind: turn.decision.kind,
+          routeClass: turn.decision.routeClass,
+        }
+      : {}),
+  };
+  const resolution = turn
+    ? {
+        state: turn.context.state,
+        entities: turn.context.entities,
+        reasonCode: turn.decision.reasonCode,
+      }
+    : (presolved ??
+      resolveConversationState(
+        request.message,
+        request.state,
+        request.history
+      ));
   const entities = resolution.entities;
-  const social = isPureSocialTurn(request.message);
+  const social = turn
+    ? turn.decision.kind === "social"
+    : isPureSocialTurn(request.message);
   const elsewhere = CLEARLY_ELSEWHERE.test(request.message);
   const smuggled = hasSmuggledOffTopicTask(request.message);
   const creativeOnly = creativeRequestOnly(request.message);
-  const wantsData =
-    !social &&
-    !creativeOnly &&
-    (entities.length > 0 ||
-      (resolution.state.entities.length > 0 &&
-        DATA_SEEKING_FOLLOW_UP.test(request.message)) ||
-      (!elsewhere && TIME_OR_MARKET.test(request.message)));
-  const offTopicTurn =
-    !social && !wantsData && (elsewhere || smuggled || creativeOnly);
+  // The frozen decision is the only authority on provider access; the model
+  // path may not re-derive it from raw text.
+  const wantsData = turn
+    ? turn.decision.retrievalAuthorized
+    : !social &&
+      !creativeOnly &&
+      (entities.length > 0 ||
+        (resolution.state.entities.length > 0 &&
+          DATA_SEEKING_FOLLOW_UP.test(request.message)) ||
+        (!elsewhere && TIME_OR_MARKET.test(request.message)));
+  const offTopicTurn = turn
+    ? turn.decision.kind === "out_of_scope"
+    : !social && !wantsData && (elsewhere || smuggled || creativeOnly);
   const farewellTurn = social && FAREWELL.test(request.message);
   const blendedOffTopic = wantsData && (elsewhere || smuggled);
 
@@ -131,10 +160,15 @@ export async function answerWithModel(
     entities.length > 0 ? entities : resolution.state.entities;
   const plan = wantsData
     ? planEvidence({
-        route: prefetchEntities.length >= 2 ? "comparison" : "current_finance",
+        route:
+          turn?.decision.route === "comparison" ||
+          (!turn && prefetchEntities.length >= 2)
+            ? "comparison"
+            : "current_finance",
         message: request.message,
         entities: prefetchEntities,
         state: resolution.state,
+        intervals: turn?.context.intervals,
       })
     : undefined;
   const retrievalStartedAt = Date.now();
@@ -143,6 +177,7 @@ export async function answerWithModel(
         plan,
         entities: prefetchEntities,
         providers: dependencies.retrievalProviders,
+        budget,
       })
     : emptyContext(new Date().toISOString());
   const retrievalMs = Date.now() - retrievalStartedAt;
@@ -152,7 +187,7 @@ export async function answerWithModel(
     context.sources.length > 0;
   const dataStatus = dataStatusFor(wantsData, context);
   const requestedCriteria = wantsData ? detectCriteria(request.message) : [];
-  const deterministic = deterministicModelAnswer({ request, prefetchEntities, context, resolution, live, dataStatus, wantsData, requestedCriteria, blendedOffTopic, startedAt, retrievalMs });
+  const deterministic = deterministicModelAnswer({ request, prefetchEntities, context, resolution, live, dataStatus, wantsData, requestedCriteria, blendedOffTopic, startedAt, retrievalMs, telemetry });
   if (deterministic) return deterministic;
 
   const grounded = wantsData
@@ -174,6 +209,7 @@ export async function answerWithModel(
       reasonCode: "deterministic_grounded_answer",
       durationMs: Date.now() - startedAt,
       retrievalMs,
+      ...telemetry,
       providerCount: context.plan.queries.length,
       sourceCount: context.sources.length,
     });
@@ -225,6 +261,7 @@ export async function answerWithModel(
       reasonCode: "source_less_research_floor",
       durationMs: Date.now() - startedAt,
       retrievalMs,
+      ...telemetry,
       providerCount: context.plan.queries.length,
       sourceCount: 0,
     });
@@ -268,6 +305,7 @@ export async function answerWithModel(
       reasonCode: "zero_data_floor",
       durationMs: Date.now() - startedAt,
       retrievalMs,
+      ...telemetry,
       providerCount: context.plan.queries.length,
       sourceCount: 0,
     });
@@ -283,5 +321,79 @@ export async function answerWithModel(
     };
   }
 
-  return synthesizeModelAnswer({ request, context, plan, prefetchEntities, entities, resolution, wantsData, live, requestedCriteria, offTopicTurn, blendedOffTopic, smuggled, startedAt, retrievalMs, dataStatus, farewellTurn });
+  const synthesis = synthesizeModelAnswer({ request, context, plan, prefetchEntities, entities, resolution, wantsData, live, requestedCriteria, offTopicTurn, blendedOffTopic, smuggled, startedAt, retrievalMs, dataStatus, farewellTurn, budget, telemetry, ...(turn ? { turn } : {}) });
+  // Synthesis owns its own timeouts, but lane acquisition, rate-limit waits and
+  // retries can still overrun them. This is the outer guarantee: past the
+  // deadline we publish the deterministic answer we already hold.
+  const published = await withDeadline<{ reply: ChatReply | null }>(
+    synthesis.then((reply) => ({ reply })),
+    // Stop short of the deadline: rendering the fallback still has to fit
+    // inside the budget, or the guarantee is off by the cost of keeping it.
+    budget.publishableMs(),
+    { reply: null }
+  );
+  if (published.reply) return published.reply;
+  logStockSage({
+    event: "request_complete",
+    route: wantsData ? "model_finance" : "model_conversational",
+    reasonCode: "deadline_deterministic_fallback",
+    durationMs: Date.now() - startedAt,
+    retrievalMs,
+    ...telemetry,
+    deadlineHit: true,
+    budgetExceeded: true,
+    providerCount: context.plan.queries.length,
+    sourceCount: context.sources.length,
+  });
+  return deadlineFallback({
+    request,
+    prefetchEntities,
+    context,
+    resolution,
+    live,
+    wantsData,
+    dataStatus,
+    ...(turn ? { turn } : {}),
+  });
+}
+
+/** The best answer available without the model, published on a blown deadline. */
+function deadlineFallback(args: {
+  request: ChatRequest;
+  prefetchEntities: StateResolution["entities"];
+  context: RegularContext;
+  resolution: StateResolution;
+  live: boolean;
+  wantsData: boolean;
+  dataStatus: ChatDataStatus;
+  turn?: Turn;
+}): ChatReply {
+  if (!args.live) {
+    return {
+      ...answerDegraded(args.request, Date.now(), args.turn),
+      state: args.resolution.state,
+      dataStatus: args.wantsData ? "unavailable" : "full",
+    };
+  }
+  const fallback = buildFallbackReply(
+    args.request,
+    {
+      route:
+        args.prefetchEntities.length >= 2 ? "comparison" : "current_finance",
+      reasonCode: "deadline_deterministic_fallback",
+      retrievalRequired: true,
+      deepEligible: false,
+    },
+    args.prefetchEntities,
+    args.context
+  );
+  return {
+    ...fallback,
+    text: roundFiguresForDisplay(fallback.text),
+    live: true,
+    kind: "answer",
+    responseId: randomUUID(),
+    state: args.resolution.state,
+    dataStatus: "limited",
+  };
 }

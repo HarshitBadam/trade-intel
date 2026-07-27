@@ -65,7 +65,10 @@ test("Macquarie follow-up preserves and expands all entities", async () => {
     second.state?.entities.map((entity) => entity.ticker),
     ["MQG", "CBA", "NAB", "ANZ", "WBC"]
   );
-  assert.equal(secondSetup.calls.tavily, 5);
+  assert.ok(
+    secondSetup.calls.tavily > 0 && secondSetup.calls.tavily <= 3,
+    `expected consolidated web retrieval, got ${secondSetup.calls.tavily} calls`
+  );
 });
 
 test("refused prompts never offer deep research", async () => {

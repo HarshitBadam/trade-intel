@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createDeepResearchOffer } from "./deep-snapshot";
 import { buildFallbackReply, buildDeterministicRankingReply } from "./regular-fallback";
 import { roundFiguresForDisplay } from "./rounding";
-import { logStockSage } from "./telemetry";
+import { logStockSage, type StockSageEvent } from "./telemetry";
 import type { RegularContext } from "./retrieve";
 import type { StateResolution } from "./entities";
 import type { ChatReply, ChatRequest } from "./types";
@@ -18,8 +18,9 @@ export function deterministicModelAnswer(args: {
   blendedOffTopic: boolean;
   startedAt: number;
   retrievalMs: number;
+  telemetry?: Partial<StockSageEvent>;
 }): ChatReply | null {
-  const { request, prefetchEntities, context, resolution, live, dataStatus, wantsData, requestedCriteria, blendedOffTopic, startedAt, retrievalMs } = args;
+  const { request, prefetchEntities, context, resolution, live, dataStatus, wantsData, requestedCriteria, blendedOffTopic, startedAt, retrievalMs, telemetry } = args;
   const deterministicRanking = buildDeterministicRankingReply(
     request,
     prefetchEntities,
@@ -33,6 +34,7 @@ export function deterministicModelAnswer(args: {
       reasonCode: "deterministic_numeric_ranking",
       durationMs: Date.now() - startedAt,
       retrievalMs,
+      ...telemetry,
       providerCount: context.plan.queries.length,
       sourceCount: context.sources.length,
     });
@@ -65,6 +67,7 @@ export function deterministicModelAnswer(args: {
       reasonCode: "deterministic_scope_contained_snapshot",
       durationMs: Date.now() - startedAt,
       retrievalMs,
+      ...telemetry,
       providerCount: context.plan.queries.length,
       sourceCount: context.sources.length,
     });
@@ -101,6 +104,7 @@ export function deterministicModelAnswer(args: {
       reasonCode: "deterministic_proxy_snapshot",
       durationMs: Date.now() - startedAt,
       retrievalMs,
+      ...telemetry,
       providerCount: context.plan.queries.length,
       sourceCount: context.sources.length,
     });
@@ -151,6 +155,7 @@ export function deterministicModelAnswer(args: {
       reasonCode: "deterministic_market_snapshot",
       durationMs: Date.now() - startedAt,
       retrievalMs,
+      ...telemetry,
       providerCount: context.plan.queries.length,
       sourceCount: context.sources.length,
     });
@@ -194,6 +199,7 @@ export function deterministicModelAnswer(args: {
       reasonCode: "deterministic_proxy_comparison",
       durationMs: Date.now() - startedAt,
       retrievalMs,
+      ...telemetry,
       providerCount: context.plan.queries.length,
       sourceCount: context.sources.length,
     });
@@ -240,6 +246,7 @@ export function deterministicModelAnswer(args: {
       reasonCode: "deterministic_investability_comparison",
       durationMs: Date.now() - startedAt,
       retrievalMs,
+      ...telemetry,
       providerCount: context.plan.queries.length,
       sourceCount: context.sources.length,
     });
@@ -283,6 +290,7 @@ export function deterministicModelAnswer(args: {
       reasonCode: "deterministic_structured_comparison",
       durationMs: Date.now() - startedAt,
       retrievalMs,
+      ...telemetry,
       providerCount: context.plan.queries.length,
       sourceCount: context.sources.length,
     });

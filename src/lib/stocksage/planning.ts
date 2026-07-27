@@ -1,4 +1,5 @@
-import { MARKET_PROXY_SYMBOLS } from "./entity-catalog";
+import { listingCapability } from "./listing-capability";
+import { describeInterval, type TemporalInterval } from "./temporal";
 import type {
   ChatRoute,
   ConversationState,
@@ -68,9 +69,13 @@ function astraFreshnessDays(
   return freshnessDays === undefined ? undefined : Math.max(freshnessDays, 60);
 }
 
-function marketProxyEligible(entities: FinanceEntity[]): FinanceEntity[] {
+function marketQuoteEligible(entities: FinanceEntity[]): FinanceEntity[] {
   return entities.filter(
-    (entity) => entity.ticker && MARKET_PROXY_SYMBOLS[entity.ticker]
+    (entity) =>
+      entity.ticker &&
+      ["primary_asx", "adr_proxy", "etf_proxy", "delayed_index"].includes(
+        listingCapability(entity).quoteStrategy
+      )
   );
 }
 
@@ -78,6 +83,28 @@ function supportsTrailingQuote(message: string): boolean {
   return /\b(?:today|yesterday|this (?:week|month|year)|month[- ]to[- ]date|mtd|trailing month|ytd|year[- ]to[- ]date|last (?:few days|week|month|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|over the last (?:few days|week|month|year)|[135]\s*[- ]?year)\b/i.test(
     message
   );
+}
+
+/**
+ * Web search is the slowest lane, so a comparison fans out into a bounded
+ * number of consolidated queries instead of one per entity.
+ */
+const MAX_WEB_QUERIES = 3;
+
+function consolidate<T>(items: T[], maxGroups: number): T[][] {
+  if (items.length <= maxGroups) return items.map((item) => [item]);
+  const size = Math.ceil(items.length / maxGroups);
+  const groups: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    groups.push(items.slice(index, index + size));
+  }
+  return groups;
+}
+
+function groupId(prefix: string, entities: FinanceEntity[]): string {
+  return `${prefix}-${entities
+    .map((entity) => entity.id.replace(/[^a-z0-9]+/gi, "-"))
+    .join("_")}`.slice(0, 120);
 }
 
 function query(
@@ -111,14 +138,25 @@ export function planEvidence(args: {
   entities: FinanceEntity[];
   state: ConversationState;
   asOf?: string;
+  intervals?: TemporalInterval[];
+  /** When false the plan is produced for telemetry but carries no queries. */
+  retrievalAuthorized?: boolean;
 }): EvidencePlan {
   const asOf = args.asOf ?? new Date().toISOString();
   const queries: EvidenceQuery[] = [];
-  const us = args.entities.filter(
-    (entity) => entity.market === "us" && entity.ticker
-  );
+  const capabilities = args.entities.map((entity) => ({
+    entity,
+    capability: listingCapability(entity),
+  }));
+  // Provider selection reads instrument capability, not a `market === "us"` check.
+  const us = capabilities
+    .filter(({ capability }) => capability.quoteStrategy === "primary_us")
+    .map(({ entity }) => entity);
   const web = args.entities.filter((entity) => entity.market === "web");
-  const marketProxy = marketProxyEligible(args.entities);
+  const marketData = marketQuoteEligible(args.entities);
+  const intervalNote = (args.intervals ?? [])
+    .map((value) => describeInterval(value))
+    .join("; ");
   const astraEligible = args.entities.filter((entity) => entity.ticker);
   const entityContext = args.entities.map((entity) => entity.query).join("; ");
   const fortuneRanking =
@@ -137,7 +175,11 @@ export function planEvidence(args: {
     args.message,
     entityContext ? `Context: ${entityContext}` : "",
     `Focus: ${currentCriteria.join(", ")}`,
-    args.state.horizon ? `Period: ${args.state.horizon}` : "",
+    intervalNote
+      ? `Period: ${intervalNote}`
+      : args.state.horizon
+        ? `Period: ${args.state.horizon}`
+        : "",
     fortuneRanking
       ? `Use the latest official Fortune ranking available as of ${new Date().getUTCFullYear()}. Prefer fortune.com or fortunemedia.mediaroom.com`
       : currentCriteria.includes("earnings")
@@ -158,7 +200,7 @@ export function planEvidence(args: {
       );
     }
     if (
-      marketProxy.length > 0 &&
+      marketData.length > 0 &&
       (!historical || supportsTrailingQuote(args.message))
     ) {
       queries.push(
@@ -166,7 +208,7 @@ export function planEvidence(args: {
           "market-proxy-current",
           "market_proxy",
           args.message,
-          marketProxy,
+          marketData,
           ["price"],
           "news",
           6
@@ -195,16 +237,16 @@ export function planEvidence(args: {
     ) {
       const targets = web.length > 0 ? web : args.entities;
       if (targets.length > 1) {
-        for (const entity of targets.slice(0, 5)) {
+        for (const group of consolidate(targets, MAX_WEB_QUERIES)) {
           queries.push(
             query(
-              `tavily-current-${entity.id.replace(/[^a-z0-9]+/gi, "-")}`,
+              groupId("tavily-current", group),
               "tavily",
-              `${entity.query} ${currentCriteria.join(" ")}. Context: ${args.message.slice(0, 160)}`,
-              [entity],
+              `${group.map((entity) => entity.query).join(" OR ")} ${currentCriteria.join(" ")}. Context: ${args.message.slice(0, 160)}`,
+              group,
               currentCriteria,
               fortuneRanking ? "general" : "news",
-              3,
+              3 * group.length,
               freshnessDays
             )
           );
@@ -254,7 +296,7 @@ export function planEvidence(args: {
       );
     }
     if (
-      marketProxy.length > 0 &&
+      marketData.length > 0 &&
       (!historical || supportsTrailingQuote(args.message)) &&
       args.entities.length <= 12
     ) {
@@ -263,10 +305,10 @@ export function planEvidence(args: {
           "market-proxy-comparison",
           "market_proxy",
           args.message,
-          marketProxy,
+          marketData,
           criteria,
           "general",
-          Math.min(6, marketProxy.length)
+          Math.min(6, marketData.length)
         )
       );
     }
@@ -287,20 +329,34 @@ export function planEvidence(args: {
         )
       );
     }
-    for (const entity of args.entities) {
+    for (const group of consolidate(args.entities, MAX_WEB_QUERIES)) {
       queries.push(
         query(
-          `tavily-${entity.id.replace(/[^a-z0-9]+/gi, "-")}`,
+          groupId("tavily", group),
           "tavily",
-          `${entity.query} ${criteria.join(" ")}. Context: ${args.message.slice(0, 160)}`,
-          [entity],
+          `${group.map((entity) => entity.query).join(" OR ")} ${criteria.join(" ")}. Context: ${args.message.slice(0, 160)}`,
+          group,
           criteria,
           topic,
-          3,
+          3 * group.length,
           topic === "news" ? freshnessDays : undefined
         )
       );
     }
+  }
+
+  if (args.retrievalAuthorized === false) {
+    return {
+      version: 1,
+      route: args.route,
+      asOf,
+      queries: [],
+      requiredEntityIds: [],
+      criteria: [],
+      explicitCriteria: currentCriteria,
+      horizon: args.state.horizon,
+      intervals: args.intervals,
+    };
   }
 
   return {
@@ -321,5 +377,6 @@ export function planEvidence(args: {
     explicitCriteria:
       args.route === "comparison" ? [...args.state.criteria] : currentCriteria,
     horizon: args.state.horizon,
+    intervals: args.intervals,
   };
 }

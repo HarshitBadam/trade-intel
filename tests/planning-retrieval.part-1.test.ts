@@ -111,15 +111,17 @@ test("eight-entity comparison plans evidence for every entity", () => {
       criteria: ["valuation", "risk"],
     },
   });
-  assert.equal(plan.queries.length, 10);
   assert.equal(plan.queries[0]?.provider, "quotes");
   assert.equal(
     plan.queries.filter((query) => query.provider === "astra").length,
     1
   );
-  assert.equal(
-    plan.queries.filter((query) => query.provider === "tavily").length,
-    8
+  const tavily = plan.queries.filter((query) => query.provider === "tavily");
+  // Eight entities fan out into a bounded number of consolidated web queries.
+  assert.ok(tavily.length <= 3, `expected at most 3 web queries, got ${tavily.length}`);
+  assert.deepEqual(
+    [...new Set(tavily.flatMap((query) => query.entityIds))].sort(),
+    entities.map((entity) => entity.id).sort()
   );
   assert.deepEqual(
     plan.requiredEntityIds,

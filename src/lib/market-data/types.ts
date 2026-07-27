@@ -71,6 +71,10 @@ export type LiveQuote = {
 
 export type ChatQuote = {
   ticker: string;
+  // The instrument that supplied this quote, kept distinct from logical ticker.
+  instrumentSymbol?: string;
+  venue?: "US" | "ASX" | "INDEX";
+  currency?: "USD" | "AUD" | "NONE";
   price: number;
   asOf: string;
   // EOD/delayed series such as Stooq, rather than a near-live feed.

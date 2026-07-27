@@ -1,6 +1,12 @@
 import "server-only";
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
+import {
+  REGULAR_RETRIEVAL_CEILING_MS,
+  withDeadline,
+  type RequestBudget,
+} from "./budget";
 import {
   getChatFundamentals,
   getChatQuotes,
@@ -20,6 +26,7 @@ import {
 } from "./retrieval-market";
 import { retrieveAstra } from "./retrieval-astra";
 import { searchTavily } from "./tavily";
+import { logStockSage } from "./telemetry";
 import type {
   EvidencePlan,
   EvidenceQuery,
@@ -29,7 +36,11 @@ import type {
 } from "./types";
 
 export { retrieveMarketProxy } from "./retrieval-market";
-export type { MarketQuoteFetcher, StooqQuoteFetcher } from "./retrieval-market";
+export type {
+  AsxQuoteFetcher,
+  MarketQuoteFetcher,
+  StooqQuoteFetcher,
+} from "./retrieval-market";
 export { astraInput } from "./retrieval-astra";
 
 export type RegularContext = {
@@ -55,18 +66,20 @@ export type RetrievalProviders = {
 
 const RETRIEVAL_TIMEOUT_MS = 10_000;
 
+/**
+ * Set for the duration of one plan execution so provider helpers inherit the
+ * top-level deadline without every call site threading it by hand.
+ */
+const retrievalDeadline = new AsyncLocalStorage<number>();
+
+function providerTimeoutMs(): number {
+  const deadline = retrievalDeadline.getStore();
+  if (deadline === undefined) return RETRIEVAL_TIMEOUT_MS;
+  return Math.max(0, Math.min(RETRIEVAL_TIMEOUT_MS, deadline - Date.now()));
+}
+
 async function bounded<T>(promise: Promise<T>, fallback: T): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((resolve) => {
-        timer = setTimeout(() => resolve(fallback), RETRIEVAL_TIMEOUT_MS);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+  return withDeadline(promise, providerTimeoutMs(), fallback);
 }
 
 async function retrieveQuotes(query: EvidenceQuery): Promise<ChatQuote[]> {
@@ -120,6 +133,29 @@ export async function executeEvidencePlan(args: {
   plan: EvidencePlan;
   entities: FinanceEntity[];
   providers?: RetrievalProviders;
+  budget?: RequestBudget;
+  /** Overrides the default per-latency-class retrieval ceiling. */
+  ceilingMs?: number;
+}): Promise<RegularContext> {
+  const ceiling =
+    args.ceilingMs ??
+    (args.budget
+      ? Math.min(
+          args.budget.latencyClass === "regular"
+            ? REGULAR_RETRIEVAL_CEILING_MS
+            : RETRIEVAL_TIMEOUT_MS,
+          args.budget.publishableMs()
+        )
+      : RETRIEVAL_TIMEOUT_MS);
+  return retrievalDeadline.run(Date.now() + ceiling, () =>
+    executeBoundedPlan(args)
+  );
+}
+
+async function executeBoundedPlan(args: {
+  plan: EvidencePlan;
+  entities: FinanceEntity[];
+  providers?: RetrievalProviders;
 }): Promise<RegularContext> {
   const providers = args.providers ?? defaultRetrievalProviders;
   const useSharedCache = providers === defaultRetrievalProviders;
@@ -146,11 +182,12 @@ export async function executeEvidencePlan(args: {
         for (;;) {
           const query = tavilyQueue.shift();
           if (!query) return;
-          try {
-            tavilyResults.set(query.id, await providers.tavily(query));
-          } catch {
-            tavilyResults.set(query.id, []);
-          }
+          // Never start another sequential call once the deadline has passed.
+          if (providerTimeoutMs() <= 0) return;
+          tavilyResults.set(
+            query.id,
+            await bounded(providers.tavily(query), [])
+          );
         }
       }
     );
@@ -160,28 +197,23 @@ export async function executeEvidencePlan(args: {
     Promise.all(
       args.plan.queries.map(async (query) => {
         if (query.provider === "quotes") {
-          return { quotes: await providers.quotes(query), inputs: [] };
+          return { quotes: await bounded(providers.quotes(query), []), inputs: [] };
         }
         if (query.provider === "stooq") {
           if (!providers.stooq) return { quotes: [], inputs: [] };
-          try {
-            return { quotes: await providers.stooq(query), inputs: [] };
-          } catch {
-            return { quotes: [], inputs: [] };
-          }
+          return { quotes: await bounded(providers.stooq(query), []), inputs: [] };
         }
         if (query.provider === "market_proxy") {
           if (!providers.marketProxy) return { quotes: [], inputs: [] };
-          try {
-            return { quotes: await providers.marketProxy(query), inputs: [] };
-          } catch {
-            return { quotes: [], inputs: [] };
-          }
+          return {
+            quotes: await bounded(providers.marketProxy(query), []),
+            inputs: [],
+          };
         }
         if (query.provider === "astra") {
           return {
             quotes: [],
-            inputs: await providers.astra(query, args.entities),
+            inputs: await bounded(providers.astra(query, args.entities), []),
           };
         }
         return { quotes: [], inputs: [] };
@@ -224,6 +256,19 @@ export async function executeEvidencePlan(args: {
       })}`
     );
   }
+  // Per-provider yield is what tells the AU/US parity report whether a market
+  // is thin because a provider has no coverage or because we never asked.
+  logStockSage({
+    event: "evidence_yield",
+    providerCalls: {
+      tavily: tavilyInputs.length,
+      astra: results.flatMap((result) => result.inputs).length,
+      cache: cachedInputs.length,
+      quotes: quotes.length,
+      fundamentals: fundamentals.length,
+    },
+    sourceCount: sources.length,
+  });
   const quotedEntityIds = args.entities
     .filter(
       (entity) =>

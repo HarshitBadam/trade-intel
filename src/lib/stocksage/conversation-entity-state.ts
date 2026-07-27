@@ -1,8 +1,30 @@
-import { CANONICAL_GROUPS, WEB_ALIASES, type WebAlias } from "./entity-catalog";
+import {
+  CANONICAL_GROUPS,
+  WEB_ALIASES,
+  type CanonicalGroup,
+  type WebAlias,
+} from "./entity-catalog";
 import { detectCriteria, detectHorizon, detectJurisdiction } from "./conversation-attributes";
-import { canonicalizeEntity, fromAlias, resolveGroup, resolveText } from "./entity-resolution";
+import {
+  canonicalizeEntity,
+  fromAlias,
+  groupMembers,
+  resolveGroupRefs,
+  resolveText,
+} from "./entity-resolution";
+import { primaryCalendar } from "./listing-capability";
 import { sanitizeConversationState } from "./state";
-import type { ChatTurn, ConversationState, FinanceEntity } from "./types";
+import {
+  intervalsToHorizon,
+  parseIntervals,
+  type TemporalInterval,
+} from "./temporal";
+import type {
+  ChatTurn,
+  ConversationState,
+  FinanceEntity,
+  NamedGroupRef,
+} from "./types";
 import {
   AUSTRALIAN_BANK_TICKERS,
   CATEGORY_REFERENCE,
@@ -45,7 +67,10 @@ function stateFromHistory(history: ChatTurn[]): ConversationState {
   let state = emptyConversationState();
   for (const turn of history) {
     if (turn.role !== "user") continue;
-    const entities = [...resolveText(turn.text), ...resolveGroup(turn.text)];
+    const entities = [
+      ...resolveText(turn.text),
+      ...groupMembers(resolveGroupRefs(turn.text)),
+    ];
     if (entities.length === 0) continue;
     const unique = [...new Map(entities.map((entity) => [entity.id, entity])).values()];
     state = {
@@ -173,7 +198,9 @@ export function resolveConversationState(
       ),
     ];
   }
-  let grouped = resolveGroup(message);
+  const namedGroupRefs = resolveGroupRefs(message);
+  let grouped = groupMembers(namedGroupRefs);
+  let namedGroups: CanonicalGroup[] = [...namedGroupRefs];
   let groupSwitch = false;
   if (
     grouped.length === 0 &&
@@ -196,6 +223,7 @@ export function resolveConversationState(
         : undefined;
     if (target) {
       groupSwitch = true;
+      namedGroups = [target];
       grouped = target.members
         .map((member) =>
           WEB_ALIASES.find(
@@ -302,6 +330,29 @@ export function resolveConversationState(
     ![...direct, ...grouped].some(isIndexEntity)
       ? base.entities.filter(isIndexEntity)
       : [];
+  const priorGroups = base.groups ?? [];
+  const priorGroupMemberIds = new Set(
+    priorGroups.flatMap((group) => group.memberIds)
+  );
+  const priorGroupEntities = base.entities.filter((entity) =>
+    priorGroupMemberIds.has(entity.id)
+  );
+  /**
+   * "Them" after "Macquarie vs the Aussie Big Four" means the named group, not
+   * the whole prior comparison. When every active entity already belongs to a
+   * named group the two readings coincide.
+   */
+  const pluralReferent =
+    priorGroupEntities.length > 0 &&
+    priorGroupEntities.length < base.entities.length
+      ? priorGroupEntities
+      : base.entities;
+  const priorFocus =
+    base.focusEntityIds && base.focusEntityIds.length > 0
+      ? base.entities.filter((entity) =>
+          base.focusEntityIds?.includes(entity.id)
+        )
+      : base.entities.slice(-1);
   const comparisonFollowUp =
     !orderedMatch &&
     !subsetMatch &&
@@ -314,21 +365,57 @@ export function resolveConversationState(
     grouped.length === 0 &&
     base.entities.length > 0 &&
     CONTEXTUAL_FOLLOW_UP.test(message);
+  const carriesForward =
+    removed.length === 0 &&
+    !subsetMatch &&
+    !orderedMatch &&
+    !fortuneReplacement &&
+    base.entities.length > 0;
+  /** "It" beside a newly named group keeps the prior focus in the comparison. */
+  const singularAnchorWithGroup =
+    carriesForward &&
+    referencesSingular &&
+    direct.length === 0 &&
+    grouped.length > 0 &&
+    anchoredPronoun;
+  /**
+   * "Them vs IXIC" keeps the prior group beside the newly named entity. The
+   * pronoun has to be the subject of the comparison; a trailing "trust them"
+   * inside a sentence about a new company is not a reference to prior state.
+   */
+  const pluralComparisonSubject =
+    /^(?:(?:and|so|ok(?:ay)?|now|then|what about|how about|wb)\s+)?(?:them|those|these|they|both)\b[^.!?]{0,24}?\b(?:vs\.?|versus|against|compared?\s+(?:to|with))\b/i.test(
+      message
+    ) ||
+    /\b(?:compare|compared|comparing)\s+(?:them|those|these|both)\b/i.test(
+      message
+    );
+  const pluralAnchor =
+    carriesForward &&
+    referencesPlural &&
+    direct.length > 0 &&
+    pluralComparisonSubject;
   const referenced =
     removed.length > 0
       ? correctedBase
       : comparisonFollowUp ||
           contextualFollowUp ||
           (referencesPlural && direct.length === 0) ||
+          pluralAnchor ||
+          singularAnchorWithGroup ||
           (referencesSingular &&
             direct.length === 0 &&
             grouped.length === 0)
-      ? referencesSingular
-        ? comparisonFollowUp
-          ? base.entities
-          : base.entities.slice(-1)
-        : base.entities
-      : [];
+        ? referencesSingular && !pluralAnchor
+          ? comparisonFollowUp
+            ? referencesPlural
+              ? pluralReferent
+              : base.entities
+            : singularAnchorWithGroup
+              ? priorFocus
+              : base.entities.slice(-1)
+          : pluralReferent
+        : [];
   const merged = fortuneReplacement
     ? base.entities.flatMap((entity) =>
         entity.name === "Fortune 500" ? direct : [entity]
@@ -355,9 +442,54 @@ export function resolveConversationState(
     !fortuneReplacement;
   const horizon = detectHorizon(message);
   const jurisdiction = detectJurisdiction(message, entities);
+  const activeEntities = retainComparisonContext
+    ? base.entities
+    : removed.length > 0 || entities.length > 0
+      ? entities
+      : base.entities;
+  const activeIds = new Set(activeEntities.map((entity) => entity.id));
+  const revision = base.revision + 1;
+  const freshGroups: NamedGroupRef[] = namedGroups.map((group) => ({
+    id: group.id,
+    label: group.label,
+    memberIds: groupMembers([group])
+      .map((entity) => entity.id)
+      .filter((id) => activeIds.has(id)),
+    namedAtRevision: revision,
+  }));
+  const freshGroupIds = new Set(freshGroups.map((group) => group.id));
+  const carriedGroups = priorGroups
+    .filter((group) => !freshGroupIds.has(group.id))
+    .map((group) => ({
+      ...group,
+      memberIds: group.memberIds.filter((id) => activeIds.has(id)),
+    }));
+  const groups = [...carriedGroups, ...freshGroups]
+    .filter((group) => group.memberIds.length > 0)
+    .slice(-4);
+  const explicitIds = [...new Set(explicit.map((entity) => entity.id))].filter(
+    (id) => activeIds.has(id)
+  );
+  const focusEntityIds =
+    explicitIds.length > 0
+      ? explicitIds
+      : activeEntities.map((entity) => entity.id);
+  const calendar = primaryCalendar(
+    activeEntities.length > 0 ? activeEntities : base.entities
+  );
+  const parsedIntervals = parseIntervals({ message, calendar });
+  const intervals: TemporalInterval[] =
+    parsedIntervals.length > 0
+      ? parsedIntervals
+      : startsNewTopic
+        ? []
+        : (base.intervals ?? []).map((value) => ({
+            ...value,
+            source: "inherited" as const,
+          }));
   const next: ConversationState = {
     version: 1,
-    revision: base.revision + 1,
+    revision,
     entities: retainComparisonContext
       ? base.entities
       : removed.length > 0 || entities.length > 0
@@ -384,10 +516,17 @@ export function resolveConversationState(
                 : base.explicitEntitySet,
     criteria:
       criteria.length > 0 ? criteria : startsNewTopic ? [] : base.criteria,
-    horizon: horizon ?? (startsNewTopic ? undefined : base.horizon),
+    horizon:
+      horizon ??
+      (startsNewTopic
+        ? undefined
+        : (base.horizon ?? intervalsToHorizon(intervals))),
     jurisdiction:
       jurisdiction ?? (startsNewTopic ? undefined : base.jurisdiction),
     safetyRepliesUsed: base.safetyRepliesUsed,
+    ...(groups.length > 0 ? { groups } : {}),
+    ...(focusEntityIds.length > 0 ? { focusEntityIds } : {}),
+    ...(intervals.length > 0 ? { intervals } : {}),
   };
   return {
     state: next,

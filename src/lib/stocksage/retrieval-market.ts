@@ -4,15 +4,21 @@ import { isOpen } from "@/lib/breaker";
 import {
   getChatQuotes,
   getStooqQuotes,
+  getYahooAsxQuotes,
   type ChatQuote,
 } from "@/lib/market-data";
-import { MARKET_PROXY_SYMBOLS, STOOQ_SYMBOLS } from "./entity-catalog";
+import {
+  ASX_NATIVE_TICKERS,
+  MARKET_PROXY_SYMBOLS,
+  STOOQ_SYMBOLS,
+} from "./entity-catalog";
 import type { EvidenceQuery } from "./types";
 
 export type MarketQuoteFetcher = (symbols: string[]) => Promise<ChatQuote[]>;
 export type StooqQuoteFetcher = (
   pairs: { ticker: string; symbol: string }[]
 ) => Promise<ChatQuote[]>;
+export type AsxQuoteFetcher = (tickers: string[]) => Promise<ChatQuote[]>;
 
 async function fetchProxyCandidates(
   symbols: string[],
@@ -32,22 +38,59 @@ async function fetchProxyCandidates(
 export async function retrieveMarketProxy(
   query: EvidenceQuery,
   quoteFetcher: MarketQuoteFetcher = getChatQuotes,
-  stooqFetcher: StooqQuoteFetcher = getStooqQuotes
+  stooqFetcher: StooqQuoteFetcher = getStooqQuotes,
+  asxFetcher: AsxQuoteFetcher = getYahooAsxQuotes
 ): Promise<ChatQuote[]> {
   if (query.provider !== "market_proxy" || query.tickers.length === 0) {
     return [];
   }
   const logicalTickers = [
     ...new Set(
-      query.tickers.filter((ticker) => Boolean(MARKET_PROXY_SYMBOLS[ticker]))
+      query.tickers.filter(
+        (ticker) =>
+          ASX_NATIVE_TICKERS.has(ticker) || Boolean(MARKET_PROXY_SYMBOLS[ticker])
+      )
     ),
   ];
   const resolved = new Map<string, ChatQuote>();
+  const asxTickers = logicalTickers.filter((ticker) =>
+    ASX_NATIVE_TICKERS.has(ticker)
+  );
+  if (asxTickers.length > 0) {
+    let nativeQuotes: ChatQuote[] = [];
+    try {
+      nativeQuotes = await asxFetcher(asxTickers);
+    } catch {
+      nativeQuotes = [];
+    }
+    for (const quote of nativeQuotes) {
+      const ticker = quote.ticker.toUpperCase().replace(/\.AX$/, "");
+      const instrumentSymbol = quote.instrumentSymbol?.toUpperCase();
+      // The retrieval layer is the final boundary before figures are rendered.
+      // Do not manufacture ASX/AUD identity for a malformed provider result.
+      if (
+        !asxTickers.includes(ticker) ||
+        instrumentSymbol !== `${ticker}.AX` ||
+        quote.venue !== "ASX" ||
+        quote.currency !== "AUD" ||
+        quote.proxySymbol !== undefined
+      ) {
+        continue;
+      }
+      resolved.set(ticker, {
+        ...quote,
+        ticker,
+        instrumentSymbol,
+        proxySymbol: undefined,
+        proxyKind: undefined,
+      });
+    }
+  }
   const quotesAvailable = !(await isOpen("quotes"));
   const maxCandidates = Math.max(
     0,
     ...logicalTickers.map(
-      (ticker) => MARKET_PROXY_SYMBOLS[ticker].candidates.length
+      (ticker) => MARKET_PROXY_SYMBOLS[ticker]?.candidates.length ?? 0
     )
   );
 
@@ -60,7 +103,7 @@ export async function retrieveMarketProxy(
       const candidates = logicalTickers.flatMap((ticker) => {
         if (resolved.has(ticker)) return [];
         const candidate =
-          MARKET_PROXY_SYMBOLS[ticker].candidates[candidateIndex];
+          MARKET_PROXY_SYMBOLS[ticker]?.candidates[candidateIndex];
         return candidate ? [{ ticker, ...candidate }] : [];
       });
       const quotes = await fetchProxyCandidates(

@@ -22,7 +22,11 @@ function quoteDisplayName(
   entity: FinanceEntity,
   quote: RegularContext["quotes"][number]
 ): string {
-  if (!quote.proxySymbol) return entity.ticker ?? casualName(entity.name);
+  if (!quote.proxySymbol) {
+    return quote.venue === "ASX"
+      ? `ASX:${entity.ticker ?? quote.ticker}`
+      : entity.ticker ?? casualName(entity.name);
+  }
   if (quote.ticker === "AXJO" && quote.proxySymbol === "EWA") {
     return "EWA (Australian-market ETF proxy)";
   }
@@ -185,7 +189,11 @@ export function comparisonLead(
         value: window.value(quote),
       }));
       figures.push(
-        `${quote.isIndex ? quote.price.toFixed(2) : `$${quote.price.toFixed(2)}`} at ${humanAsOf(quote.asOf)}${
+        `${
+          quote.isIndex
+            ? quote.price.toFixed(2)
+            : `${quote.currency === "AUD" ? "A$" : "$"}${quote.price.toFixed(2)}`
+        } at ${humanAsOf(quote.asOf)}${
           quote.eod ? " close" : ""
         }`,
         ...periods

@@ -5,8 +5,10 @@ import {
   stripTickerCitationMarkers,
   validCitationUrls,
 } from "./citations";
+import { SYNTHESIS_MIN_ATTEMPT_MS, type RequestBudget } from "./budget";
 import { unsupportedFigures } from "./figures";
 import { roundFiguresForDisplay } from "./rounding";
+import { logStockSage } from "./telemetry";
 import { buildChatSystemPrompt } from "./regular-prompt";
 import {
   buildDeterministicRankingReply,
@@ -36,6 +38,7 @@ export type FinanceAnswerOptions = {
   timeframe?: string;
   criteria?: string[];
   note?: string;
+  budget?: RequestBudget;
 };
 
 export async function answerRegularChat(
@@ -46,6 +49,7 @@ export async function answerRegularChat(
   context: RegularContext,
   options: FinanceAnswerOptions = {}
 ): Promise<ChatReply> {
+  const budget = options.budget;
   const live =
     context.quotes.length > 0 ||
     context.fundamentals.length > 0 ||
@@ -82,6 +86,28 @@ export async function answerRegularChat(
         deterministicRanking.retryable === true ? "limited" : dataStatus,
     };
   }
+  // A regular turn gets one bounded model attempt. If the remaining budget
+  // cannot hold one, publish the grounded deterministic answer instead of
+  // starting work that would land after the deadline.
+  const synthesisMs = budget ? budget.publishableMs() : 24_000;
+  if (budget && synthesisMs < SYNTHESIS_MIN_ATTEMPT_MS) {
+    logStockSage({
+      event: "synthesis_skipped",
+      route: decision.route,
+      reasonCode: "budget_exhausted",
+      latencyClass: budget.latencyClass,
+      remainingMs: budget.remainingMs(),
+      deadlineHit: true,
+    });
+    const early = buildFallbackReply(request, decision, entities, context);
+    return {
+      ...early,
+      text: roundFiguresForDisplay(early.text),
+      live,
+      dataStatus: live ? "limited" : "unavailable",
+    };
+  }
+
   try {
     const requireCitations =
       context.sources.length > 0 &&
@@ -127,8 +153,11 @@ export async function answerRegularChat(
       user: request.message,
       maxTokens: 700,
       temperature: 0.55,
-      timeoutMs: 18_000,
-      totalTimeoutMs: 24_000,
+      timeoutMs: budget ? synthesisMs : 18_000,
+      totalTimeoutMs: synthesisMs,
+      // One hot-path attempt; a rejected draft renders deterministically
+      // rather than paying for a synchronous rewrite cascade.
+      ...(budget ? { maxCandidates: 1 } : {}),
       event: "regular_synthesis",
       lane: "full",
       accept: (candidate) => {
@@ -155,7 +184,7 @@ export async function answerRegularChat(
         }
         return true;
       },
-      correction: (draft) => {
+      correction: budget ? undefined : (draft: string) => {
         const invented = guardFigures
           ? unsupportedFigures(draft, figureCorpus)
           : [];

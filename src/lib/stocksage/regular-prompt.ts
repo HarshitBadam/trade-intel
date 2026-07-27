@@ -47,12 +47,14 @@ function quoteBlock(quotes: ChatQuote[]): string {
         ? `$${quote.price.toFixed(2)} per ${quote.proxySymbol} share`
         : quote.isIndex
           ? `${quote.price.toFixed(2)} points (an index level, not a dollar price)`
-          : `$${quote.price.toFixed(2)}`;
+          : `${quote.currency === "AUD" ? "A$" : "$"}${quote.price.toFixed(2)}`;
       const label = quote.proxySymbol
         ? quote.ticker === "AXJO" && quote.proxySymbol === "EWA"
           ? "EWA, an Australian-market ETF proxy (not the ASX index)"
           : `${quote.proxySymbol} (${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy for requested ${quote.ticker})`
-        : quote.ticker;
+        : quote.venue === "ASX"
+          ? `ASX:${quote.ticker} (native ASX listing in AUD; Yahoo symbol ${quote.instrumentSymbol ?? `${quote.ticker}.AX`})`
+          : quote.ticker;
       const proxyRule = quote.proxySymbol
         ? ` PROXY RULE: every rendered quote line must start with ${quote.proxySymbol}; attribute every price and return to ${quote.proxySymbol}, never to ${quote.ticker} or the underlying index/listing. ${
             quote.proxyKind === "adr"
@@ -115,8 +117,10 @@ function subjectBlock(entities: FinanceEntity[]): string {
         `${entity.name}${entity.ticker ? ` (${entity.ticker})` : ""}${
           entity.private || PRIVATE_COMPANY_NAMES.has(entity.name)
             ? ", privately held (a partnership or private company), not listed on any exchange; the public cannot buy its shares. When listing or investability comes up, say this in ONE short clause woven into a substantive answer, cover the same news, business, and risk ground you would for a public company from the sources; never let \"it's private\" become the whole answer or pad it with encyclopedia filler"
-            : entity.market === "index" || entity.market === "au"
+            : entity.market === "index"
               ? ", quote data is end-of-day (delayed); anchor figures to the stated close date"
+              : entity.market === "au"
+                ? ", primary listing is on the ASX and quoted in AUD; never describe its figures as ADR or USD figures"
               : entity.market === "web"
                 ? ", no validated US quote feed; rely on sources"
                 : ""

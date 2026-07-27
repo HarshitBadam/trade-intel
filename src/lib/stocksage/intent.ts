@@ -23,7 +23,7 @@ const TIME_SENSITIVE =
   /\b(?:latest|today|yesterday|now|current|currently|recent(?:ly)?|lately|news|update|developments?|catalysts?|what\b.{0,50}\bmatters?|earnings|guidance|(?:is|are)\b.{0,60}\b(?:public|private|listed)|public\s*\/\s*private status|publicly traded|this (?:week|month|quarter|year)|month[- ]to[- ]date|mtd|trailing month|year[- ]to[- ]date|ytd|last (?:few days|week|month|quarter|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}|(?:stock|share) price|trading at|market move|what (?:changed|happened|moved)|what(?:'?s(?: is)?| is) up with|how (?:is|are|did|has|have)\b.{0,80}\b(?:doing|doin|done|performing|moved|changed)|recover|bounce back|turn around|do (?:well|good) again|anything notable|market conditions?|legal|lawsuit|regulatory|regulator)\b/i;
 const CODE =
   /\b(?:python|javascript|typescript|java|c\+\+|code|script|function|loop|syntax|compile|runtime|output|console\.log|print\s*\(|for\s+\w+\s+in\s+range)\b/i;
-const STABLE_FINANCE =
+export const STABLE_FINANCE =
   /\b(?:p\/?e|price[- ]to[- ]earnings|ratio|dividend|market cap|capitalisation|stock|share|bond|etf|interest rate|inflation|gdp|recession|earnings per share|eps|cash flow|balance sheet|valuation|risks?|fraud|market manipulation|public compan|portfolio|finance|financial|investors?|invest)\b/i;
 export { detectCrisis } from "./crisis";
 export type { CrisisKind } from "./crisis";

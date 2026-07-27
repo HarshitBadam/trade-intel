@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { RequestBudget } from "./budget";
 import { createDeepResearchOffer } from "./deep-snapshot";
 import { answerDegraded } from "./chat-heuristics";
 import {
@@ -9,7 +10,7 @@ import {
 import { unsupportedFigures } from "./figures";
 import { planEvidence } from "./planning";
 import type { StateResolution } from "./entities";
-import type { ChatReply, ChatRequest } from "./types";
+import type { ChatReply, ChatRequest, Turn } from "./types";
 import type { RegularContext } from "./retrieve";
 import {
   coversEveryEntity, firstPersonVerificationLimitation, hedgedEstimateClaim,
@@ -22,7 +23,7 @@ import { FAREWELL } from "./social-patterns";
 import { buildUnifiedSystemPrompt } from "./regular-prompt";
 import { historyMessages } from "./regular-history";
 import { synthesizeWithFallback } from "./synthesis";
-import { logStockSage } from "./telemetry";
+import { logStockSage, type StockSageEvent } from "./telemetry";
 type SynthesisModelArgs = {
   request: ChatRequest;
   context: RegularContext;
@@ -40,6 +41,9 @@ type SynthesisModelArgs = {
   retrievalMs: number;
   dataStatus: ChatReply["dataStatus"];
   farewellTurn: boolean;
+  budget?: RequestBudget;
+  telemetry?: Partial<StockSageEvent>;
+  turn?: Turn;
 };
 const SOCIAL_MARKET_CLAIM = /\b(?:markets?|stocks?|tech|nasdaq|s&p|dow)\b[^.!?\n]{0,50}\b(?:up|down|red|green|quiet|choppy|volatile|rall(?:y(?:ing)?|ied)|sell(?:ing)?[- ]?off|surg(?:e|ing)|slid(?:e|ing)?|dropp(?:ed|ing)|climb(?:ed|ing)|mov(?:ed|ing)|movement|action)\b|\b(?:quiet|choppy|volatile|busy|wild|red|green|movement|action)\b[^.!?\n]{0,30}\b(?:markets?|stocks?|session|day)\b|\bgood session\b/i;
 function leaksOffTopicWork(candidate: string): boolean {
@@ -51,7 +55,7 @@ function emptyContext(asOf: string): RegularContext {
 }
 
 export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<ChatReply> {
-  const { request, context, plan, prefetchEntities, entities, resolution, wantsData, live, requestedCriteria, offTopicTurn, blendedOffTopic, smuggled, startedAt, retrievalMs, dataStatus, farewellTurn } = args;
+  const { request, context, plan, prefetchEntities, entities, resolution, wantsData, live, requestedCriteria, offTopicTurn, blendedOffTopic, smuggled, startedAt, retrievalMs, dataStatus, farewellTurn, budget, telemetry } = args;
   const system = buildUnifiedSystemPrompt({
     entities: prefetchEntities,
     quotes: context.quotes,
@@ -85,9 +89,18 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
       user: request.message,
       maxTokens: conversational ? 220 : 700,
       temperature: 0.55,
-      timeoutMs: conversational ? 5_000 : 6_000,
-      totalTimeoutMs: conversational ? 7_000 : 10_000,
-      maxCandidates: 2,
+      // One attempt inside whatever the end-to-end budget still allows.
+      timeoutMs: budget
+        ? budget.publishableMs()
+        : conversational
+          ? 5_000
+          : 6_000,
+      totalTimeoutMs: budget
+        ? budget.publishableMs()
+        : conversational
+          ? 7_000
+          : 10_000,
+      maxCandidates: budget ? 1 : 2,
       event: "regular_synthesis",
       lane: conversational ? "light" : "full",
       accept: (candidate) => {
@@ -298,6 +311,7 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
       route: wantsData ? "model_finance" : "model_conversational",
       reasonCode: "single_model_call",
       durationMs: Date.now() - startedAt,
+      ...telemetry,
       retrievalMs,
       synthesisMs,
       providerCount: context.plan.queries.length,
@@ -337,6 +351,7 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
         route: "stable_finance",
         reasonCode: "degraded_concept",
         durationMs: Date.now() - startedAt,
+      ...telemetry,
         providerCount: 0,
       });
       return {
@@ -376,6 +391,7 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
         route: "model_finance",
         reasonCode: "degraded_from_data",
         durationMs: Date.now() - startedAt,
+      ...telemetry,
         retrievalMs,
         providerCount: context.plan.queries.length,
         sourceCount: context.sources.length,
@@ -391,7 +407,7 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
       };
     }
     return {
-      ...answerDegraded(request, startedAt),
+      ...answerDegraded(request, startedAt, args.turn),
       dataStatus: wantsData ? "unavailable" : "full",
     };
   }
