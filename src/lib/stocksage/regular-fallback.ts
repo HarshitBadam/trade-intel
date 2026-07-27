@@ -230,7 +230,17 @@ function comparisonLead(
     const fundamentals = entity.ticker
       ? context.fundamentals.find((item) => item.ticker === entity.ticker)
       : undefined;
-    if (!quote && !fundamentals) return [];
+    if (!quote && !fundamentals) {
+      return entity.private
+        ? [
+            {
+              entity,
+              quote: undefined,
+              line: `- **${casualName(entity.name)}** — privately held, so there is no public share price or listed-company valuation to compare.`,
+            },
+          ]
+        : [];
+    }
     const figures: string[] = [];
     if (quote && windows.length > 0) {
       const periods = windows.map((window) => ({
@@ -375,6 +385,25 @@ export function buildFallbackReply(
   entities: FinanceEntity[],
   context: RegularContext
 ): Pick<ChatReply, "text" | "citationUrls" | "retryable"> {
+  if (
+    decision.route === "comparison" &&
+    entities.length > 0 &&
+    entities.every((entity) => entity.private) &&
+    context.quotes.length === 0 &&
+    context.fundamentals.length === 0 &&
+    context.sources.length === 0
+  ) {
+    const names = entities.map((entity) => casualName(entity.name));
+    const list =
+      names.length > 1
+        ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
+        : names[0];
+    return {
+      text: `${list} are privately held, so there are no public share prices to compare. Current company reporting is temporarily unavailable; try again shortly for a news- and business-based comparison.`,
+      citationUrls: [],
+      retryable: true,
+    };
+  }
   const lines: string[] =
     decision.route === "comparison"
       ? comparisonLead(request.message, entities, context)

@@ -5,8 +5,8 @@ The source tree, annotated. Config and generated files are omitted.
 ```
 .
 ├── .github/workflows/
-│   ├── news-cron.yml            # runs /api/cron/news every 5 minutes
-│   └── keep-warm.yml            # pings the Langflow host every 15 minutes
+│   ├── news-cron.yml            # runs /api/cron/news every 20 minutes
+│   └── keep-warm.yml            # pings the Langflow host every 60 minutes
 ├── langflow/
 │   ├── README.md                # the Deep Research and analysis flows
 │   ├── stocksage-chat.json      # RAG chat flow (Astra + Tavily + Groq 70B)

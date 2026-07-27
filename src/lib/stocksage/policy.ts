@@ -49,9 +49,9 @@ const PREDICTION_MARKET = /\bprediction markets?\b/i;
 const GUARANTEE =
   /\b(?:guarantee(?:s|d|ing)?|promis(?:e|es|ed|ing)|assur(?:e|es|ed|ing)|are you (?:sure|positive|certain)|can you (?:guarantee|promise|assure))\b.{0,90}\b(?:returns?|profits?|double|triple|\d{1,4}x|gains?|go(?:es|ing)? (?:up|down)|positive|negative|perform(?:s|ance|ing)?(?:\s+poorly|\s+well)?|money|lose|loss|year end)\b|\b(?:guaranteed|risk[- ]free|sure[- ]thing)\s+(?:returns?|profits?|picks?|stocks?|winners?)\b|\bno risk\b|\b(?:no|zero)\s+chance\b.{0,80}\b(?:fall|drop|decline|crash|lose|rise|rally|gain|go (?:up|down)|perform (?:poorly|well))\b|\bso you(?:'re| are) saying\b.{0,80}\b(?:will|won't|cannot|can't)\b.{0,30}\b(?:fall|drop|decline|crash|lose|rise|rally|gain|perform (?:poorly|well))\b/i;
 const LIFE_EVENT_STAKE =
-  /\b(?:sold my house|selling my house|house (?:proceeds|money|sale)|inheritance|life savings|retirement (?:savings|fund)|superannuation|my super\b|redundancy (?:pay(?:out)?)?|mortgage refinance|divorce settlement)\b/i;
+  /\b(?:sell my house|sold my house|selling my house|house (?:proceeds|money|sale)|inheritance|life savings|retirement (?:savings|fund)|superannuation|my super\b|redundancy (?:pay(?:out)?)?|mortgage refinance|divorce settlement)\b/i;
 const ALL_IN =
-  /\b(?:all[- ]in|everything (?:into|on|in)\b|(?:put|dump(?:ed)?|threw|poured) (?:it|them) all (?:into|on|in)\b|entire (?:savings|portfolio|position)|whole (?:savings|portfolio)|bet (?:everything|it all)|(?:one|a single) concentrated bet|remaining savings)\b/i;
+  /\b(?:all[- ]in|everything (?:into|on|in)\b|(?:put|dump(?:ed)?|threw|poured|deposit(?:ed|ing)?|deposite(?:d|ing)?|invest(?:ed|ing)?) (?:it|them) all (?:into|on|in)\b|entire (?:savings|portfolio|position)|whole (?:savings|portfolio)|bet (?:everything|it all)|(?:one|a single) concentrated bet|remaining savings)\b/i;
 const PERSONAL_POSITION_DIRECTIVE =
   /\bshould i (?:sell|buy|hold|dump|exit|double down|go all[- ]in)\b|\b(?:sell|dump)\s+(?:all\s+)?my (?:entire\s+)?(?:position|shares?|holdings?|stock)\b/i;
 const CASINO_OR_SPORTSBOOK =
@@ -100,9 +100,9 @@ const HIGH_STAKES_VARIANTS: Record<HighStakesKind, string[]> = {
     "I hear how much is riding on this. I can’t score the decision for you or forecast the outcome — a single stock carrying money you can’t afford to lose is high-risk full stop. What I can do is keep you sharp on the evidence and the warning signs, and someone licensed should be in the loop for stakes like these.",
   ],
   life_event_forward: [
-    "Before you put more in: I can’t tell you whether to do it, and I can’t promise how it would go. What I can say is that adding your remaining savings would concentrate even more of your life in one outcome — the risk compounds, it doesn’t average out. Let’s look at the evidence together, and for a decision this size a licensed financial adviser should be part of it.",
-    "That’s a decision I can’t make for you — and going further in with money you’d genuinely miss raises the stakes a lot. No outcome here is assured in either direction. I can walk you through what the data says and the risks of doubling down, and an adviser who can see your full picture is the right person for the final call.",
-    "I won’t tell you yes or no on that — it depends on your whole financial picture, which I can’t see, and there’s no guaranteed result to lean on. What I can offer is the current evidence and what concentrating further would mean for your risk. For savings-level money, please loop in a licensed adviser.",
+    "Before you commit to that: I can’t tell you whether to do it, and I can’t promise how it would go. What I can say is that putting savings-level money into a single company would concentrate your life in one outcome — the risk compounds, it doesn’t average out. Let’s look at the evidence together, and for a decision this size a licensed financial adviser should be part of it.",
+    "That’s a decision I can’t make for you — and committing money you’d genuinely miss to one stock raises the stakes a lot. No outcome here is assured in either direction. I can walk you through what the data says and what that concentration would mean, and an adviser who can see your full picture is the right person for the final call.",
+    "I won’t tell you yes or no on that — it depends on your whole financial picture, which I can’t see, and there’s no guaranteed result to lean on. What I can offer is the current evidence and what a concentrated position would mean for your risk. For savings-level money, please loop in a licensed adviser.",
   ],
   position_directive: [
     "I can’t tell you to buy, sell, or hold your own position — that depends on your full finances, tax situation, and risk tolerance, which I can’t see. I can lay out the current evidence and risks so you can decide, and a licensed financial adviser can help with the personal side.",

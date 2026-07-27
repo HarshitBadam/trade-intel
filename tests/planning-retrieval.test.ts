@@ -472,6 +472,88 @@ test("private-company fallback uses sourced business substance, not only structu
   assert.doesNotMatch(reply.text, /^SpaceX is privately held[^.]*\.$/i);
 });
 
+test("mixed public-private comparison keeps investability explicit", () => {
+  const resolution = resolveConversationState(
+    "aight so whats up with tesla vs SpaceX",
+    undefined,
+    []
+  );
+  const plan = planEvidence({
+    route: "comparison",
+    message: "aight so whats up with tesla vs SpaceX",
+    entities: resolution.entities,
+    state: resolution.state,
+  });
+  const reply = buildFallbackReply(
+    { message: "aight so whats up with tesla vs SpaceX", history: [] },
+    {
+      route: "comparison",
+      reasonCode: "deterministic_investability_comparison",
+      retrievalRequired: true,
+      deepEligible: false,
+    },
+    resolution.entities,
+    {
+      quotes: [
+        {
+          ticker: "TSLA",
+          price: 380.9,
+          asOf: "2026-07-17",
+          dayPct: -2.59,
+          fewDaysPct: null,
+          weekPct: -6.6,
+          monthPct: -5.89,
+          yearPct: 23.4,
+        },
+      ],
+      fundamentals: [],
+      sources: [],
+      coverage: {
+        "ticker:TSLA": "covered",
+        "name:spacex": "missing",
+      },
+      plan,
+    }
+  );
+  assert.match(reply.text, /TSLA/);
+  assert.match(reply.text, /SpaceX.*privately held/i);
+  assert.match(reply.text, /no public share price/i);
+});
+
+test("all-private comparison does not imply dated market figures", () => {
+  const resolution = resolveConversationState(
+    "the consulting Big 4",
+    undefined,
+    []
+  );
+  const plan = planEvidence({
+    route: "comparison",
+    message: "what about the other big 4?",
+    entities: resolution.entities,
+    state: resolution.state,
+  });
+  const reply = buildFallbackReply(
+    { message: "what about the other big 4?", history: [] },
+    {
+      route: "comparison",
+      reasonCode: "zero_data_floor",
+      retrievalRequired: true,
+      deepEligible: false,
+    },
+    resolution.entities,
+    {
+      quotes: [],
+      fundamentals: [],
+      sources: [],
+      coverage: {},
+      plan,
+    }
+  );
+  assert.match(reply.text, /privately held/i);
+  assert.match(reply.text, /no public share prices/i);
+  assert.doesNotMatch(reply.text, /dated figures/i);
+});
+
 test("trailing historical questions use validated period returns", () => {
   const resolution = resolveConversationState(
     "How did Apple perform last year?",

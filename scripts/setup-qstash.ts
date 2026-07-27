@@ -51,7 +51,7 @@ async function main(): Promise<void> {
   const news = await client.schedules.create({
     scheduleId: "tradeintel-news-cron",
     destination: cronUrl,
-    cron: "*/5 * * * *",
+    cron: "*/20 * * * *",
     method: "GET",
     headers: {
       Authorization: `Bearer ${cronSecret}`,
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
   const keepWarm = await client.schedules.create({
     scheduleId: "tradeintel-keep-warm",
     destination: langflowHealthUrl,
-    cron: "3-59/15 * * * *",
+    cron: "3 * * * *",
     method: "GET",
     retries: 2,
     retryDelay: "min(60, pow(2, retried) * 10)",

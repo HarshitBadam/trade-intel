@@ -6,6 +6,7 @@ import {
   WEB_ALIASES,
   type WebAlias,
 } from "./entity-catalog";
+import { isWithinOneEdit } from "./text-normalization";
 import type { FinanceEntity } from "./types";
 
 function escaped(value: string): string {
@@ -146,6 +147,41 @@ export function resolveText(text: string): FinanceEntity[] {
       .filter((match) => match.index >= 0)
   ).sort((a, b) => a.index - b.index);
   for (const { alias } of matchedAliases) {
+    if (alias.ticker) webTickers.add(alias.ticker);
+    addEntity(output, seen, fromAlias(alias));
+  }
+
+  // Recover a single typo in a distinctive one-word entity alias. Matching is
+  // deliberately bounded: short/common aliases and ambiguous nearest matches
+  // are excluded, exact matches still win above, and no arbitrary ticker is
+  // manufactured. This keeps typo tolerance in the canonical catalog layer
+  // instead of scattering benchmark-specific spellings through route regexes.
+  const words = [...clean.toLowerCase().matchAll(/\b[a-z][a-z0-9]{5,}\b/g)];
+  const fuzzyMatches: { alias: WebAlias; index: number }[] = [];
+  for (const word of words) {
+    const token = word[0];
+    const candidates = [
+      ...new Map(
+        WEB_ALIASES.flatMap((alias) =>
+          alias.aliases
+            .filter(
+              (candidate) =>
+                /^[a-z0-9]{6,}$/i.test(candidate) &&
+                candidate.toLowerCase() !== token &&
+                isWithinOneEdit(token, candidate.toLowerCase())
+            )
+            .map((): [string, WebAlias] => [
+              entityId(alias.ticker, alias.name),
+              alias,
+            ])
+        )
+      ).values(),
+    ];
+    if (candidates.length === 1) {
+      fuzzyMatches.push({ alias: candidates[0], index: word.index ?? 0 });
+    }
+  }
+  for (const { alias } of fuzzyMatches.sort((a, b) => a.index - b.index)) {
     if (alias.ticker) webTickers.add(alias.ticker);
     addEntity(output, seen, fromAlias(alias));
   }

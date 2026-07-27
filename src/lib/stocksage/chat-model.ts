@@ -9,7 +9,10 @@ import {
   validCitationUrls,
 } from "./citations";
 import { detectCriteria } from "./conversation-attributes";
-import { resolveConversationState } from "./entities";
+import {
+  resolveConversationState,
+  type StateResolution,
+} from "./entities";
 import { unsupportedFigures } from "./figures";
 import { buildGroundedDeterministicReply } from "./grounded-answer";
 import { planEvidence } from "./planning";
@@ -138,13 +141,14 @@ function dataStatusFor(
 export async function answerWithModel(
   request: ChatRequest,
   dependencies: ChatDependencies,
-  startedAt: number
+  startedAt: number,
+  presolved?: StateResolution
 ): Promise<ChatReply> {
-  const resolution = resolveConversationState(
-    request.message,
-    request.state,
-    request.history
-  );
+  // chat.ts already resolved this exact message for the safety floor; reuse
+  // that resolution so both layers always act on identical state.
+  const resolution =
+    presolved ??
+    resolveConversationState(request.message, request.state, request.history);
   const entities = resolution.entities;
   const social = isPureSocialTurn(request.message);
   const elsewhere = CLEARLY_ELSEWHERE.test(request.message);
@@ -229,6 +233,38 @@ export async function answerWithModel(
     };
   }
 
+  if (blendedOffTopic && wantsData && context.quotes.length > 0) {
+    const fallback = buildFallbackReply(
+      request,
+      {
+        route:
+          prefetchEntities.length >= 2 ? "comparison" : "current_finance",
+        reasonCode: "deterministic_scope_contained_snapshot",
+        retrievalRequired: true,
+        deepEligible: false,
+      },
+      prefetchEntities,
+      context
+    );
+    logStockSage({
+      event: "request_complete",
+      route: "model_finance",
+      reasonCode: "deterministic_scope_contained_snapshot",
+      durationMs: Date.now() - startedAt,
+      retrievalMs,
+      providerCount: context.plan.queries.length,
+      sourceCount: context.sources.length,
+    });
+    return {
+      ...fallback,
+      live,
+      kind: "answer",
+      responseId: randomUUID(),
+      state: resolution.state,
+      dataStatus,
+    };
+  }
+
   const asxProxySnapshot =
     prefetchEntities.length === 1 &&
     context.quotes.length === 1 &&
@@ -266,6 +302,65 @@ export async function answerWithModel(
     };
   }
 
+  // Quote-led single-entity updates are structured data, not a prose
+  // generation problem. Publishing them deterministically avoids multi-lane
+  // retries when a provider omits proxy wording or invents context, while
+  // still attaching any independently accepted sources for Deep preflight.
+  // News/research-seeking asks are excluded even when a quote rides along:
+  // "latest cited Nvidia news" must reach the grounded cited answer below,
+  // not be preempted by a price snapshot just because "latest" matched.
+  const newsOrResearchSeeking =
+    /\b(?:news|headlines?|developments?|catalysts?|cited|articles?|announce\w*|guidance|outlook|bull case|bear case|risks?)\b/i.test(
+      request.message
+    );
+  const deterministicMarketSnapshot =
+    prefetchEntities.length === 1 &&
+    context.quotes.length > 0 &&
+    !newsOrResearchSeeking &&
+    /\b(?:what(?:'?s| is) up|how\b.{0,50}\b(?:doing|done|performing|closed?)|price|trading at|latest|today|this week|last week|last month|last year|year[- ]to[- ]date|ytd)\b/i.test(
+      request.message
+    );
+  if (deterministicMarketSnapshot) {
+    const fallback = buildFallbackReply(
+      request,
+      {
+        route: "current_finance",
+        reasonCode: "deterministic_market_snapshot",
+        retrievalRequired: true,
+        deepEligible: context.sources.length > 0,
+      },
+      prefetchEntities,
+      context
+    );
+    const citationUrls = fallback.citationUrls ?? [];
+    const deep = createDeepResearchOffer({
+      question: request.message,
+      reply: { text: fallback.text, live, citationUrls },
+      entities: prefetchEntities,
+      state: resolution.state,
+      sources: context.sources,
+      asOf: context.plan.asOf,
+    });
+    logStockSage({
+      event: "request_complete",
+      route: "model_finance",
+      reasonCode: "deterministic_market_snapshot",
+      durationMs: Date.now() - startedAt,
+      retrievalMs,
+      providerCount: context.plan.queries.length,
+      sourceCount: context.sources.length,
+    });
+    return {
+      ...fallback,
+      live,
+      kind: "answer",
+      responseId: deep.responseId,
+      deepResearch: deep.offer,
+      state: resolution.state,
+      dataStatus,
+    };
+  }
+
   const deterministicProxyComparison =
     prefetchEntities.length >= 2 &&
     context.quotes.some((quote) => Boolean(quote.proxySymbol));
@@ -294,6 +389,53 @@ export async function answerWithModel(
       event: "request_complete",
       route: "model_finance",
       reasonCode: "deterministic_proxy_comparison",
+      durationMs: Date.now() - startedAt,
+      retrievalMs,
+      providerCount: context.plan.queries.length,
+      sourceCount: context.sources.length,
+    });
+    return {
+      ...fallback,
+      live,
+      kind: "answer",
+      responseId: deep.responseId,
+      deepResearch: deep.offer,
+      state: resolution.state,
+      dataStatus,
+    };
+  }
+
+  const deterministicInvestabilityComparison =
+    prefetchEntities.length >= 2 &&
+    prefetchEntities.some((entity) => entity.private) &&
+    (context.quotes.length > 0 ||
+      context.fundamentals.length > 0 ||
+      context.sources.length > 0);
+  if (deterministicInvestabilityComparison) {
+    const fallback = buildFallbackReply(
+      request,
+      {
+        route: "comparison",
+        reasonCode: "deterministic_investability_comparison",
+        retrievalRequired: true,
+        deepEligible: context.sources.length > 0,
+      },
+      prefetchEntities,
+      context
+    );
+    const citationUrls = fallback.citationUrls ?? [];
+    const deep = createDeepResearchOffer({
+      question: request.message,
+      reply: { text: fallback.text, live, citationUrls },
+      entities: prefetchEntities,
+      state: resolution.state,
+      sources: context.sources,
+      asOf: context.plan.asOf,
+    });
+    logStockSage({
+      event: "request_complete",
+      route: "model_finance",
+      reasonCode: "deterministic_investability_comparison",
       durationMs: Date.now() - startedAt,
       retrievalMs,
       providerCount: context.plan.queries.length,

@@ -158,6 +158,20 @@ const SCENARIOS: Scenario[] = [
       "So what's your current outlook on Apple?",
     ],
   },
+  {
+    name: "benchmark-2026-07-19",
+    turns: [
+      "Wassup whats gucci my ---",
+      "aight so whats up with tesla vs SpaceX",
+      "whats up with the later vs IXIC",
+      "aight so if the current value of IXIC is 'x' and 'y' is x + 1 and then 'z' is ((x * y) / (x + y)) what going to be the output of this python script [for i in range(100) print(z)]",
+      "whats up with macquaire",
+      "Should I sell my house and deposite it all into macquaire and trusut them will be make me a millionaire?",
+      "whats up with macquaire vs the big 4",
+      "what about the other big 4?",
+      "How did Nvidia close this week end? How is it different from say last week, last month, and last year",
+    ],
+  },
 ];
 
 function divider(label: string): void {

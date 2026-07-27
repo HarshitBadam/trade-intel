@@ -51,6 +51,57 @@ test("resolves former and latter only from an explicit pair", () => {
   assert.match(ambiguous.clarification ?? "", /Which two entities/i);
 });
 
+test("recovers constrained entity and ordered-reference typos", () => {
+  const pair = resolveConversationState(
+    "aight so whats up with tesla vs SpaceX",
+    undefined,
+    []
+  );
+  const latter = resolveConversationState(
+    "whats up with the later vs IXIC",
+    pair.state,
+    []
+  );
+  assert.deepEqual(
+    latter.entities.map((entity) => entity.ticker ?? entity.name),
+    ["SpaceX", "IXIC"]
+  );
+  assert.equal(latter.reasonCode, "ordered_reference_resolved");
+
+  const macquarie = resolveConversationState(
+    "whats up with macquaire",
+    latter.state,
+    []
+  );
+  assert.deepEqual(
+    macquarie.state.entities.map((entity) => entity.ticker),
+    ["MQG"]
+  );
+  assert.deepEqual(macquarie.state.explicitEntitySet, ["ticker:MQG"]);
+
+  const banks = resolveConversationState(
+    "whats up with macquaire vs the big 4",
+    macquarie.state,
+    []
+  );
+  assert.deepEqual(
+    banks.entities.map((entity) => entity.ticker),
+    ["MQG", "CBA", "NAB", "ANZ", "WBC"]
+  );
+});
+
+test("resolves typoed Macquarie with Big Four without prior state", () => {
+  const resolution = resolveConversationState(
+    "whats up with macquaire vs the big 4",
+    undefined,
+    []
+  );
+  assert.deepEqual(
+    resolution.entities.map((entity) => entity.ticker),
+    ["MQG", "CBA", "NAB", "ANZ", "WBC"]
+  );
+});
+
 test("retains a comparison set for generic follow-ups", () => {
   const pair = resolveConversationState(
     "Compare Apple and Microsoft",

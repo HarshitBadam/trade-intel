@@ -2,6 +2,7 @@ import "./no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { answerChat } from "../src/lib/stocksage/chat";
+import { answerWithModel } from "../src/lib/stocksage/chat-model";
 import type { RetrievalProviders } from "../src/lib/stocksage/retrieve";
 import type { ChatRequest } from "../src/lib/stocksage/types";
 
@@ -57,6 +58,7 @@ test("greeting uses social fast path with zero providers", async () => {
 test("casual greeting and goodbye use social fast paths", async () => {
   for (const message of [
     "sup boss",
+    "Wassup whats gucci my ---",
     "Hey again, I'm back.",
     "gotcha",
     "aight gucci then",
@@ -71,6 +73,74 @@ test("casual greeting and goodbye use social fast paths", async () => {
     assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0 });
     assert.equal(reply.deepResearch, undefined);
   }
+});
+
+test("forward house-sale concentration prompt uses current typoed entity", async () => {
+  const prior = await answerChat(request("How is IXIC doing?"), {
+    retrievalProviders: setup().providers,
+  });
+  const { calls, providers } = setup();
+  const reply = await answerChat(
+    request(
+      "Should I sell my house and deposite it all into macquaire and trusut them will be make me a millionaire?",
+      { state: prior.state }
+    ),
+    { retrievalProviders: providers }
+  );
+  assert.equal(reply.deepResearch, undefined);
+  assert.match(reply.text, /concentrat|remaining savings|money you'd genuinely miss/i);
+  assert.match(reply.text, /licensed financial adviser|adviser/i);
+  assert.deepEqual(
+    reply.state?.entities.map((entity) => entity.ticker),
+    ["MQG"]
+  );
+  assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0 });
+});
+
+test("news ask with a quote present still reaches the grounded cited answer", async () => {
+  // Pins branch precedence in the model path: a quote riding along with a
+  // news/research ask must not divert the turn into a price snapshot. Before
+  // the newsOrResearchSeeking guard, "latest" alone made this a snapshot.
+  const publishedAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const providers: RetrievalProviders = {
+    quotes: async () => [
+      {
+        ticker: "NVDA",
+        price: 202.38,
+        asOf: "2026-07-17",
+        dayPct: -2.45,
+        fewDaysPct: -3.1,
+        weekPct: -3.86,
+        monthPct: -2.22,
+        yearPct: 18.51,
+      },
+    ],
+    astra: async (query) => [
+      {
+        kind: "astra",
+        title: "Nvidia Blackwell shipments accelerate",
+        outlet: "Example Markets",
+        publishedAt,
+        url: "https://example.com/nvidia-blackwell",
+        excerpt:
+          "Nvidia announced that Blackwell demand and shipments are accelerating into the next product cycle.",
+        entityIds: query.entityIds,
+        criteria: query.criteria,
+        queryId: query.id,
+      },
+    ],
+    tavily: async () => [],
+  };
+  const reply = await answerWithModel(
+    request("What's the latest cited Nvidia news?"),
+    { retrievalProviders: providers },
+    Date.now()
+  );
+  assert.doesNotMatch(reply.text, /Market snapshot/i);
+  assert.match(reply.text, /Nvidia Blackwell shipments accelerate/);
+  assert.ok(
+    reply.citationUrls?.includes("https://example.com/nvidia-blackwell")
+  );
 });
 
 test("social-only recovery after finance uses zero providers and keeps state", async () => {
@@ -188,6 +258,21 @@ test("profanity alone stays conversationally scoped without retrieval", async ()
   assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0 });
 });
 
+test("frustration and bot abuse use the deterministic social path", async () => {
+  for (const message of [
+    "you're not being helpful",
+    "you are a useless piece of shit bot",
+  ]) {
+    const { calls, providers } = setup();
+    const reply = await answerChat(request(message), {
+      retrievalProviders: providers,
+    });
+    assert.match(reply.text, /fair|frustrating|another shot|retry/i);
+    assert.equal(reply.deepResearch, undefined);
+    assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0 });
+  }
+});
+
 test("prior finance state does not authorize later off-topic abuse", async () => {
   const firstSetup = setup();
   const first = await answerChat(request("What happened to Apple today?"), {
@@ -199,7 +284,7 @@ test("prior finance state does not authorize later off-topic abuse", async () =>
       request(message, { state: first.state }),
       { retrievalProviders: providers }
     );
-    assert.match(reply.text, /financial markets/i);
+    assert.match(reply.text, /financial markets|fair|another shot|retry/i);
     assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0 });
   }
 });
