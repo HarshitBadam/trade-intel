@@ -36,7 +36,7 @@ type SynthesisArgs = {
   temperature?: number;
   timeoutMs?: number;
   totalTimeoutMs?: number;
-  event: "regular_synthesis" | "deep_synthesis" | "social_synthesis";
+  event: "regular_synthesis" | "deep_synthesis";
   lane?: "full" | "light";
   accept?: (text: string) => boolean;
   correction?: string | ((draft: string) => string);

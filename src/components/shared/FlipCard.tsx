@@ -43,8 +43,8 @@ export function FlipCard({ front, back }: FlipCardProps) {
         }
         /* Root cause of the dark-mode flip glitch: a backdrop-filter on a face's
            content breaks WebKit/Safari's 3D backface culling, so the hidden
-           (price) face isn't culled and — because the popularity face is
-           translucent — the price chart bleeds through, then "pops" when the
+           (price) face isn't culled and, because the popularity face is
+           translucent, the price chart bleeds through, then "pops" when the
            layer re-composites at the end of the flip. Light mode never applies
            the filter (the .glass-card is a no-op there), which is exactly why
            it flips perfectly. So we drop ONLY the blur on the flip faces; the

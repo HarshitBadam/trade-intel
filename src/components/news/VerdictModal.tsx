@@ -121,7 +121,7 @@ export function VerdictModal({
         </button>
 
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 pr-6">
-          AI verdict{ticker ? ` · ${ticker}` : ""}
+          AI verdict{ticker ? `, ${ticker}` : ""}
         </div>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm mb-5 pr-6">
@@ -184,7 +184,7 @@ export function VerdictModal({
 
         {meta.length > 0 && (
           <p className="mt-6 border-t border-border pt-4 text-xs text-muted-foreground">
-            {meta.join(" · ")}
+            {meta.join(", ")}
           </p>
         )}
 

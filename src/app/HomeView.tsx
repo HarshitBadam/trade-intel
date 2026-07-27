@@ -162,7 +162,7 @@ export default function HomeView({ initial }: HomeViewProps) {
               Illustrative
             </span>
             The live feed is unavailable, so {sampleSections.join(" and ")}{" "}
-            {sampleSections.length > 1 ? "are" : "is"} showing sample data — not
+            {sampleSections.length > 1 ? "are" : "is"} showing sample data, not
             real prices.
           </p>
         )}

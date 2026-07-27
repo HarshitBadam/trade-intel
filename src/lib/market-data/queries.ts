@@ -81,8 +81,8 @@ export async function getIntraday(ticker: string): Promise<BarPoint[]> {
   return [];
 }
 
-// 1W is a pure slice of the fine (15-min, ~96-day) series — same resolution,
-// same source — so it costs zero extra requests.
+// 1W is a pure slice of the fine (15-min, ~96-day) series, same resolution,
+// same source, so it costs zero extra requests.
 const WEEK_SLICE_DAYS = 8;
 
 export function sliceRecentDays(series: BarPoint[], days: number): BarPoint[] {
@@ -164,7 +164,7 @@ function toVerdict(doc: AnalysisDoc | null): NewsVerdict | undefined {
   };
 }
 
-// Staleness is judged from analyzed_at ONLY — never from article dates.
+// Staleness is judged from analyzed_at ONLY, never from article dates.
 export function buildNewsSummary(
   articles: News[],
   analysisDoc: AnalysisDoc | null,

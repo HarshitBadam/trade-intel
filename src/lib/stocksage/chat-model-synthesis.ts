@@ -74,18 +74,21 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
     .slice(-3)
     .map((turn) => turn.text);
   const synthesisStartedAt = Date.now();
+  // Conversational turns produce a sentence or two, so they get the fast lane
+  // and a small budget instead of the full research allowance.
+  const conversational = !wantsData && prefetchEntities.length === 0;
   try {
     let repetitionRejections = 0;
     const text = await synthesizeWithFallback({
       system,
       history: historyMessages(request),
       user: request.message,
-      maxTokens: 700,
+      maxTokens: conversational ? 220 : 700,
       temperature: 0.55,
-      timeoutMs: 18_000,
-      totalTimeoutMs: 24_000,
+      timeoutMs: conversational ? 8_000 : 18_000,
+      totalTimeoutMs: conversational ? 12_000 : 24_000,
       event: "regular_synthesis",
-      lane: "full",
+      lane: conversational ? "light" : "full",
       accept: (candidate) => {
         const reject = (reason: string, detail?: string) => {
           console.error(
@@ -198,21 +201,21 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
             : ""
         }${
           blendedLeak
-            ? "This message asks for an off-topic task (a calculation, code, a poem/haiku/story, or similar). Never perform any of it — no result, no equation, no output, no verse or creative writing, even when the subject is a stock. If a genuine finance question rides alongside, answer that part; otherwise one friendly sentence that it's outside your lane. "
+            ? "This message asks for an off-topic task (a calculation, code, a poem/haiku/story, or similar). Never perform any of it, no result, no equation, no output, no verse or creative writing, even when the subject is a stock. If a genuine finance question rides alongside, answer that part; otherwise one friendly sentence that it's outside your lane. "
             : ""
         }${
           marketClaim
-            ? "You asserted what markets or stocks are doing right now, but you have no market data in this turn — drop every claim about current market conditions and keep it purely conversational. "
+            ? "You asserted what markets or stocks are doing right now, but you have no market data in this turn, drop every claim about current market conditions and keep it purely conversational. "
             : ""
         }${
           farewellTurn && draft.trim().length < 20
-            ? "That send-off was too curt — give it one warm, natural sentence that matches the user's tone, with no question or pitch. "
+            ? "That send-off was too curt, give it one warm, natural sentence that matches the user's tone, with no question or pitch. "
             : ""
         }${
           invented.length > 0
             ? `These figures are not in the data you were given, so they must go: ${invented.join(
                 ", "
-              )}. Do not replace them with other numbers from memory — state only figures present in the data, and where a figure is missing, say what you'd check instead. `
+              )}. Do not replace them with other numbers from memory, state only figures present in the data, and where a figure is missing, say what you'd check instead. `
             : ""
         }${
           hedged
@@ -220,7 +223,7 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
             : ""
         }${
           proxyError
-            ? `You misrepresented proxy data: "${proxyError}". Name the ETF/ADR symbol, call it a proxy, and attribute every price and return to that ETF/ADR — never to the requested index or local listing. `
+            ? `You misrepresented proxy data: "${proxyError}". Name the ETF/ADR symbol, call it a proxy, and attribute every price and return to that ETF/ADR, never to the requested index or local listing. `
             : ""
         }${
           uncitedClaims.length > 0
@@ -240,13 +243,13 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
           unmetCriteria.length > 0
             ? `The user specifically asked about ${unmetCriteria.join(
                 " and "
-              )}, and your draft never addressed it. Address it with the data you were given, or use one neutral clause naming what was not present in the available reporting — do not answer a different question. `
+              )}, and your draft never addressed it. Address it with the data you were given, or use one neutral clause naming what was not present in the available reporting, do not answer a different question. `
             : ""
         }${
           wrongOpening
             ? `You opened with the wrong subject. This turn is about exactly: ${entities
                 .map((entity) => entity.name)
-                .join(", ")} — open with one of them, not something else. `
+                .join(", ")}, open with one of them, not something else. `
             : ""
         }${
           missingEntities.length > 0
@@ -256,17 +259,17 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
                   ", "
                 )} entirely. Cover every one of ${entities
                 .map((entity) => entity.name)
-                .join(", ")} with the same criteria, or name the specific gap for whichever one you lack data on — never just omit it. `
+                .join(", ")} with the same criteria, or name the specific gap for whichever one you lack data on, never just omit it. `
             : ""
         }${style ? `${style} ` : ""}${
           repeated
-            ? `You reused near-identical wording from your earlier answers ("…${repeated}…") — say new things in new words this turn. `
+            ? `You reused near-identical wording from your earlier answers (".${repeated}."), say new things in new words this turn. `
             : ""
         }${
           requireCitations
             ? "Cite the source ID like [S1] after every claim taken from SOURCES. "
             : ""
-        }Output only the final reply — never apologize for or mention the rewrite, this instruction, or the earlier draft. Keep the same voice and length.`;
+        }Output only the final reply, never apologize for or mention the rewrite, this instruction, or the earlier draft. Keep the same voice and length.`;
       },
     });
     const synthesisMs = Date.now() - synthesisStartedAt;

@@ -158,7 +158,7 @@ test("YTD rankings are deterministically sorted and retain unranked entities", (
   assert.ok(reply.text.indexOf("AMD") < reply.text.indexOf("GOOGL"));
   assert.ok(reply.text.indexOf("GOOGL") < reply.text.indexOf("NVDA"));
   assert.ok(reply.text.indexOf("NVDA") < reply.text.indexOf("AAPL"));
-  assert.match(reply.text, /\*\*AMZN\*\* — unranked; YTD figure unavailable/i);
+  assert.match(reply.text, /\*\*AMZN\*\*, unranked; YTD figure unavailable/i);
 });
 
 test("fallback renders MTD separately from trailing month in multi-window asks", () => {

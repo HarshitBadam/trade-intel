@@ -64,7 +64,7 @@ export function StockGraph({
 }) {
   const [rangeDays, setRangeDays] = useState<number>(365);
 
-  const priceLabel = stockPrice > 0 ? `$${stockPrice.toFixed(2)}` : "—";
+  const priceLabel = stockPrice > 0 ? `$${stockPrice.toFixed(2)}` : ", ";
 
   const dailyPoints = useMemo(() => normalize(chartData), [chartData]);
   const intradayPoints = useMemo(() => normalize(intradayData), [intradayData]);

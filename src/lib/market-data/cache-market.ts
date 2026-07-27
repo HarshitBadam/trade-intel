@@ -22,7 +22,7 @@ const MOVER_SYMBOL_SET = new Set(MOVER_SYMBOLS);
 type GroupedRow = { T: string; o: number; c: number; v: number };
 
 // The bounded symbol universe the Alpaca snapshot market-map covers. Deliberately
-// NOT the full search universe (~12.5k names) — that would balloon one snapshot
+// NOT the full search universe (~12.5k names), that would balloon one snapshot
 // into ~126 chunked calls. Polygon's grouped-daily fallback still covers the entire
 // market when Alpaca isn't configured.
 const KNOWN_UNIVERSE: string[] = (() => {

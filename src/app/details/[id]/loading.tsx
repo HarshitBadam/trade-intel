@@ -6,7 +6,7 @@ function SearchBarSkeleton() {
     <div className="relative w-full shadow-md rounded-lg glass-card">
       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <div className="w-full select-none rounded-lg bg-background px-10 py-2 text-sm text-muted-foreground dark:bg-transparent">
-        Search for stocks...
+        Search for stocks
       </div>
     </div>
   );

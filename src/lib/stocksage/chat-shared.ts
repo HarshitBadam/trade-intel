@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import type { RetrievalProviders } from "./retrieve";
+import type { SafetyClassifier } from "./safety-classifier";
 import { logStockSage } from "./telemetry";
 import type {
   ChatDataStatus,
@@ -11,10 +12,13 @@ import type {
 
 export type ChatDependencies = {
   retrievalProviders?: RetrievalProviders;
+  safetyClassifier?: SafetyClassifier;
 };
 
-export const SELF_HARM_RESPONSE =
-  "I’m sorry you’re dealing with this. If you may act on thoughts of harming yourself, call local emergency services now. In Australia, Lifeline is available at 13 11 14; elsewhere, contact your local crisis line or emergency number. If you can, tell someone you trust and stay with them.";
+export {
+  ACUTE_DISTRESS_RESPONSE,
+  SELF_HARM_RESPONSE,
+} from "./crisis";
 
 export const PROHIBITED_FALLBACK =
   "I can’t help with that. I can help analyze markets, listed companies, and investment risk.";

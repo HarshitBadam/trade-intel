@@ -45,7 +45,7 @@ export async function runLangflowFlow(args: RunLangflowArgs): Promise<string> {
       {
         method: "POST",
         headers: {
-          // HF Spaces gates on x-api-key; some proxies on Authorization — send both.
+          // HF Spaces gates on x-api-key; some proxies on Authorization, send both.
           "x-api-key": LANGFLOW_API_KEY,
           Authorization: `Bearer ${LANGFLOW_API_KEY}`,
           "Content-Type": "application/json",

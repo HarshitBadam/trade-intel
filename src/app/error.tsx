@@ -16,7 +16,7 @@ export default function Error({
     <ErrorScene
       code="500"
       title="Something went wrong"
-      description="An unexpected error occurred on our end. It's usually temporary — trying again almost always fixes it."
+      description="An unexpected error occurred on our end. It's usually temporary, trying again almost always fixes it."
       footnote={error.digest ? `Ref: ${error.digest}` : undefined}
     >
       <Button

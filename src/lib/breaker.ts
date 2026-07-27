@@ -13,6 +13,7 @@ export type Provider =
   | "groq-deep-small"
   | "groq-deep-oss"
   | "groq-analysis"
+  | "groq-guard"
   | "cerebras-chat"
   | "cerebras-deep"
   | "gemini-chat"

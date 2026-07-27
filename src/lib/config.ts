@@ -52,7 +52,13 @@ export const GROQ_FALLBACK_MODEL =
 // Groq quotas are per model, so an extra model family is an extra 429 budget.
 export const GROQ_OSS_MODEL =
   process.env.GROQ_OSS_MODEL ?? "openai/gpt-oss-20b";
+export const GROQ_SAFETY_MODEL =
+  process.env.GROQ_SAFETY_MODEL ?? "meta-llama/llama-guard-4-12b";
 const rawGroq = Boolean(GROQ_API_KEY);
+// A rail that can false-positive needs an off switch that does not also take
+// chat synthesis down with it.
+const safetyClassifierOff =
+  process.env.STOCKSAGE_SAFETY_CLASSIFIER === "off";
 
 export const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
 export const CEREBRAS_CHAT_MODEL =
@@ -88,6 +94,7 @@ export const hasAlpaca = rawAlpaca && liveAllowed;
 export const hasFinnhub = rawFinnhub && liveAllowed;
 export const hasAstra = rawAstra && liveAllowed;
 export const hasGroq = rawGroq && liveAllowed;
+export const hasSafetyClassifier = hasGroq && !safetyClassifierOff;
 export const hasCerebras = rawCerebras && liveAllowed;
 export const hasGemini = rawGemini && liveAllowed;
 export const hasAnySynthesisLlm = hasGroq || hasCerebras || hasGemini;

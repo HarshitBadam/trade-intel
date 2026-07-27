@@ -75,7 +75,7 @@ function StatusBadge({
       text: "text-green-700 dark:text-green-400",
     },
     stale: {
-      label: `Outdated analysis${updatedAt ? ` · ${timeAgo(updatedAt)}` : ""}`,
+      label: `Outdated analysis${updatedAt ? `, ${timeAgo(updatedAt)}` : ""}`,
       dot: "bg-amber-500",
       text: "text-amber-700 dark:text-amber-400",
     },
@@ -195,7 +195,7 @@ export function RecentInfluential({
           <h2 className="text-xl font-bold">Sentiment Score Gauge</h2>
           {status === "analyzing" && (
             <span className="text-xs font-medium text-muted-foreground">
-              Updating...
+              Updating
             </span>
           )}
         </div>
@@ -247,7 +247,7 @@ export function RecentInfluential({
                 {status === "unavailable" && news.length === 0 && (
                   <p className="py-4 text-sm text-muted-foreground">
                     Live headlines are temporarily unavailable. This usually
-                    resolves within a minute — we&apos;ll keep checking.
+                    resolves within a minute, we&apos;ll keep checking.
                   </p>
                 )}
                 {news.map((news) => (

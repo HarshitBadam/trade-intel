@@ -178,8 +178,8 @@ test("grounded deterministic outlook separates facts from inference", () => {
     }
   );
   assert.ok(reply);
-  assert.match(reply.text, /^Plainly: bull case — revenue growth is \+70\.7%/);
-  assert.match(reply.text, /bear case — beta is 2\.2/);
+  assert.match(reply.text, /^Plainly: bull case, revenue growth is \+70\.7%/);
+  assert.match(reply.text, /bear case, beta is 2\.2/);
   assert.match(reply.text, /trade-off is rapid growth/i);
   assert.doesNotMatch(reply.text, /Best current sources|Market snapshot/);
 });

@@ -170,7 +170,7 @@ export function ChatMessage({
                 title={
                   !message.deepResearch?.available
                     ? message.deepResearch?.unavailableReason ??
-                      "live research is refreshing — try again shortly"
+                      "live research is refreshing, try again shortly"
                     : undefined
                 }
                 className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground/75 transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -185,7 +185,7 @@ export function ChatMessage({
                 role="status"
                 aria-live="polite"
               >
-                {deep.progress}…
+                {deep.progress}.
               </div>
             )}
             {deep?.status === "success" && deep.text && (

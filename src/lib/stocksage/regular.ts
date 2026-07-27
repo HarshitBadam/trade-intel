@@ -171,19 +171,19 @@ export async function answerRegularChat(
         const names = entities.map((entity) => entity.name).join(", ");
         const offSubject =
           requireCoverage && !opensOnSubject(draft, entities)
-            ? `You started with the wrong companies. This question is about exactly: ${names} — nobody else. Open with one of them. `
+            ? `You started with the wrong companies. This question is about exactly: ${names}, nobody else. Open with one of them. `
             : "";
         const unmetCriteria = missingCriteria(draft, requestedCriteria);
         const criteriaGap =
           unmetCriteria.length > 0
             ? `The user specifically asked about ${unmetCriteria.join(
                 " and "
-              )}, and your draft never addressed it. Address it with the data you were given, or use one neutral clause naming what was not present in the available reporting — do not answer a different question. `
+              )}, and your draft never addressed it. Address it with the data you were given, or use one neutral clause naming what was not present in the available reporting, do not answer a different question. `
             : "";
         const repeated = repeatedPriorPhrase(draft, priorReplies, entities);
         return `Rewrite that answer. ${offSubject}${criteriaGap}${
           invented.length > 0
-            ? `These figures are not in the data you were given, so they must go: ${invented.join(", ")}. Do not replace them with other numbers from memory — state only figures present in the data, and where a figure is missing, say what you'd check instead. `
+            ? `These figures are not in the data you were given, so they must go: ${invented.join(", ")}. Do not replace them with other numbers from memory, state only figures present in the data, and where a figure is missing, say what you'd check instead. `
             : ""
         }${style ? `${style} ` : ""}${
           hedged
@@ -195,13 +195,13 @@ export async function answerRegularChat(
             : ""
         }${
           repeated
-            ? `You reused near-identical wording from your earlier answers ("…${repeated}…") — same caveats, same closers. Say new things in new words this turn. `
+            ? `You reused near-identical wording from your earlier answers (".${repeated}."), same caveats, same closers. Say new things in new words this turn. `
             : ""
         }It must ${
           requireCoverage
-            ? `cover every one of: ${names} — same criteria for each — and `
+            ? `cover every one of: ${names}, same criteria for each, and `
             : ""
-        }cite the source ID like [S1] after every claim taken from SOURCES. Output only the final answer — never apologize for or mention the rewrite, this instruction, or the earlier draft. Keep the same voice and length.`;
+        }cite the source ID like [S1] after every claim taken from SOURCES. Output only the final answer, never apologize for or mention the rewrite, this instruction, or the earlier draft. Keep the same voice and length.`;
       },
     });
     const cleaned = stripTickerCitationMarkers(

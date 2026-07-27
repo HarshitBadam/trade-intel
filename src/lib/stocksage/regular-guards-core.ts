@@ -74,16 +74,16 @@ function statesUnsourcedRating(text: string): boolean {
 
 export function violatesStyle(text: string, hasSources: boolean): string | null {
   if (WEAK_OPENER.test(text) || DIFFICULTY_NARRATION.test(firstSentence(text))) {
-    return "Do not open by saying the comparison is hard or data is missing — lead with the most useful substantive point, and keep one short unverified-data clause for the end.";
+    return "Do not open by saying the comparison is hard or data is missing, lead with the most useful substantive point, and keep one short unverified-data clause for the end.";
   }
   if (INTERNAL_JARGON.test(text)) {
-    return 'Remove internal vocabulary like "validated data", "sources provided", or "quote feed" — describe facts by date or outlet name instead.';
+    return 'Remove internal vocabulary like "validated data", "sources provided", or "quote feed", describe facts by date or outlet name instead.';
   }
   if (!hasSources && PHANTOM_ATTRIBUTION.test(text)) {
-    return "You cited reports, news, or analysts, but no sources back this answer — drop those claims entirely rather than attributing them to anyone.";
+    return "You cited reports, news, or analysts, but no sources back this answer, drop those claims entirely rather than attributing them to anyone.";
   }
   if (!hasSources && statesUnsourcedRating(text)) {
-    return "You stated specific credit ratings with no source to back them — ratings change and must come from provided data. Remove the rating claims; if creditworthiness matters, describe it structurally instead.";
+    return "You stated specific credit ratings with no source to back them, ratings change and must come from provided data. Remove the rating claims; if creditworthiness matters, describe it structurally instead.";
   }
   return null;
 }
@@ -102,7 +102,7 @@ function looksLikeVerse(text: string): boolean {
     const line = raw.trim();
     if (
       line.length === 0 ||
-      /^(?:[-*•>#|]|\d+[.)])/.test(line) ||
+      /^(?:[-*, >#|]|\d+[.)])/.test(line) ||
       /^\*\*[^*]+\*\*:?$/.test(line)
     ) {
       run = 0;

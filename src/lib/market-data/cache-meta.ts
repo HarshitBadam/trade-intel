@@ -17,7 +17,7 @@ function saneMarketCap(v: number | null | undefined): number | null {
 
 // Finnhub's marketCapitalization is denominated in the profile's `currency`.
 // Foreign ADRs report it in the home currency (TSM→TWD, Toyota→JPY, Novo→DKK,
-// Infosys→INR), which is 4-100x inflated as USD — and cases like NVO ($1.4T)
+// Infosys→INR), which is 4-100x inflated as USD, and cases like NVO ($1.4T)
 // and WIT ($1.9T) sit UNDER the $10T ceiling, so the ceiling alone can't catch
 // them. Only trust the cap when it's explicitly USD.
 function usdMarketCap(
@@ -55,7 +55,7 @@ async function fetchTickerDetail(ticker: string): Promise<TickerDetail | null> {
     const response = await polygonFetch(
       `https://api.polygon.io/v3/reference/tickers/${ticker}`
     );
-    // 404 means the ticker has no reference entry — cache that.
+    // 404 means the ticker has no reference entry, cache that.
     // Any other failure is transient; throw so a 429 isn't pinned as null for 24h.
     if (response.status === 404) return null;
     assertPolygonOk(response, `ticker detail (${ticker})`);

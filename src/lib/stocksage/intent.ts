@@ -1,4 +1,9 @@
 import {
+  ACUTE_DISTRESS_RESPONSE,
+  detectCrisis,
+  SELF_HARM_RESPONSE,
+} from "./crisis";
+import {
   ABUSE_AT_BOT,
   CASUAL_ACKNOWLEDGEMENT,
   FAREWELL,
@@ -7,7 +12,6 @@ import {
   SOCIAL,
 } from "./social-patterns";
 import type {
-  ChatRoute,
   ConversationState,
   FinanceEntity,
   RouteDecision,
@@ -20,16 +24,10 @@ const CODE =
   /\b(?:python|javascript|typescript|java|c\+\+|code|script|function|loop|syntax|compile|runtime|output|console\.log|print\s*\(|for\s+\w+\s+in\s+range)\b/i;
 const STABLE_FINANCE =
   /\b(?:p\/?e|price[- ]to[- ]earnings|ratio|dividend|market cap|capitalisation|stock|share|bond|etf|interest rate|inflation|gdp|recession|earnings per share|eps|cash flow|balance sheet|valuation|risks?|fraud|market manipulation|public compan|portfolio|finance|financial|investors?|invest)\b/i;
-export const EXPLICIT_SELF_HARM =
-  /\b(?:kill myself|end my life|want to die|suicid(?:e|al)|hurt myself|self[- ]harm|not worth living)\b/i;
+export { detectCrisis } from "./crisis";
+export type { CrisisKind } from "./crisis";
 const CURRENT_GENERAL =
   /\b(?:fed|federal reserve|rates?|inflation|economy|market|asx|nasdaq|s&p|dow)\b/i;
-
-export type AmbiguousRouter = (input: {
-  message: string;
-  entities: FinanceEntity[];
-  state: ConversationState;
-}) => Promise<ChatRoute | "clarify">;
 
 export function normalizeMessage(message: string): string {
   return message.normalize("NFKC").replace(/\s+/g, " ").trim();
@@ -51,10 +49,14 @@ export function routeMessage(args: {
       clarification: args.clarification,
     };
   }
-  if (EXPLICIT_SELF_HARM.test(text)) {
+  const crisis = detectCrisis(text);
+  if (crisis) {
     return {
       route: "safety_support",
-      reasonCode: "explicit_self_harm_language",
+      reasonCode:
+        crisis === "self_harm"
+          ? "explicit_self_harm_language"
+          : "acute_distress_language",
       retrievalRequired: false,
       deepEligible: false,
     };
@@ -87,7 +89,7 @@ export function routeMessage(args: {
       retrievalRequired: false,
       deepEligible: false,
       clarification:
-        "Do you mean the accounting and consulting Big Four—Deloitte, PwC, EY, and KPMG—or another group?",
+        "Do you mean the accounting and consulting Big Four, Deloitte, PwC, EY, and KPMG, or another group?",
     };
   }
   if (CODE.test(text)) {
@@ -192,26 +194,28 @@ export function immediateReply(
     return decision.clarification ?? "Could you clarify what you mean?";
   }
   if (decision.route === "safety_support") {
-    return "I’m sorry you’re dealing with this. If you may act on thoughts of harming yourself, call local emergency services now. In Australia, Lifeline is available at 13 11 14; elsewhere, contact your local crisis line or emergency number. If you can, tell someone you trust and stay with them.";
+    return decision.reasonCode === "acute_distress_language"
+      ? ACUTE_DISTRESS_RESPONSE
+      : SELF_HARM_RESPONSE;
   }
   if (decision.route !== "social") return null;
   if (HELP.test(message)) {
     return "I can explain finance concepts, check current market data, compare companies or investments, and follow a topic across the conversation. For supported current questions, you can also use Research deeper.";
   }
   if (ABUSE_AT_BOT.test(message)) {
-    return "Fair enough, I didn’t earn a medal on that one. Give me another shot — what do you want to look at?";
+    return "Fair enough, I didn’t earn a medal on that one. Give me another shot, what do you want to look at?";
   }
   if (FRUSTRATION.test(message)) {
-    return "Yeah, fair—that was frustrating. Want to retry the last market question or switch topics?";
+    return "Yeah, fair, that was frustrating. Want to retry the last market question or switch topics?";
   }
   if (FAREWELL.test(message)) {
     const farewells = [
-      "Catch you next time — stay sharp out there.",
-      "Take it easy — the charts will keep till you're back.",
-      "Sayonara for now — go enjoy the real world for a bit.",
-      "Later! It was a good session — see you around.",
+      "Catch you next time, stay sharp out there.",
+      "Take it easy, the charts will keep till you're back.",
+      "Sayonara for now, go enjoy the real world for a bit.",
+      "Later! It was a good session, see you around.",
       "All the best out there. I'll hold the fort.",
-      "Go well — and may your entries be timely.",
+      "Go well, and may your entries be timely.",
     ];
     return farewells[Math.floor(Math.random() * farewells.length)];
   }
@@ -228,13 +232,13 @@ export function immediateReply(
     return "All good. Give me a shout when you want to look at something.";
   }
   if (/\bwe good\b/i.test(message)) {
-    return "We’re good — no stress.";
+    return "We’re good, no stress.";
   }
   if (/i'?m back|hey again/i.test(message)) {
     return "Welcome back. What are we digging into?";
   }
   if (/^(?:sup|yo)\b|what'?s (?:up|good|new)/i.test(message)) {
-    return "Hey — what are we looking at?";
+    return "Hey, what are we looking at?";
   }
   return "Hey! What are you looking into?";
 }

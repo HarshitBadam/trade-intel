@@ -91,6 +91,8 @@ The source tree, annotated. Config and generated files are omitted.
     │   │   ├── planning.ts      # bounded provider/query planning
     │   │   ├── evidence.ts      # relevance, freshness, and coverage filters
     │   │   ├── policy.ts        # finance-domain and misuse policy
+    │   │   ├── crisis.ts        # zero-cost crisis-language prefilter
+    │   │   ├── safety-classifier.ts # Llama Guard input rail behind the prefilter
     │   │   ├── state.ts         # untrusted state canonicalization
     │   │   ├── conversation-attributes.ts # criteria, horizon, and jurisdiction detection
     │   │   ├── citations.ts     # source-ID validation and safe link expansion

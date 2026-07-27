@@ -121,7 +121,7 @@ export function FloatingWidgetView({
                         id="stocksage-description"
                         className="text-xs text-muted-foreground"
                       >
-                        Ask naturally—follow-ups and comparisons are welcome.
+                        Ask naturally, follow-ups and comparisons are welcome.
                       </p>
                     </div>
                     <button
@@ -149,7 +149,7 @@ export function FloatingWidgetView({
                           aria-live="polite"
                         >
                           <div className="max-w-xs animate-pulse rounded-lg p-3 text-muted-foreground">
-                            Working on that…
+                            Working on that.
                           </div>
                         </div>
                       )}
