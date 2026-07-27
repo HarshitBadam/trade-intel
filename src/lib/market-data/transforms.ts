@@ -6,7 +6,14 @@ import {
   generateMockFine,
   generateMockPopularity,
 } from "@/data/fallbacks";
-import type { Quote, Mover, Movers, BarPoint, LiveQuote } from "./types";
+import type {
+  Quote,
+  Mover,
+  Movers,
+  BarPoint,
+  DataStatus,
+  LiveQuote,
+} from "./types";
 import type { AlpacaBar, AlpacaSnapshot } from "./alpaca";
 
 export function sanitizeTicker(input: string): string {
@@ -93,7 +100,7 @@ export function mockMovers(): Mover[] {
   });
 }
 
-export function summarizeMovers(all: Mover[]): Movers {
+export function summarizeMovers(all: Mover[], status: DataStatus): Movers {
   const byPct = [...all].sort((a, b) => b.percentChange - a.percentChange);
   const byAbs = [...all].sort((a, b) => Math.abs(b.percentChange) - Math.abs(a.percentChange));
   const byVolume = [...all].sort((a, b) => b.volume - a.volume);
@@ -102,6 +109,7 @@ export function summarizeMovers(all: Mover[]): Movers {
     losers: byPct.slice(-3).reverse(),
     shifts: byAbs.slice(0, 3),
     mostActive: byVolume.slice(0, 3),
+    status,
   };
 }
 

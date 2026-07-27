@@ -81,6 +81,7 @@ function mergeDetails(prev: StockData, fresh: StockData): StockData {
           news: prev.news,
           newsStatus: prev.newsStatus,
           newsUpdatedAt: prev.newsUpdatedAt,
+          newsVerdict: prev.newsVerdict,
           mentions: prev.mentions,
           sentimentPercentage: prev.sentimentPercentage,
           positiveSentimentPercentage: prev.positiveSentimentPercentage,
@@ -90,6 +91,13 @@ function mergeDetails(prev: StockData, fresh: StockData): StockData {
           popularityStatus: prev.popularityStatus,
           searchVolume: prev.searchVolume,
         }
+      : {}),
+    // The analysis-doc read fails independently of the article read, so a
+    // transient Astra error drops the verdict while news still loads. Verdicts
+    // are only ever overwritten, never deleted, so keeping the last known-good
+    // one is safe and stops the trigger flickering out between polls.
+    ...(!fresh.newsVerdict && prev.newsVerdict
+      ? { newsVerdict: prev.newsVerdict }
       : {}),
   };
 }
@@ -302,6 +310,8 @@ export default function DetailsView({
                   news={news}
                   status={stockData.newsStatus}
                   updatedAt={stockData.newsUpdatedAt}
+                  verdict={stockData.newsVerdict}
+                  ticker={stockData.id}
                   positiveSentimentPercentage={
                     stockData.positiveSentimentPercentage || 0
                   }

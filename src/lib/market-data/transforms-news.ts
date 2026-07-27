@@ -1,6 +1,11 @@
 import type { News, NewsStatus } from "@/components/news/RecentInfluential";
 import { generateMockNews } from "@/data/fallbacks";
-import type { Headline, NewsSummary, PopularitySeriesPoint } from "./types";
+import type {
+  DataStatus,
+  Headline,
+  NewsSummary,
+  PopularitySeriesPoint,
+} from "./types";
 
 export type PolygonNewsResult = {
   id: string;
@@ -12,7 +17,11 @@ export type PolygonNewsResult = {
   insights?: { ticker: string; sentiment?: string; sentiment_reasoning?: string }[];
 };
 
-export function newsToHeadline(symbol: string, n: News): Headline {
+export function newsToHeadline(
+  symbol: string,
+  n: News,
+  status: DataStatus
+): Headline {
   return {
     ticker: symbol,
     newsTitle: n.metadata.title,
@@ -21,6 +30,7 @@ export function newsToHeadline(symbol: string, n: News): Headline {
     date: n.metadata.publication_date,
     url: n.metadata.url,
     sentiment: n.metadata.sentiment,
+    status,
   };
 }
 
@@ -41,7 +51,7 @@ export function pickTopArticle(news: News[]): News {
 }
 
 export function mockHeadline(symbol: string): Headline {
-  return newsToHeadline(symbol, generateMockNews(symbol || "AAPL")[0]);
+  return newsToHeadline(symbol, generateMockNews(symbol || "AAPL")[0], "sample");
 }
 
 export function normalizeSentiment(raw?: string): string {

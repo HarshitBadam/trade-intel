@@ -116,7 +116,7 @@ export async function fetchTopHeadline(ticker: string): Promise<Headline> {
 
 export async function fetchMovers(): Promise<Movers> {
   const access = await guard("details", { limit: 30, windowSec: 60 });
-  if (!access.ok) return summarizeMovers(mockMovers());
+  if (!access.ok) return summarizeMovers(mockMovers(), "sample");
 
   return getMoversData();
 }

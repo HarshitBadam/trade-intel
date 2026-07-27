@@ -9,6 +9,10 @@ import { mapPolygonNews, type PolygonNewsResult } from "./transforms";
 import { stableArticleId, touchNewsLoadedAt, upsertArticles } from "./news-store";
 import type { StoredArticle } from "./types";
 
+// The cron ingest walks every ticker in sequence, so an unbounded news fetch
+// would stall the whole run behind one slow provider.
+const NEWS_TIMEOUT_MS = 10_000;
+
 function articleIdFor(
   ticker: string,
   url: string | undefined,
@@ -33,6 +37,7 @@ export async function fetchPolygonNewsWithInsights(
   const response = await fetch(url, {
     cache: "no-store",
     headers: { Authorization: `Bearer ${POLYGON_API_KEY}` },
+    signal: AbortSignal.timeout(NEWS_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`polygon news failed for ${symbol}: ${response.status}`);
@@ -115,6 +120,7 @@ export async function fetchAlpacaNews(
         "APCA-API-KEY-ID": ALPACA_API_KEY_ID ?? "",
         "APCA-API-SECRET-KEY": ALPACA_API_SECRET_KEY ?? "",
       },
+      signal: AbortSignal.timeout(NEWS_TIMEOUT_MS),
     }
   );
   if (!response.ok) {

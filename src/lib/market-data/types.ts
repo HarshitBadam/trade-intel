@@ -1,5 +1,6 @@
 import type { RelatedStock } from "@/data/fallbacks";
 import type { News, NewsStatus } from "@/components/news/RecentInfluential";
+import type { NewsVerdict } from "@/components/news/VerdictModal";
 
 export type SearchResult = {
   ticker: string;
@@ -29,6 +30,11 @@ export type Quote = {
   fineData: BarPoint[];
 };
 
+// Required so every construction site has to declare whether the payload came
+// from a provider or from the seeded mock generators: home-page fallbacks use
+// real tickers, so unlabelled sample data is indistinguishable from live.
+export type DataStatus = "live" | "sample";
+
 export type Headline = {
   ticker: string;
   newsTitle: string;
@@ -37,6 +43,7 @@ export type Headline = {
   date?: string;
   url?: string;
   sentiment?: string;
+  status: DataStatus;
 };
 
 export type Mover = {
@@ -53,6 +60,7 @@ export type Movers = {
   losers: Mover[];
   shifts: Mover[];
   mostActive: Mover[];
+  status: DataStatus;
 };
 
 export type LiveQuote = {
@@ -128,6 +136,8 @@ export type NewsSummary = {
   news: News[];
   status: NewsStatus;
   updatedAt?: string;
+  /** Present only when a stored analysis doc carries a usable verdict. */
+  verdict?: NewsVerdict;
 };
 
 export type PopularitySeriesPoint = {

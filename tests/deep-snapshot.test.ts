@@ -1,3 +1,4 @@
+import "./no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { validateDeepResearchResult } from "../src/lib/stocksage/deep-validation";
