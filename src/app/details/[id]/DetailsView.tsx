@@ -297,7 +297,7 @@ export default function DetailsView({
           </div>
 
           {/* Absolutely positioned so it fills (and never exceeds) the chart
-              column's height — its bottom lines up with the chart, and the
+              column's height, its bottom lines up with the chart, and the
               news list scrolls internally. */}
           <div className="lg:col-span-4 relative">
             <div className="p-8 lg:pl-0 lg:absolute lg:inset-0">

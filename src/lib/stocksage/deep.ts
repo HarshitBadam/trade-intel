@@ -79,7 +79,7 @@ function subjectName(entities: FinanceEntity[]): string {
 function unavailableResearchCopy(entities: FinanceEntity[]): string {
   return `There isn’t enough current reporting on ${subjectName(
     entities
-  )} for a deeper report right now — the answer above stands; try again shortly.`;
+  )} for a deeper report right now, the answer above stands; try again shortly.`;
 }
 
 function sourceBlock(sources: EvidenceSource[]): string {

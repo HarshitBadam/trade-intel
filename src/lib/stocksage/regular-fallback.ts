@@ -41,8 +41,8 @@ function safeEvidenceNote(source: EvidenceSource): string | null {
         )
     );
   if (!sentence) return null;
-  return `${sentence.slice(0, 260).replace(/[,:;–—-]\s*$/, "")}${
-    sentence.length > 260 ? "…" : ""
+  return `${sentence.slice(0, 260).replace(/[,:;,, -]\s*$/, "")}${
+    sentence.length > 260 ? "." : ""
   }`;
 }
 
@@ -142,7 +142,7 @@ export function buildFallbackReply(
                 entity ? casualName(entity.name) : quote.ticker
               } itself.`;
         lines.push(
-          `- **${displayName}** — $${quote.price.toFixed(
+          `- **${displayName}**, $${quote.price.toFixed(
             2
           )} at ${humanAsOf(quote.asOf)}${
             quote.eod ? " close" : ""
@@ -150,7 +150,7 @@ export function buildFallbackReply(
         );
       } else {
         lines.push(
-          `- **${quote.ticker}** — ${
+          `- **${quote.ticker}**, ${
             quote.isIndex
               ? `${quote.price.toFixed(2)} points`
               : `$${quote.price.toFixed(2)}`
@@ -199,8 +199,8 @@ export function buildFallbackReply(
         .join(", ");
       const note = safeEvidenceNote(source);
       lines.push(
-        `- **${names || "Requested topic"}** — ${
-          note ? `${note} — ` : ""
+        `- **${names || "Requested topic"}**, ${
+          note ? `${note}, ` : ""
         }${source.outlet}${
           source.publishedAt ? ` (${humanPublishedAt(source.publishedAt)})` : ""
         } [${source.id}]`
@@ -251,7 +251,7 @@ export function buildFallbackReply(
     ],
     [
       /\b(?:market cap|market capitalisation|market capitalization)\b/i,
-      "Market capitalization is share price multiplied by shares outstanding. It measures the market value of a company’s equity—not its revenue, cash balance, or total enterprise value.",
+      "Market capitalization is share price multiplied by shares outstanding. It measures the market value of a company’s equity, not its revenue, cash balance, or total enterprise value.",
     ],
     [
       /\bfortune\s*(?:100|500)\b/i,
@@ -294,7 +294,7 @@ export function buildFallbackReply(
             entities.length === 1 ? "its shares aren’t" : "their shares aren’t"
           } publicly traded. Current reporting is temporarily unavailable; try again shortly for the business, news, and risk picture.`
         : decision.route === "current_finance" || decision.route === "comparison"
-          ? "Fresh market data isn’t available at this moment. Try again shortly — your conversation and question are still here."
+          ? "Fresh market data isn’t available at this moment. Try again shortly, your conversation and question are still here."
           : "That answer didn’t come together cleanly. Try again in a moment.",
       citationUrls: [],
       retryable: true,

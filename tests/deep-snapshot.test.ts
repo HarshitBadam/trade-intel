@@ -201,7 +201,7 @@ test("deep availability distinguishes broad reports from focused questions", asy
   assert.equal(offer.offer?.available, false);
   assert.equal(
     offer.offer?.unavailableReason,
-    "live research is refreshing — try again shortly"
+    "live research is refreshing, try again shortly"
   );
   assert.equal(isDeepResearchOfferAvailable(offer.offer), false);
 });

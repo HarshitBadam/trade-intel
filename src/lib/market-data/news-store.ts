@@ -42,7 +42,7 @@ const ANALYSIS_DOC_TYPE = "ticker_analysis";
 
 let analysisMode: AnalysisMode | null = null;
 
-// Create the analysis collection (plain, non-vector — verdicts are read by key,
+// Create the analysis collection (plain, non-vector, verdicts are read by key,
 // never similarity-searched, and vector collections weigh more against the free-tier
 // collection cap). Safe to call repeatedly: `checkExists: false` makes an exact
 // re-create a no-op. If creation fails AND the collection still isn't listed, we
@@ -98,7 +98,7 @@ async function analysisRef(ticker: string): Promise<{
 }
 
 // Query params that only track the click, never identify the article. Kept to
-// a conservative, well-known set — over-stripping would merge genuinely different
+// a conservative, well-known set, over-stripping would merge genuinely different
 // URLs into one id.
 const TRACKING_PARAMS = new Set([
   "fbclid",
@@ -134,7 +134,7 @@ function normalizeArticleUrl(raw: string | null | undefined): string | null {
 
 // Stable, provider-independent article id: sha256 of the normalized URL, or of
 // the caller-supplied fallback (`ticker|title|publication_date`) when there is
-// no usable URL. 24 hex chars ≈ 96 bits — collision-safe at our scale while
+// no usable URL. 24 hex chars ≈ 96 bits, collision-safe at our scale while
 // staying short enough to read in logs and `key_drivers.article_ids`.
 export function stableArticleId(
   url: string | null | undefined,
@@ -147,7 +147,7 @@ export function stableArticleId(
 const UPSERT_CONCURRENCY = 8;
 
 // Idempotent per-article upsert keyed on `_id = article_id`. Rows the deep pass
-// has already relabeled (label_source "ai") are left untouched — a routine re-load
+// has already relabeled (label_source "ai") are left untouched, a routine re-load
 // must not downgrade AI labels back to interim provider ones.
 export async function upsertArticles(
   ticker: string,
@@ -186,7 +186,7 @@ export async function upsertArticles(
 
 // Apply the deep pass's per-article labels IN PLACE. Only the four fields the
 // LLM owns are $set; titles/urls/dates are untouched. `label_source` flips to
-// "ai" — which is exactly what upsertArticles keys off to protect these rows
+// "ai", which is exactly what upsertArticles keys off to protect these rows
 // from a later provider re-load downgrading them.
 export async function applyArticleLabels(
   updates: {
@@ -258,7 +258,7 @@ export async function readAnalysisDoc(ticker: string): Promise<AnalysisDoc | nul
 }
 
 // $set only the provided fields, so a verdict write never clobbers
-// `news_loaded_at` (and vice versa) — the two writers own disjoint fields.
+// `news_loaded_at` (and vice versa), the two writers own disjoint fields.
 export async function writeAnalysisDoc(doc: AnalysisDoc): Promise<void> {
   const { collection, id, onInsert } = await analysisRef(doc._id ?? doc.ticker);
   const { _id: _ignored, ...fields } = doc;
@@ -287,7 +287,7 @@ export async function touchNewsLoadedAt(
 function prunableFilter(cutoffDay: string) {
   // `publication_date` is "YYYY-MM-DD", so lexicographic comparison IS
   // chronological. `$exists` + `$gt: ""` protect docs with a missing or empty
-  // date (some legacy Langflow rows) — an undated row must never be deleted.
+  // date (some legacy Langflow rows), an undated row must never be deleted.
   return {
     "metadata.publication_date": { $exists: true, $gt: "", $lt: cutoffDay },
   };

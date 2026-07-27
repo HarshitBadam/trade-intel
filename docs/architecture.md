@@ -55,7 +55,7 @@ flowchart TB
   CRON --> ASTRA
 ```
 
-Pages read Astra, Alpaca, and Finnhub. Polygon and the batch LLM lane sit behind the cron. Chat first applies a deterministic domain policy, resolves typed conversation state, and builds a bounded evidence plan. Social, out-of-scope, code, and stable-finance turns skip retrieval; current and comparison routes call only planned quote, Astra, or Tavily providers. Eligible regular answers can launch idempotent deeper research through the same typed retrieval layer with broader queries and independent synthesis failover.
+Pages read Astra, Alpaca, and Finnhub. Polygon and the batch LLM lane sit behind the cron. Chat first screens the turn for crisis language, then applies a deterministic domain policy, resolves typed conversation state, and builds a bounded evidence plan. Social, out-of-scope, code, and stable-finance turns skip retrieval; current and comparison routes call only planned quote, Astra, or Tavily providers. Eligible regular answers can launch idempotent deeper research through the same typed retrieval layer with broader queries and independent synthesis failover.
 
 ## Serving a page
 
@@ -94,7 +94,7 @@ sequenceDiagram
 | Finnhub | Company profile, peers, symbol search fallback | Read path |
 | Polygon | Bulk news and per-article interim sentiment | Cron only |
 | Astra DB | Stored articles and per-ticker verdicts | Both |
-| Groq | Batch analysis plus isolated primary and fallback chat models | Cron and chat |
+| Groq | Batch analysis, isolated primary and fallback chat models, and the Llama Guard input rail | Cron and chat |
 | Tavily | Planned, filtered web evidence for current/comparison routes | Chat |
 | Langflow | Optional batch orchestration | Cron |
 
@@ -117,6 +117,34 @@ Reads go through `unstable_cache` with tag-based revalidation. The cron calls `r
 | Ticker detail / peers | 86400s | `fundamentals` |
 | Symbol search | 86400s | `search` |
 | Stored articles / verdict | 600s | `news` |
+
+## Chat safety
+
+Safety is two layers, because either one alone fails in a way the other covers.
+
+**The prefilter** (`src/lib/stocksage/crisis.ts`) is a regex over a normalized form of the message: lowercased, punctuation stripped, stretched letters collapsed, so "KILL MY SELF" and "FUCKKKK" match the same patterns as their tidy spellings. It costs nothing, runs before entity resolution so a distressed message never reaches the market path on the strength of ticker-shaped words, and when it fires the turn returns the crisis response immediately. Nothing else runs, including the classifier.
+
+**The classifier** (`src/lib/stocksage/safety-classifier.ts`) is Llama Guard 4 on Groq, and it exists because the prefilter can only catch phrasings someone thought of. It scores the current turn only, since guard accuracy degrades on long context. It runs on turns that reach the answering pipeline, which is where a model-composed reply could be produced.
+
+```mermaid
+flowchart LR
+  M["user turn"] --> R{"crisis regex"}
+  R -->|match| C["crisis response"]
+  R -->|no match| P["policy, routing"]
+  P --> A["retrieval + synthesis"]
+  P -.->|started, not awaited| G["Llama Guard"]
+  A --> J{"join verdict"}
+  G --> J
+  J -->|allow| OUT["answer"]
+  J -->|S11| C
+  J -->|S3/S4/S9| REF["refusal"]
+```
+
+The classifier promise starts before retrieval and is awaited after synthesis, so on a normal finance turn its ~460ms hides entirely behind seconds of retrieval and adds no measurable wall clock. The verdict is checked before any reply leaves `answerChat`.
+
+It acts on four of the fourteen MLCommons categories: `S11` (Suicide & Self-Harm) routes to the same crisis response as the prefilter, and `S3`, `S4`, `S9` refuse. Everything else is allowed through deliberately. `S6` (Specialized Advice) and `S2` (Non-Violent Crimes) matter most here: they fire on ordinary investment questions and on analysis of insider trading or market manipulation as subjects, which is the product's core function. Actual misconduct facilitation is refused deterministically in `policy.ts`, which does not depend on a model being reachable.
+
+The rail fails open at every step. No key, open breaker, exhausted budget, HTTP error, unparseable output, or a verdict slower than 1,500ms all resolve to "allow" and the turn continues on the prefilter alone. A classifier outage degrades safety back to where it was before the classifier existed; it never takes chat down.
 
 ## Failure handling
 

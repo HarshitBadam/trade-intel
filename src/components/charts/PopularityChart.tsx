@@ -143,7 +143,7 @@ export function PopularityChart({
     return (
       <div className="px-8 pb-8">
         <p className="py-24 text-center text-sm text-muted-foreground">
-          Activity data is temporarily unavailable. Retrying automatically…
+          Activity data is temporarily unavailable. Retrying automatically.
         </p>
       </div>
     )

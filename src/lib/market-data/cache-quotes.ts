@@ -14,7 +14,7 @@ import {
 import type { LiveQuote } from "./types";
 
 // Quotes for an ARBITRARY, exact symbol set (e.g. a peer group Finnhub just
-// returned) — independent of KNOWN_UNIVERSE. The curated-universe snapshot is
+// returned), independent of KNOWN_UNIVERSE. The curated-universe snapshot is
 // right for movers (a fixed known set), but a related-stock peer can be any US
 // ticker; intersecting with a static list would silently drop real peers.
 // Alpaca has no "whole market" snapshot, so we snapshot exactly the symbols asked.
@@ -53,7 +53,7 @@ export const getQuotesForCached = unstable_cache(
   { revalidate: 300, tags: ["movers"] }
 );
 
-// Year-ago close for an ARBITRARY, exact symbol set — same rationale as
+// Year-ago close for an ARBITRARY, exact symbol set, same rationale as
 // getQuotesForCached (a peer group is never bounded to KNOWN_UNIVERSE).
 async function fetchYearAgoQuotesFor(symbolsKey: string): Promise<Record<string, number>> {
   const symbols = symbolsKey.split(",").filter(Boolean);

@@ -31,7 +31,7 @@ function hasExplicitConversationReference(message: string): boolean {
 }
 
 const DEGRADED_RESPONSE =
-  "Fresh market data isn’t available at this moment. Try again shortly — your conversation and question are still here.";
+  "Fresh market data isn’t available at this moment. Try again shortly, your conversation and question are still here.";
 
 function outageFloor(
   entities: ReturnType<typeof resolveConversationState>["entities"]

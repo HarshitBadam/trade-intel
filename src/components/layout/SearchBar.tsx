@@ -113,7 +113,7 @@ export function SearchBar() {
             setSearchQuery(e.target.value);
             setShowResults(true);
           }}
-          placeholder="Search for stocks..."
+          placeholder="Search for stocks"
           className="w-full rounded-lg bg-background dark:bg-transparent px-10 py-2.5 text-sm outline-none focus:outline-none"
         />
       </div>
@@ -122,7 +122,7 @@ export function SearchBar() {
         <div className="absolute top-full left-0 right-0 mt-2 p-2 bg-white dark:bg-card/85 dark:backdrop-blur-xl text-popover-foreground border border-black/[0.08] dark:border-white/10 rounded-2xl shadow-[0_16px_40px_-12px_rgba(0,0,0,0.18),0_4px_12px_-6px_rgba(0,0,0,0.08)] dark:shadow-2xl max-h-[320px] overflow-y-auto z-50">
           {isLoading ? (
             <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-              Searching…
+              Searching.
             </div>
           ) : searchResults.length > 0 ? (
             searchResults.map((stock) => (
@@ -148,7 +148,7 @@ export function SearchBar() {
             ))
           ) : searchFailed ? (
             <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-              Search is temporarily unavailable — try again in a moment
+              Search is temporarily unavailable, try again in a moment
             </div>
           ) : (
             <div className="px-3 py-6 text-center text-sm text-muted-foreground">

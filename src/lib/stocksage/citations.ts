@@ -193,32 +193,6 @@ export function stripTickerCitationMarkers(
   );
 }
 
-export function sanitizeExternalCitations(text: string): {
-  text: string;
-  citationUrls: string[];
-} {
-  const urls = new Set<string>();
-  const sanitized = text
-    .replace(/^\s*\[[^\]]+\]:\s*<?\S+>?\s*$/gim, "")
-    .replace(
-      /!?\[([^\]]*)\]\(((?:[^()]|\([^()]*\))*)\)/g,
-      (_match, label: string, target: string) => {
-        const safe = safeSourceUrl(target.replace(/^<|>$/g, "").trim());
-        if (!safe) return markdownLabel(label);
-        const href = markdownUrl(safe);
-        urls.add(href);
-        return `[${markdownLabel(label)}](${href})`;
-      }
-    )
-    .replace(/<https?:\/\/[^>]+>/gi, "")
-    .replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, "$1")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/[ \t]+([.,;:])/g, "$1")
-    .trim();
-
-  return { text: sanitized, citationUrls: [...urls] };
-}
-
 export function expandValidCitations(
   text: string,
   sources: EvidenceSource[]

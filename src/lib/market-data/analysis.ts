@@ -61,7 +61,7 @@ export type AnalysisRunStatus =
 // Run when: never analyzed; OR the verdict is older than the TTL; OR new
 // articles arrived since the last pass (news_loaded_at > analyzed_at). Never
 // run when there are zero stored articles. Staleness is judged from analyzed_at
-// ONLY — never from article dates — so a provider re-load that adds no new
+// ONLY, never from article dates, so a provider re-load that adds no new
 // content doesn't force a re-run.
 export async function shouldAnalyzeTicker(
   ticker: string
@@ -110,7 +110,7 @@ export async function analyzeTicker(
 
   // runAnalysisLLM owns the per-provider breaker records. A network error /
   // rate-limit throw is a provider failure that trips the relevant breaker,
-  // whereas a schema/validation failure below is a content problem — neither
+  // whereas a schema/validation failure below is a content problem, neither
   // touches analyzed_at, preserving the "analyzed_at only on success" contract.
   const raw = await runAnalysisLLM(user);
 

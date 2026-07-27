@@ -363,14 +363,6 @@ export function filterEvidenceWithDiagnostics(args: {
   };
 }
 
-export function filterEvidence(args: {
-  inputs: EvidenceInput[];
-  plan: EvidencePlan;
-  entities: FinanceEntity[];
-}): EvidenceSource[] {
-  return filterEvidenceWithDiagnostics(args).sources;
-}
-
 export function evidenceCoverage(args: {
   plan: EvidencePlan;
   sources: EvidenceSource[];

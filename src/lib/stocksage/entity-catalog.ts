@@ -18,7 +18,7 @@ export const STOOQ_SYMBOLS: Record<string, StooqListing> = {
   AXJO: {
     symbol: "^aor",
     index: true,
-    note: "All Ordinaries index — the broad Australian market benchmark",
+    note: "All Ordinaries index, the broad Australian market benchmark",
   },
   CBA: { symbol: "cmway.us", note: "US-listed ADR, USD" },
   NAB: { symbol: "nabzy.us", note: "US-listed ADR, USD" },

@@ -3,7 +3,7 @@ import "server-only";
 // Minimal sliding-window pacer. Alpaca (~200/min) and Finnhub (~60/min) have
 // generous limits and every fetcher sits behind `unstable_cache`, so real
 // request volume is low. This gate smooths accidental bursts (e.g. a cold
-// render fanning out) — it paces to the configured budget and otherwise stays
+// render fanning out), it paces to the configured budget and otherwise stays
 // out of the way. It never rejects; callers await their turn.
 export function slidingLimiter(
   budget: number,

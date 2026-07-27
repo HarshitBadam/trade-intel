@@ -64,7 +64,7 @@ const PEER_GROUPS: string[][] = [
   ["JPM", "BAC", "WFC", "C", "GS", "MS", "SCHW", "COF", "USB"],
   // Payment networks
   ["V", "MA", "AXP"],
-  // Pharma / biotech (US-listed; ADRs like NVO omitted — Finnhub reports their
+  // Pharma / biotech (US-listed; ADRs like NVO omitted, Finnhub reports their
   // cap in local currency and inflates it relative to USD-listed peers)
   ["LLY", "PFE", "MRK", "ABBV", "BMY", "AMGN", "GILD", "MRNA"],
   // Healthcare services / devices

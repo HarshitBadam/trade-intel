@@ -101,7 +101,7 @@ export function buildDeterministicRankingReply(
         row.quote
           ? quoteDisplayName(row.entity, row.quote)
           : row.entity.ticker ?? casualName(row.entity.name)
-      }** — ${
+      }**, ${
         row.value >= 0 ? "+" : ""
       }${row.value.toFixed(2)}% ${window.label}${
         row.quote?.proxySymbol
@@ -113,7 +113,7 @@ export function buildDeterministicRankingReply(
   );
   for (const row of missing) {
     lines.push(
-      `- **${row.entity.ticker ?? casualName(row.entity.name)}** — unranked; ${window.label} figure unavailable.`
+      `- **${row.entity.ticker ?? casualName(row.entity.name)}**, unranked; ${window.label} figure unavailable.`
     );
   }
   return {
@@ -177,7 +177,7 @@ export function comparisonLead(
             {
               entity,
               quote: undefined,
-              line: `- **${casualName(entity.name)}** — privately held, so there is no public share price or listed-company valuation to compare.`,
+              line: `- **${casualName(entity.name)}**, privately held, so there is no public share price or listed-company valuation to compare.`,
             },
           ]
         : [];
@@ -221,7 +221,7 @@ export function comparisonLead(
           quote
             ? quoteDisplayName(entity, quote)
             : entity.ticker ?? casualName(entity.name)
-        }** — ${figures.join("; ")}.${
+        }**, ${figures.join("; ")}.${
           quote?.proxySymbol
             ? quote.proxyKind === "adr"
               ? ` These are ${quote.proxySymbol} figures, not the underlying Australian listing return.`

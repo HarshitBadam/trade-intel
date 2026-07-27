@@ -13,7 +13,7 @@ export const COMPARISON_FOLLOW_UP =
 export const CONTEXTUAL_FOLLOW_UP =
   /^(?:(?:and|so|ok(?:ay)?|\.{2,})\s+)?(?:today|yesterday|(?:a\s+)?few days ago|anything notable|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|what (?:changed|happened|moved)|what(?:'?s| is) (?:your|the) (?:current\s+)?outlook|which (?:one|is|looks|parts?)|(?:can you )?reconcile|how (?:did|has|is|are|was)|why\b|rank\b|order\b|all of them\b|only the (?:former|latter) two\b)/i;
 export const REMOVAL =
-  /\b(?:forget|drop|remove|ignore|skip|leave out|without)\s+(?:about\s+)?(.+?)(?=\s*(?:[—–-]{1,2}|,|\.|;|!|\?|$))/i;
+  /\b(?:forget|drop|remove|ignore|skip|leave out|without)\s+(?:about\s+)?(.+?)(?=\s*(?:[,, -]{1,2}|,|\.|;|!|\?|$))/i;
 export const SWAP_IN_CORRECTION =
   /\b(?:swap|sub(?:stitute)?)\s+in\s+(.+?)\s+(?:for|instead of|in place of)\s+(.+?)(?=[.!?,;]|$)/i;
 export const SWAP_CORRECTION =

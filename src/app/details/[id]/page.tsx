@@ -16,7 +16,7 @@ export type StockData = {
   /**
    * "live": real Polygon candles. "sample": deterministic demo data (only in
    * the zero-provider build or for invalid tickers). "unavailable": live mode
-   * but the fetch failed — the UI shows an honest placeholder and re-polls
+   * but the fetch failed, the UI shows an honest placeholder and re-polls
    * instead of presenting fabricated prices.
    */
   priceStatus: "live" | "sample" | "unavailable";

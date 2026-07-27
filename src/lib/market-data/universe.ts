@@ -4,7 +4,7 @@ import universe from "@/data/universe.json";
 
 export type UniverseEntry = { symbol: string; name: string };
 
-// The committed universe is ordered seed-block-first, then alphabetically —
+// The committed universe is ordered seed-block-first, then alphabetically,
 // so plain file order doubles as a recognizability prior when scores tie.
 const ENTRIES: readonly UniverseEntry[] = universe.tickers;
 

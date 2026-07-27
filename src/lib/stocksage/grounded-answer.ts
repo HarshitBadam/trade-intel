@@ -42,8 +42,8 @@ function safeSentence(value: string | undefined): string | null {
     return null;
   }
   const sentence = clean.split(/(?<=[.!?])\s+/)[0] ?? clean;
-  return `${sentence.slice(0, 300).replace(/[,:;–—-]\s*$/, "")}${
-    sentence.length > 300 ? "…" : ""
+  return `${sentence.slice(0, 300).replace(/[,:;,, -]\s*$/, "")}${
+    sentence.length > 300 ? "." : ""
   }`;
 }
 
@@ -169,7 +169,7 @@ function renderLatest(
       ? humanPublishedAt(source.publishedAt)
       : "Date not supplied";
     const detail = sourceDetail(source);
-    return `- **${date} — ${source.title}**${
+    return `- **${date}, ${source.title}**${
       detail ? `: ${detail}` : ""
     } [${source.id}]`;
   });
@@ -253,10 +253,10 @@ function renderOutlook(
       .filter(Boolean)
       .join(" ");
     return finalize(
-      `Plainly: bull case — ${bullSummary
+      `Plainly: bull case, ${bullSummary
         .replace(/^TTM /, "")
         .replace(/\.$/, "")
-        .toLowerCase()}; bear case — ${bearSummary
+        .toLowerCase()}; bear case, ${bearSummary
         .replace(/\.$/, "")
         .toLowerCase()}. The trade-off is rapid growth against valuation and volatility sensitivity. ${citations}`.trim(),
       context,

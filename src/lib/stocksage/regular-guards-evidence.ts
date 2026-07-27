@@ -25,7 +25,7 @@ export function hedgedEstimateClaim(
     }
     const figures = [
       ...sentence.matchAll(
-        /(\d+(?:\.\d+)?)(?:\s*(?:-|–|to)\s*(\d+(?:\.\d+)?))?\s*(?:%|percent\b)/gi
+        /(\d+(?:\.\d+)?)(?:\s*(?:-|, |to)\s*(\d+(?:\.\d+)?))?\s*(?:%|percent\b)/gi
       ),
     ];
     if (figures.length === 0) continue;

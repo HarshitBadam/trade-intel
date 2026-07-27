@@ -15,7 +15,19 @@ Everything is configured through environment variables. `.env.example` documents
 | Market data | `ALPACA_*`, `FINNHUB_API_KEY`, `POLYGON_API_KEY` | Prices, metadata, news. |
 | Store | `ASTRA_DB_*` | Analyzed news and verdicts. |
 | AI and retrieval | `GROQ_*`, `TAVILY_API_KEY`, `LANGFLOW_*`, `STOCKSAGE_DEEP_SNAPSHOT_SECRET` | Regular/deeper chat synthesis and web context, plus optional Langflow batch analysis. The optional dedicated snapshot secret falls back to `AUTH_SECRET` or `NEXTAUTH_SECRET`. |
+| Chat safety | `GROQ_SAFETY_MODEL`, `STOCKSAGE_SAFETY_CLASSIFIER` | The Llama Guard input rail. Both optional. |
 | Ops | `UPSTASH_REDIS_*`, `CRON_SECRET`, `CRON_BATCH_SIZE`, `CRON_MAX_ANALYSES` | Rate limiting, the breaker, the ingest cron. |
+
+## The chat safety rail
+
+The model half of the safety rail rides on the Groq key: set `GROQ_API_KEY` and chat input is also scored by Llama Guard (`GROQ_SAFETY_MODEL`, default `meta-llama/llama-guard-4-12b`) alongside the regex prefilter. There is nothing extra to configure.
+
+Two escape hatches:
+
+- `GROQ_SAFETY_MODEL` points the rail at a different guard model.
+- `STOCKSAGE_SAFETY_CLASSIFIER=off` disables the rail while leaving Groq synthesis alone, for when the classifier is misbehaving on real traffic. The regex prefilter keeps running either way.
+
+With no Groq key the rail is simply absent, exactly as if it had timed out. See [architecture.md](architecture.md) for the layering.
 
 ## The production safety rule
 

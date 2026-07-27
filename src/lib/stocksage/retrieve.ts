@@ -156,7 +156,7 @@ export async function executeEvidencePlan(args: {
     );
     await Promise.all(workers);
   };
-  const [results, fundamentals, , cachedInputs] = await Promise.all([
+  const [results, fundamentals,, cachedInputs] = await Promise.all([
     Promise.all(
       args.plan.queries.map(async (query) => {
         if (query.provider === "quotes") {

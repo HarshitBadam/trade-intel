@@ -172,7 +172,8 @@ export type DomainReasonCode =
   | "crypto_risk_only"
   | "ambiguous_crypto"
   | "high_stakes_finance"
-  | "explicit_self_harm";
+  | "explicit_self_harm"
+  | "acute_distress";
 
 export type DomainPolicyDecision = {
   action: "allow" | "respond" | "clarify";

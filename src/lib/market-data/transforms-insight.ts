@@ -31,7 +31,7 @@ export type RelationStats = {
   sector: string | null;
 };
 
-// The lens a card is selected on — used only to bias which insight we surface,
+// The lens a card is selected on, used only to bias which insight we surface,
 // never to restrict it, so any card type can still lead with a divergence insight.
 export type InsightLens = "industry" | "return" | "size";
 

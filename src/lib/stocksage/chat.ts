@@ -6,7 +6,11 @@ import {
   resolveConversationState,
 } from "./entities";
 import {
-  EXPLICIT_SELF_HARM,
+  crisisResponse,
+  detectCrisis,
+  hasDistressSignal,
+} from "./crisis";
+import {
   immediateReply,
   normalizeMessage,
   routeMessage,
@@ -15,9 +19,10 @@ import { answerWithHeuristics } from "./chat-heuristics";
 import { answerWithModel } from "./chat-model";
 import {
   immediateResponse,
-  SELF_HARM_RESPONSE,
+  PROHIBITED_FALLBACK,
   type ChatDependencies,
 } from "./chat-shared";
+import { beginInputSafetyCheck } from "./safety-classifier";
 import {
   classifyHighStakes,
   evaluateDomainPolicy,
@@ -25,14 +30,6 @@ import {
   pickHighStakesReply,
 } from "./policy";
 import { creativeRequestOnly } from "./regular-guards";
-import {
-  ABUSE_AT_BOT,
-  CASUAL_ACKNOWLEDGEMENT,
-  FAREWELL,
-  FRUSTRATION,
-  HELP,
-  SOCIAL,
-} from "./social-patterns";
 import type { ChatReply, ChatRequest } from "./types";
 
 export async function answerChat(
@@ -43,12 +40,18 @@ export async function answerChat(
   const normalized = normalizeMessage(request.message);
   const scoped: ChatRequest = { ...request, message: normalized };
 
-  if (EXPLICIT_SELF_HARM.test(normalized)) {
+  // Runs before entity resolution: a distressed message must never reach the
+  // market path just because it happens to contain ticker-shaped words.
+  const crisis = detectCrisis(normalized);
+  if (crisis) {
     return immediateResponse({
-      text: SELF_HARM_RESPONSE,
+      text: crisisResponse(crisis),
       state: baseConversationState(request.state, request.history),
       route: "safety_support",
-      reasonCode: "explicit_self_harm_language",
+      reasonCode:
+        crisis === "self_harm"
+          ? "explicit_self_harm_language"
+          : "acute_distress_language",
       startedAt,
     });
   }
@@ -92,7 +95,10 @@ export async function answerChat(
       text: picked?.text ?? floor.response,
       state,
       route:
-        floor.reasonCode === "explicit_self_harm" ? "safety_support" : "refused",
+        floor.reasonCode === "explicit_self_harm" ||
+        floor.reasonCode === "acute_distress"
+          ? "safety_support"
+          : "refused",
       reasonCode: floor.reasonCode,
       startedAt,
     });
@@ -117,16 +123,39 @@ export async function answerChat(
     state: socialResolution.state,
     clarification: socialResolution.clarification,
   });
-  const closedSocial =
-    SOCIAL.test(normalized) ||
-    FAREWELL.test(normalized) ||
-    CASUAL_ACKNOWLEDGEMENT.test(normalized) ||
-    HELP.test(normalized) ||
-    FRUSTRATION.test(normalized) ||
-    ABUSE_AT_BOT.test(normalized);
-  if (closedSocial && socialDecision.route === "social") {
+  const safetyInput = [
+    ...request.history
+      .filter((turn) => turn.role === "user")
+      .slice(-3)
+      .map((turn) => turn.text),
+    normalized,
+  ]
+    .join("\n")
+    .slice(-2_000);
+  const safetyCheck = hasDistressSignal(normalized)
+    ? beginInputSafetyCheck(safetyInput, dependencies.safetyClassifier)
+    : null;
+  // The router already decides a turn is social from these same patterns, so a
+  // second gate here only made conversational turns pay for a model round trip.
+  if (socialDecision.route === "social") {
     const text = immediateReply(socialDecision, normalized);
     if (text) {
+      const verdict = safetyCheck ? await safetyCheck : { action: "allow" as const };
+      if (verdict.action !== "allow") {
+        return immediateResponse({
+          text:
+            verdict.action === "crisis"
+              ? crisisResponse(verdict.kind)
+              : PROHIBITED_FALLBACK,
+          state: base,
+          route: verdict.action === "crisis" ? "safety_support" : "refused",
+          reasonCode:
+            verdict.action === "crisis"
+              ? "classifier_self_harm_language"
+              : "classifier_prohibited_content",
+          startedAt,
+        });
+      }
       return immediateResponse({
         text,
         state: socialResolution.state,
@@ -137,15 +166,29 @@ export async function answerChat(
     }
   }
 
-  if (hasAnySynthesisLlm) {
-    return answerWithModel(scoped, dependencies, startedAt, initialResolution);
-  }
-  return answerWithHeuristics(scoped, dependencies, startedAt);
+  // Started, not awaited: the verdict is joined after synthesis so the
+  // classifier overlaps retrieval instead of adding a round trip in front of it.
+  const safety =
+    safetyCheck ??
+    beginInputSafetyCheck(safetyInput, dependencies.safetyClassifier);
+  const reply = hasAnySynthesisLlm
+    ? await answerWithModel(scoped, dependencies, startedAt, initialResolution)
+    : await answerWithHeuristics(scoped, dependencies, startedAt);
+  const verdict = await safety;
+  if (verdict.action === "allow") return reply;
+  return immediateResponse({
+    text:
+      verdict.action === "crisis"
+        ? crisisResponse(verdict.kind)
+        : PROHIBITED_FALLBACK,
+    state: base,
+    route: verdict.action === "crisis" ? "safety_support" : "refused",
+    reasonCode:
+      verdict.action === "crisis"
+        ? "classifier_self_harm_language"
+        : "classifier_prohibited_content",
+    startedAt,
+  });
 }
 
 export type { ChatDependencies } from "./chat-shared";
-export type {
-  ChatReply,
-  ChatRequest,
-  ChatTurn,
-} from "./types";

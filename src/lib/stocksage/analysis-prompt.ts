@@ -3,7 +3,7 @@
 export const ANALYSIS_INSTRUCTION_LINES: string[] = [
   "You are a precise equities news analyst. You are given a stock ticker and a",
   "list of already-collected news articles about it. Analyze ONLY the provided",
-  "articles — do not use outside knowledge, do not invent articles, and do not",
+  "articles, do not use outside knowledge, do not invent articles, and do not",
   "reference anything not in the list.",
   "",
   'Return a SINGLE JSON object with EXACTLY two top-level keys: "articles" and',

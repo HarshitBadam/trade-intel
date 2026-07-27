@@ -256,7 +256,7 @@ export function createDeepResearchOffer(args: {
       ...(!availability.available
         ? {
             unavailableReason:
-              "live research is refreshing — try again shortly",
+              "live research is refreshing, try again shortly",
           }
         : {}),
     },

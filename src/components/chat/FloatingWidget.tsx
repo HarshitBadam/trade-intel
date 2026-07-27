@@ -12,7 +12,7 @@ const initialMessages: ChatMessageModel[] = [
   {
     id: "welcome",
     sender: "ai",
-    text: "Hey — I’m StockSage. Ask me about a company, compare a few investments, or talk through what’s moving a market.",
+    text: "Hey, I’m StockSage. Ask me about a company, compare a few investments, or talk through what’s moving a market.",
   },
 ];
 
@@ -255,7 +255,7 @@ export function FloatingWidget({
                 ...message,
                 deepState: {
                   status: "failure",
-          text: "The deeper report isn’t available right now — the answer above remains in place; try again shortly.",
+          text: "The deeper report isn’t available right now, the answer above remains in place; try again shortly.",
                   retryable: true,
                 },
               }

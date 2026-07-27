@@ -147,7 +147,7 @@ export async function fetchChartRange(
   const access = await guard("details", { limit: 30, windowSec: 60 });
   if (!access.ok) {
     // Live mode: an empty series makes the chart keep the real daily view for
-    // that range — never a fabricated hi-res series. Mocks are demo-only.
+    // that range, never a fabricated hi-res series. Mocks are demo-only.
     if (hasPrices) return [];
     switch (kind) {
       case "daily":

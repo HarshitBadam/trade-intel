@@ -49,7 +49,7 @@ export function writeStaleCache<T>(key: string, value: T): void {
     const entry: CacheEntry<T> = { value, ts: Date.now() };
     sessionStorage.setItem(NAMESPACE + key, JSON.stringify(entry));
   } catch {
-    // Quota exceeded or private-mode — degrade silently.
+    // Quota exceeded or private-mode, degrade silently.
   }
 }
 

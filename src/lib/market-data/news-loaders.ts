@@ -29,7 +29,7 @@ export async function fetchPolygonNewsWithInsights(
   const symbol = ticker.trim().toUpperCase();
   // The 90-day floor matches retention and the request path's existing Polygon
   // window: anything older would be pruned right after storing and re-inserted
-  // on the next load — pure churn.
+  // on the next load, pure churn.
   const from = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const url =
     `https://api.polygon.io/v2/reference/news?ticker=${symbol}` +
