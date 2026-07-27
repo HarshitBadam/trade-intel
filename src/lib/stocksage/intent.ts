@@ -205,9 +205,6 @@ export function immediateReply(
     return "Yeah, fair—that was frustrating. Want to retry the last market question or switch topics?";
   }
   if (FAREWELL.test(message)) {
-    // Deterministic-path farewells still deserve warmth and variety — a bare
-    // "Bye!" after a playful "sayonara" reads cold. No questions or pitches:
-    // a sign-off is a closure.
     const farewells = [
       "Catch you next time — stay sharp out there.",
       "Take it easy — the charts will keep till you're back.",

@@ -8,7 +8,7 @@ import type {
 } from "./types";
 import { createEvidenceSources } from "./citations";
 
-function normalized(value: string): string {
+function normalizeSearchText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
@@ -111,8 +111,8 @@ const GENERIC_ENTITY_TERMS = new Set([
 ]);
 
 function entityTerms(entity: FinanceEntity): string[] {
-  const name = normalized(entity.name);
-  const terms = [name, normalized(entity.ticker ?? "")].filter(
+  const name = normalizeSearchText(entity.name);
+  const terms = [name, normalizeSearchText(entity.ticker ?? "")].filter(
     (term) => term.length >= 3 || (name.length === 2 && term === name)
   );
   if (name === "fortune 100") terms.push("fortune 500");
@@ -129,14 +129,9 @@ function entityTerms(entity: FinanceEntity): string[] {
 }
 
 function entityProminence(input: EvidenceInput, entity: FinanceEntity): number {
-  let host = "";
-  try {
-    host = new URL(input.url).hostname;
-  } catch {
-    host = "";
-  }
+  const host = hostname(input.url);
   const terms = entityTerms(entity);
-  const primary = normalized(`${input.title} ${host}`);
+  const primary = normalizeSearchText(`${input.title} ${host}`);
   if (
     terms.some((term) =>
       term.length <= 2
@@ -146,10 +141,7 @@ function entityProminence(input: EvidenceInput, entity: FinanceEntity): number {
   ) {
     return 4;
   }
-  // A single incidental body mention is not enough to make an article about
-  // another company relevant (for example, a Nokia headline that mentions
-  // Nvidia once). Two early references still admit generic sector headlines.
-  const excerpt = normalized(input.excerpt.slice(0, 360));
+  const excerpt = normalizeSearchText(input.excerpt.slice(0, 360));
   const mentions = terms.reduce((total, term) => {
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return (
@@ -221,11 +213,13 @@ function matchedCriteria(
   const text = `${input.title} ${input.excerpt}`;
   return criteria.filter((criterion) => {
     const pattern = CRITERION_TERMS[criterion];
-    return pattern ? pattern.test(text) : normalized(text).includes(normalized(criterion));
+    return pattern
+      ? pattern.test(text)
+      : normalizeSearchText(text).includes(normalizeSearchText(criterion));
   });
 }
 
-function freshEnough(
+function isFreshEnough(
   input: EvidenceInput,
   plan: EvidencePlan,
   freshnessDays: number | undefined
@@ -279,7 +273,7 @@ export function filterEvidenceWithDiagnostics(args: {
     const freshnessDays = input.queryId
       ? freshnessByQuery.get(input.queryId)
       : undefined;
-    if (!freshEnough(input, args.plan, freshnessDays)) return reject("stale");
+    if (!isFreshEnough(input, args.plan, freshnessDays)) return reject("stale");
     if (!contentDateCompatible(input, args.plan, freshnessDays)) {
       return reject("stale_content");
     }
@@ -336,26 +330,15 @@ export function filterEvidenceWithDiagnostics(args: {
       },
     ];
   });
-  // Relevance gate: when the user asked for specific criteria, sources that
-  // address none of them are tangential — keep one only where dropping it
-  // would leave an entity with no evidence at all. A named gap beats a
-  // confident citation of an unrelated article.
   const planCriteria = args.plan.criteria.filter(
     (criterion) => criterion in CRITERION_TERMS
   );
   const relevant =
     planCriteria.length === 0
       ? accepted
-      : (() => {
-          const onCriterion = accepted.filter(
-            (input) => matchedCriteria(input, planCriteria).length > 0
-          );
-          const coveredEntities = new Set(
-            onCriterion.flatMap((input) => input.entityIds ?? [])
-          );
-          void coveredEntities;
-          return onCriterion;
-        })();
+      : accepted.filter(
+          (input) => matchedCriteria(input, planCriteria).length > 0
+        );
   const ranked = [...relevant].sort(
     (left, right) =>
       (right.relevanceScore ?? 0) - (left.relevanceScore ?? 0) ||

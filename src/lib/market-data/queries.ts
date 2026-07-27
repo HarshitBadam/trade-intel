@@ -12,24 +12,30 @@ import {
 import { hasAstra, hasAlpaca, hasFinnhub, hasPolygon } from "@/lib/config";
 import type { News } from "@/components/news/RecentInfluential";
 import type { NewsVerdict } from "@/components/news/VerdictModal";
-import type { NewsSummary, PopularityData, BarPoint, AnalysisDoc, StoredArticle } from "./types";
+import type {
+  AnalysisDoc,
+  BarPoint,
+  NewsSummary,
+  PopularityData,
+  StoredArticle,
+} from "./types";
+import {
+  buildPopularitySeries,
+  computePopularityScore,
+  dedupeNews,
+  latestNewsTimestamp,
+  mockNewsSummary,
+  POPULARITY_WINDOW_DAYS,
+  sanitizeTicker,
+  summarizeNews,
+  windowNews,
+} from "./transforms";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const hasPrices = hasAlpaca || hasPolygon;
 const hasAnyLive = hasAlpaca || hasPolygon || hasFinnhub || hasAstra;
 const hasNewsSource = hasAstra || hasAlpaca;
-import {
-  sanitizeTicker,
-  summarizeNews,
-  mockNewsSummary,
-  latestNewsTimestamp,
-  windowNews,
-  dedupeNews,
-  buildPopularitySeries,
-  computePopularityScore,
-  POPULARITY_WINDOW_DAYS,
-} from "./transforms";
 import { ANALYSIS_TTL_DAYS } from "./analysis";
 import { fetchAlpacaNews } from "./news-loaders";
 import {
@@ -136,11 +142,8 @@ async function fetchColdAlpacaNews(ticker: string): Promise<News[]> {
   }
 }
 
-// The stored doc is written only on a fully successful analysis run, but the
-// collection also holds legacy/partial rows (a news_loaded_at touch creates one
-// before any verdict exists), so the display-critical fields are re-checked here
-// rather than assumed. Article ids on key drivers are dropped: the UI renders
-// drivers as plain text, and shipping them would bloat every details payload.
+// Legacy and partial docs may lack verdict fields; drivers omit article IDs because
+// the details UI renders them as plain text.
 function toVerdict(doc: AnalysisDoc | null): NewsVerdict | undefined {
   if (!doc?.overall_sentiment || !doc.summary?.trim()) return undefined;
   return {

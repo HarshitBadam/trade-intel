@@ -5,8 +5,9 @@ The source tree, annotated. Config and generated files are omitted.
 ```
 .
 ├── .github/workflows/
-│   ├── news-cron.yml            # runs /api/cron/news every 20 minutes
-│   └── keep-warm.yml            # pings the Langflow host every 60 minutes
+│   ├── ci.yml                   # typecheck, lint, tests, and production build
+│   ├── news-cron.yml            # manually runs /api/cron/news
+│   └── keep-warm.yml            # manually pings the Langflow host
 ├── langflow/
 │   ├── README.md                # the Deep Research and analysis flows
 │   ├── stocksage-chat.json      # RAG chat flow (Astra + Tavily + Groq 70B)
@@ -16,6 +17,9 @@ The source tree, annotated. Config and generated files are omitted.
 │   ├── run-cron.ts              # runs one ingestion pass locally
 │   ├── load-news.ts             # loads news for a single ticker
 │   ├── analyze-ticker.ts        # analyzes a single ticker
+│   ├── setup-qstash.ts          # configures recurring ingestion schedules
+│   ├── stocksage-smoke.ts       # runs the StockSage smoke scenarios
+│   ├── stocksage-eval.ts        # runs the broader StockSage evaluation set
 │   └── sync-system-prompt.mjs   # bakes the app prompts into the Langflow JSONs
 ├── docs/
 │   ├── screenshots.md
@@ -76,12 +80,14 @@ The source tree, annotated. Config and generated files are omitted.
     │   ├── utils.ts             # cn() and small shared helpers
     │   ├── stocksage/
     │   │   ├── chat.ts          # selective request lifecycle orchestration
-    │   │   ├── regular.ts       # regular synthesis and safe fallback
+    │   │   ├── chat-model*.ts   # model routing, deterministic paths, and synthesis
+    │   │   ├── conversation-entity-state.ts / entity-state-helpers.ts # entity state transitions
+    │   │   ├── regular*.ts      # regular synthesis, guards, and safe fallback
     │   │   ├── deep.ts          # per-response in-app deeper research
     │   │   ├── deep-snapshot.ts # signed immutable research snapshots
     │   │   ├── deep-store.ts    # idempotent research result reuse
     │   │   ├── deep-validation.ts # deep-report publication checks
-    │   │   ├── retrieve.ts      # typed evidence-plan execution
+    │   │   ├── retrieve.ts / retrieval-*.ts # typed evidence-plan execution
     │   │   ├── planning.ts      # bounded provider/query planning
     │   │   ├── evidence.ts      # relevance, freshness, and coverage filters
     │   │   ├── policy.ts        # finance-domain and misuse policy
@@ -108,6 +114,7 @@ The source tree, annotated. Config and generated files are omitted.
     │       ├── cache-quotes.ts  # targeted quote snapshots for peer sets
     │       ├── cache-meta.ts    # ticker detail, related tickers, search
     │       ├── alpaca.ts        # bars, live tail, snapshots
+    │       ├── quote-metrics.ts # shared quote-window calculations
     │       ├── finnhub.ts       # profile, peers, search
     │       ├── polygon.ts       # authenticated fetch + status check
     │       ├── news-loaders.ts  # write path: Polygon/Alpaca news ingest

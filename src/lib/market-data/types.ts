@@ -30,9 +30,7 @@ export type Quote = {
   fineData: BarPoint[];
 };
 
-// Required so every construction site has to declare whether the payload came
-// from a provider or from the seeded mock generators: home-page fallbacks use
-// real tickers, so unlabelled sample data is indistinguishable from live.
+// Every payload must identify live data versus seeded sample data.
 export type DataStatus = "live" | "sample";
 
 export type Headline = {
@@ -75,34 +73,27 @@ export type ChatQuote = {
   ticker: string;
   price: number;
   asOf: string;
-  // True when the series is end-of-day/delayed (e.g. Stooq) rather than a
-  // near-live feed — surfaced so answers can label the as-of honestly.
+  // EOD/delayed series such as Stooq, rather than a near-live feed.
   eod?: boolean;
-  // Human note about what the series actually is (e.g. "US-listed ADR, USD")
-  // so answers never present a proxy series as the primary listing.
+  // Identifies proxy series such as a US-listed ADR.
   sourceNote?: string;
-  // Index level rather than a share price — rendered in points, not dollars.
+  // Index level rather than a share price.
   isIndex?: boolean;
-  // A separately traded security used when the requested market/index has no
-  // reliable direct feed. Renderers must name this symbol and describe its
-  // returns as proxy-security returns, never as the requested index's return.
+  // Separately traded fallback for a market or index without a direct feed.
   proxySymbol?: string;
   proxyKind?: "etf" | "adr";
   dayPct: number;
-  // Prior completed session's own move (what a user means by "yesterday").
+  // Prior completed session's move.
   prevSessionPct?: number | null;
   prevSessionDate?: string;
   fewDaysPct: number | null;
   weekPct: number | null;
   monthPct: number | null;
   yearPct: number | null;
-  // Calendar year-to-date, measured from the last close of the prior year
-  // (or the earliest session of this year when history is shorter).
+  // Calendar year-to-date, measured from the prior year-end close.
   ytdPct?: number | null;
   ytdStart?: string;
-  // Calendar month-to-date, measured from the last close of the prior month.
-  // Distinct from monthPct (trailing ~21 sessions): "since the start of the
-  // month" and "over the last month" are different questions.
+  // Calendar month-to-date, distinct from trailing monthPct.
   mtdPct?: number | null;
   mtdStart?: string;
   fewDaysStart?: string;
@@ -136,7 +127,7 @@ export type NewsSummary = {
   news: News[];
   status: NewsStatus;
   updatedAt?: string;
-  /** Present only when a stored analysis doc carries a usable verdict. */
+  /** Present when stored analysis has the required verdict fields. */
   verdict?: NewsVerdict;
 };
 

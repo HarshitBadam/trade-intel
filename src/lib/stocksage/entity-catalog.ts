@@ -5,17 +5,10 @@ export type WebAlias = {
   aliases: string[];
   jurisdiction?: string;
   market?: "us" | "web" | "index" | "au";
-  // Privately held: flows through the same news pipeline, skips market data.
   private?: true;
 };
 
-// Stooq is keyless, so index and AU coverage costs nothing. Symbols verified
-// against stooq.com's symbol lookup (2026-07-16): ^SPX (S&P 500 series),
-// ^NDQ (Nasdaq Composite), ^DJI (Dow series), ^AOR (All Ordinaries — Stooq
-// carries no S&P/ASX 200 series, so the All Ords is the closest broad
-// Australian index it offers). Australian banks trade on Stooq via their
-// US-listed ADRs (CMWAY etc.), the only keyless AU-equity series it has;
-// the note keeps that honest in every rendered quote.
+// Stooq is keyless and provides delayed index/AU proxy coverage.
 export type StooqListing = { symbol: string; note?: string; index?: true };
 
 export const STOOQ_SYMBOLS: Record<string, StooqListing> = {
@@ -39,11 +32,7 @@ export type MarketProxyListing = {
   kind: "etf" | "adr";
 };
 
-// Primary market fallback uses the existing authenticated Alpaca→Polygon
-// quote chain. These are separate traded securities, never aliases for the
-// underlying index/listing. The note is carried into every prompt and
-// deterministic renderer so a proxy return cannot be described as an index
-// return. ONEQ and EWA were live-verified through Alpaca on 2026-07-16.
+// Fallback symbols are traded proxies, not aliases for the underlying index.
 export const MARKET_PROXY_SYMBOLS: Record<string, MarketProxyListing> = {
   GSPC: {
     candidates: [

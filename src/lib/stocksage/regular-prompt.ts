@@ -2,7 +2,7 @@ import "server-only";
 
 import type { ChatFundamentals, ChatQuote } from "@/lib/market-data";
 import { PRIVATE_COMPANY_NAMES } from "./entity-catalog";
-import { humanAsOf, humanPublishedAt } from "./regular-fallback";
+import { humanAsOf, humanPublishedAt } from "./regular-dates";
 import type { EvidenceSource, FinanceEntity } from "./types";
 
 export type AnswerKind =
@@ -185,9 +185,6 @@ function todayHeader(): string {
   return `${PERSONA} Today is ${today} (US Eastern).`;
 }
 
-// The single-call prompt: the model classifies the turn, resolves references
-// from raw history, and answers. Prefetched data is framed as advisory —
-// it informs availability, never meaning.
 export function buildUnifiedSystemPrompt(args: {
   entities?: FinanceEntity[];
   quotes?: ChatQuote[];

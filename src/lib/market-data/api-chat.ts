@@ -11,6 +11,7 @@ import {
   getMarketMapCached,
 } from "./cache";
 import { finnhubBasicFinancials, finnhubEarnings } from "./finnhub";
+import { buildChatQuote } from "./quote-metrics";
 
 const hasPrices = hasAlpaca || hasPolygon;
 
@@ -71,73 +72,13 @@ export async function getChatQuotes(tickers: string[]): Promise<ChatQuote[]> {
 
   const results = await Promise.allSettled(
     uniq.map(async (ticker): Promise<ChatQuote | null> => {
-      const c = await getChatCandles(ticker);
-      if (!c || c.chart_data.length < 2) return null;
-      const closes = c.chart_data.map((d) => d.value);
-      const i = closes.length - 1;
-      const pctBack = (sessions: number): number | null => {
-        const j = i - sessions;
-        return j >= 0 && closes[j] > 0
-          ? ((closes[i] - closes[j]) / closes[j]) * 100
-          : null;
-      };
-      const dateBack = (sessions: number): string | undefined => {
-        const j = i - sessions;
-        return j >= 0 ? c.chart_data[j].date : undefined;
-      };
-      // "Yesterday" means the prior session's own move, not today's.
-      const prevSessionPct =
-        i >= 2 && closes[i - 2] > 0
-          ? ((closes[i - 1] - closes[i - 2]) / closes[i - 2]) * 100
-          : null;
-      const prevSessionDate = i >= 1 ? c.chart_data[i - 1].date : undefined;
-      // Calendar YTD baselines on the prior year's final close when the
-      // series reaches back that far; otherwise the earliest session this year.
-      const currentYear = c.chart_data[i].date.slice(0, 4);
-      const firstOfYear = c.chart_data.findIndex((d) =>
-        d.date.startsWith(currentYear)
-      );
-      const ytdBase = firstOfYear > 0 ? firstOfYear - 1 : firstOfYear;
-      const ytdPct =
-        ytdBase >= 0 && ytdBase < i && closes[ytdBase] > 0
-          ? ((closes[i] - closes[ytdBase]) / closes[ytdBase]) * 100
-          : null;
-      const ytdStart =
-        ytdBase >= 0 && ytdBase < i ? c.chart_data[ytdBase].date : undefined;
-      // Month-to-date baselines on the prior month's final close, so "since
-      // the start of the month" never gets conflated with the trailing
-      // 21-session "last month" window.
-      const currentMonth = c.chart_data[i].date.slice(0, 7);
-      const firstOfMonth = c.chart_data.findIndex((d) =>
-        d.date.startsWith(currentMonth)
-      );
-      const mtdBase = firstOfMonth > 0 ? firstOfMonth - 1 : firstOfMonth;
-      const mtdPct =
-        mtdBase >= 0 && mtdBase < i && closes[mtdBase] > 0
-          ? ((closes[i] - closes[mtdBase]) / closes[mtdBase]) * 100
-          : null;
-      const mtdStart =
-        mtdBase >= 0 && mtdBase < i ? c.chart_data[mtdBase].date : undefined;
-      return {
+      const candles = await getChatCandles(ticker);
+      if (!candles) return null;
+      return buildChatQuote(candles.chart_data, {
         ticker,
-        price: c.stock_price,
-        asOf: c.chart_data[i].date,
-        dayPct: c.percent_change,
-        prevSessionPct,
-        prevSessionDate,
-        fewDaysPct: pctBack(3),
-        weekPct: pctBack(5),
-        monthPct: pctBack(21),
-        yearPct: pctBack(252),
-        ytdPct,
-        ytdStart,
-        mtdPct,
-        mtdStart,
-        fewDaysStart: dateBack(3),
-        weekStart: dateBack(5),
-        monthStart: dateBack(21),
-        yearStart: dateBack(252),
-      };
+        price: candles.stock_price,
+        dayPct: candles.percent_change,
+      });
     })
   );
 

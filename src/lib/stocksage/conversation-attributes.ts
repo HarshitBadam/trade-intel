@@ -8,8 +8,6 @@ export function detectCriteria(message: string): string[] {
       "performance",
     ],
     [/\b(?:dividend|yield|income)\b/i, "dividends"],
-    // Kept distinct from "growth" so "earnings quality"/EPS asks don't
-    // collapse into a generic growth bucket (FQ-09).
     [
       /\b(?:earnings|eps\b|net income|net loss|profit margin|operating margin|quarterly results|financial results)\b/i,
       "earnings",

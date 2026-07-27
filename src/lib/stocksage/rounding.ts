@@ -1,9 +1,4 @@
-// Deterministic display-precision pass over published text: prices to two
-// decimals, percentages to two, multiples/ratios/betas to one. It only
-// touches numbers with three or more decimal places, so anything already at
-// display precision — "$211.86", "+2.31%", dates, tickers like BRK.B — is
-// left byte-for-byte alone. Markdown links and URLs are protected so a
-// citation target is never rewritten.
+// Normalize high-precision published metrics without rewriting URLs or links.
 
 const PROTECTED_SPANS =
   /!?\[[^\]]*\]\((?:[^()]|\([^()]*\))*\)|https?:\/\/\S+/g;

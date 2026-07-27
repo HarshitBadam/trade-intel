@@ -46,14 +46,14 @@ export function sanitizeConversationState(
       : undefined;
   return {
     version: 1,
-    revision: Math.min(previous.revision, 10_000),
+    revision: Math.max(0, Math.min(previous.revision, 10_000)),
     entities,
-    explicitEntitySet: previous.explicitEntitySet
-      .filter((id) => ids.has(id))
-      .slice(0, 12),
-    criteria: previous.criteria
-      .filter((criterion) => CRITERIA.has(criterion))
-      .slice(0, 8),
+    explicitEntitySet: [
+      ...new Set(previous.explicitEntitySet.filter((id) => ids.has(id))),
+    ].slice(0, 12),
+    criteria: [
+      ...new Set(previous.criteria.filter((criterion) => CRITERIA.has(criterion))),
+    ].slice(0, 8),
     horizon,
     jurisdiction:
       previous.jurisdiction && JURISDICTIONS.has(previous.jurisdiction)

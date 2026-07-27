@@ -1,7 +1,4 @@
-// HARD CONSTRAINT: no curly braces anywhere in these lines. Langflow's Prompt
-// node parses `{...}` as template variables, so a brace in the instruction
-// text breaks the flow ("Error building Component Analysis Prompt").
-// Describe JSON shapes in words instead.
+// Keep curly braces out: Langflow parses them as template variables.
 
 export const ANALYSIS_INSTRUCTION_LINES: string[] = [
   "You are a precise equities news analyst. You are given a stock ticker and a",

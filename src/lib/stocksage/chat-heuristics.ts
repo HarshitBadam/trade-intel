@@ -49,10 +49,7 @@ function outageFloor(
   } publicly traded. Current reporting is temporarily unavailable; try again shortly for the business, news, and risk picture.`;
 }
 
-// Production path when every LLM lane is unavailable: keep the analyst
-// voice, preserve state, and never guess at routing. Greetings, farewells,
-// and policy refusals are closed-class, so they still get a deterministic
-// reply instead of the capacity message.
+// Deterministic fallback for when every LLM lane is unavailable.
 export function answerDegraded(
   request: ChatRequest,
   startedAt: number
@@ -79,11 +76,6 @@ export function answerDegraded(
       });
     }
   }
-  // Off-topic asks have fixed refusals that need no LLM — an outage must not
-  // turn "run this python" into "I'm over capacity". But scope inference is
-  // unreliable mid-conversation ("what should I watch next quarter?" carries
-  // its meaning from state), so only refuse when the turn stands alone and
-  // the refusal is a hard scope call, never a judgment about active context.
   const standalone =
     resolution.state.entities.length === 0 &&
     !hasExplicitConversationReference(request.message);
@@ -207,9 +199,6 @@ export async function answerWithHeuristics(
     context
   );
   const synthesisMs = Date.now() - synthesisStartedAt;
-  // Valid finance turns keep the research affordance even when current
-  // evidence is unavailable; createDeepResearchOffer marks it disabled via
-  // available:false instead of making the button disappear.
   const deepEligible = decision.deepEligible;
   const deep = deepEligible
     ? createDeepResearchOffer({

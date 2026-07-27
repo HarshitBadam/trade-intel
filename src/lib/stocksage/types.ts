@@ -23,10 +23,7 @@ export type ChatRequest = {
   state?: ConversationState;
 };
 
-// Machine-readable data health for the UI: "full" means the answer used all
-// the data it wanted, "limited" means it published from partial verified
-// data, "unavailable" means no current data could back this turn. The widget
-// renders a subtle status chip from this instead of apology prose.
+// Data health: full, limited verified data, or unavailable.
 export type ChatDataStatus = "full" | "limited" | "unavailable";
 
 export type ChatReply = {
@@ -42,9 +39,7 @@ export type ChatReply = {
   dataStatus?: ChatDataStatus;
 };
 
-// "index" and "au" route quote retrieval through the keyless Stooq provider
-// (EOD/delayed); "us" uses the primary intraday providers; "web" has no
-// validated quote feed at all.
+// Index/AU quotes use delayed keyless Stooq; US quotes use primary providers.
 export type FinanceMarket = "us" | "web" | "index" | "au";
 
 export type FinanceEntity = {
@@ -54,7 +49,6 @@ export type FinanceEntity = {
   ticker?: string;
   market: FinanceMarket;
   jurisdiction?: string;
-  // Privately held company: same news pipeline, no market-data block.
   private?: boolean;
 };
 
@@ -66,8 +60,6 @@ export type ConversationState = {
   criteria: string[];
   horizon?: string;
   jurisdiction?: string;
-  // Variant IDs of deterministic safety replies already shown this session,
-  // so high-stakes refusals never replay the same body twice.
   safetyRepliesUsed?: string[];
 };
 
@@ -191,9 +183,7 @@ export type DomainPolicyDecision = {
 export type DeepResearchOffer = {
   token: string;
   workId: string;
-  // Pre-flight availability: false when the research providers behind the
-  // offer can't currently supply evidence for these subjects. The widget
-  // renders a disabled button with a tooltip instead of a dead click.
+  // False when research providers cannot supply evidence for these subjects.
   available: boolean;
   unavailableReason?: string;
 };

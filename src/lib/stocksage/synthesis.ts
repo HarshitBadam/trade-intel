@@ -82,7 +82,7 @@ type Candidate = {
   provider: Provider;
   quotaProvider: Provider;
   budgetPerMinute: number;
-  // Cerebras free tier caps context at ~8K tokens; skip it for oversized prompts.
+  // Cerebras free tier has an ~8K-token context cap.
   maxPromptChars?: number;
 };
 
@@ -117,8 +117,7 @@ function candidatesFor(args: SynthesisArgs): Candidate[] {
     quotaProvider: "groq-fallback",
     budgetPerMinute: 4,
   };
-  // Groq rate limits are per model, so this rides a separate 429 budget from
-  // the scout/70b lanes.
+  // Groq rate limits are per model.
   const groqOss: Candidate = {
     vendor: "groq",
     model: GROQ_OSS_MODEL,

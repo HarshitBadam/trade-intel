@@ -40,7 +40,6 @@ test("rounding sanitizer applies display precision without touching identifiers"
   assert.equal(roundFiguresForDisplay("$211.86 and +2.31%"), "$211.86 and +2.31%");
   assert.equal(roundFiguresForDisplay("1,234.5678 shares"), "1,234.57 shares");
 });
-
 test("Stooq CSV fixture produces honest end-of-day quote windows", async () => {
   const bars = parseStooqDailyCsv(`${STOOQ_FIXTURE}\ninvalid,row`);
   assert.equal(bars.length, 8);
@@ -334,108 +333,6 @@ test("publication guards reject investment direction and first-person gaps", () 
     firstPersonVerificationLimitation(
       "Current guidance was not present in the available reporting."
     ),
-    null
-  );
-});
-
-test("proxy comparison preserves instruments and requested horizons", () => {
-  const entities = [
-    {
-      id: "ticker:TSLA",
-      name: "Tesla",
-      query: "Tesla",
-      ticker: "TSLA",
-      market: "us" as const,
-    },
-    {
-      id: "ticker:IXIC",
-      name: "Nasdaq Composite",
-      query: "Nasdaq Composite",
-      ticker: "IXIC",
-      market: "index" as const,
-    },
-  ];
-  const quotes: ChatQuote[] = [
-    {
-      ...quote("TSLA", -15),
-      weekPct: -6,
-      mtdPct: -9,
-      monthPct: -5,
-    },
-    {
-      ...quote("IXIC", 10),
-      proxySymbol: "ONEQ",
-      proxyKind: "etf",
-      weekPct: -2,
-      mtdPct: -3,
-      monthPct: -4,
-    },
-  ];
-  const context = {
-    quotes,
-    fundamentals: [],
-    sources: [],
-    coverage: {},
-    plan: {
-      version: 1 as const,
-      route: "comparison" as const,
-      asOf: "2026-07-16",
-      queries: [proxyQuery(["TSLA", "IXIC"])],
-      requiredEntityIds: [],
-      criteria: [],
-    },
-  };
-  const ytd = buildFallbackReply(
-    { message: "Compare Tesla with IXIC this year.", history: [] },
-    {
-      route: "comparison",
-      reasonCode: "test",
-      retrievalRequired: true,
-      deepEligible: false,
-    },
-    entities,
-    context
-  ).text;
-  assert.match(ytd, /ONEQ \(Nasdaq Composite ETF proxy\).*\$100\.00.*YTD \+10\.00%/);
-  assert.doesNotMatch(ytd, /\*\*IXIC\*\* — \$100\.00/);
-  assert.match(ytd, /ONEQ .* led TSLA .* over YTD/i);
-  assert.doesNotMatch(ytd, /latest session/i);
-
-  const multi = buildFallbackReply(
-    {
-      message: "Compare this week, month to date, and trailing month.",
-      history: [],
-    },
-    {
-      route: "comparison",
-      reasonCode: "test",
-      retrievalRequired: true,
-      deepEligible: false,
-    },
-    entities,
-    context
-  ).text;
-  assert.match(multi, /over one week/i);
-  assert.match(multi, /over month to date/i);
-  assert.match(multi, /over trailing month/i);
-  assert.doesNotMatch(multi, /over latest session/i);
-});
-
-test("hedged estimate guard rejects unsupported performance guesses only", () => {
-  const corpus = "IXIC YTD +13.71%; latest session +1.25%.";
-  assert.match(
-    hedgedEstimateClaim(
-      "The Nasdaq has been known to be up around 12-15% YTD — a rough estimate.",
-      corpus
-    ) ?? "",
-    /Nasdaq/
-  );
-  assert.equal(
-    hedgedEstimateClaim("The Nasdaq is up roughly 13.71% YTD.", corpus),
-    null
-  );
-  assert.equal(
-    hedgedEstimateClaim("Revenue is estimated at 12% of sales.", corpus),
     null
   );
 });

@@ -57,12 +57,7 @@ function evidenceFreshnessDays(message: string): number | undefined {
   return historicalPeriod(message) ? undefined : 14;
 }
 
-// The Astra news store holds ~90 days of labeled history, so its freshness
-// window is aligned with the ask rather than inheriting the tight web-search
-// default: explicit today/yesterday news asks stay tight, everything else
-// (risk, outlook, comparisons, general updates) reads the wider recent
-// history. Without this, evidence.ts silently dropped 14-60-day-old stored
-// articles that planning had happily fetched.
+// Astra stores ~90 days; use wider history except for explicit today/yesterday asks.
 function astraFreshnessDays(
   message: string,
   freshnessDays: number | undefined
@@ -124,8 +119,6 @@ export function planEvidence(args: {
   );
   const web = args.entities.filter((entity) => entity.market === "web");
   const marketProxy = marketProxyEligible(args.entities);
-  // The Astra store is keyed by ticker; any tickered entity may have
-  // coverage there (unknown tickers just read empty).
   const astraEligible = args.entities.filter((entity) => entity.ticker);
   const entityContext = args.entities.map((entity) => entity.query).join("; ");
   const fortuneRanking =
