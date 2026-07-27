@@ -54,6 +54,7 @@ export type DeepResearchSnapshot = z.infer<typeof SnapshotSchema>;
 export type DeepResearchAvailabilityReason =
   | "available_broad_evidence"
   | "available_single_criterion"
+  | "available_retrieval_needed"
   | "no_valid_sources"
   | "insufficient_independent_sources"
   | "missing_criteria_coverage"
@@ -98,9 +99,9 @@ function canonicalSourceUrl(value: string): string | null {
 }
 
 /**
- * Broad reports need independent evidence and criterion coverage. A focused
- * one-dimensional question may proceed from one relevant article; quotes and
- * fundamentals are intentionally absent because they never satisfy preflight.
+ * Existing evidence is a signal, not a prerequisite. Deep Research performs
+ * its own broader retrieval, so a sparse regular answer is exactly when the
+ * action should remain available for a resolved subject.
  */
 export function assessDeepResearchAvailability(args: {
   question: string;
@@ -124,18 +125,21 @@ export function assessDeepResearchAvailability(args: {
     if (url && !byUrl.has(url)) byUrl.set(url, source);
   }
   const validSources = [...byUrl.values()];
+  const requiredEntities = [...new Set(args.entityIds ?? [])];
   const coveredCriteria = requestedCriteria.filter((criterion) =>
     validSources.some((source) => source.criteria.includes(criterion))
   );
   if (validSources.length === 0) {
     return {
-      available: false,
-      reason: "no_valid_sources",
+      available: requiredEntities.length > 0,
+      reason:
+        requiredEntities.length > 0
+          ? "available_retrieval_needed"
+          : "no_valid_sources",
       distinctSourceCount: 0,
       coveredCriteria,
     };
   }
-  const requiredEntities = [...new Set(args.entityIds ?? [])];
   if (
     requiredEntities.length > 1 &&
     requiredEntities.some(
@@ -144,8 +148,8 @@ export function assessDeepResearchAvailability(args: {
     )
   ) {
     return {
-      available: false,
-      reason: "missing_entity_coverage",
+      available: true,
+      reason: "available_retrieval_needed",
       distinctSourceCount: validSources.length,
       coveredCriteria,
     };
@@ -164,8 +168,8 @@ export function assessDeepResearchAvailability(args: {
     coveredCriteria.length < requestedCriteria.length
   ) {
     return {
-      available: false,
-      reason: "missing_criteria_coverage",
+      available: true,
+      reason: "available_retrieval_needed",
       distinctSourceCount: validSources.length,
       coveredCriteria,
     };
@@ -173,8 +177,8 @@ export function assessDeepResearchAvailability(args: {
 
   if (broadReport && validSources.length < 2) {
     return {
-      available: false,
-      reason: "insufficient_independent_sources",
+      available: true,
+      reason: "available_retrieval_needed",
       distinctSourceCount: validSources.length,
       coveredCriteria,
     };
@@ -256,7 +260,7 @@ export function createDeepResearchOffer(args: {
       ...(!availability.available
         ? {
             unavailableReason:
-              "live research is refreshing, try again shortly",
+              "Research deeper opens for a resolved company, index, or finance subject.",
           }
         : {}),
     },

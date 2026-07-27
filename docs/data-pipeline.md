@@ -65,7 +65,7 @@ The 90-day window is what the sentiment chart draws, and it doubles as the outag
 
 ## The LLM lane
 
-Batch analysis remains Langflow-first with a direct-Groq fallback and uses the 8B model (`llama-3.1-8b-instant`). Its Groq and Langflow breakers are isolated from interactive chat. Regular chat uses selective typed evidence plans, shared admission control, the configured 70B model, and independent GPT OSS/8B failover lanes. Research deeper runs in-app with broader evidence queries, signed immutable snapshots, and the same citation validation, so a sleeping Langflow host cannot break the user action. Batch-flow detail is in [langflow/README.md](../langflow/README.md).
+Batch analysis remains Langflow-first with a direct-Groq fallback and defaults to `openai/gpt-oss-20b`. Its Groq and Langflow breakers are isolated from interactive chat. Regular chat uses selective typed evidence plans, shared admission control, and bounded multi-provider failover. Research deeper runs in-app with broader evidence queries, signed immutable snapshots, and citation validation; direct synthesis runs first, Langflow is a bounded fallback, and validated sources still produce a deterministic report if synthesis is unavailable. Batch-flow detail is in [langflow/README.md](../langflow/README.md).
 
 ## Running it by hand
 

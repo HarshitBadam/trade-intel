@@ -6,6 +6,7 @@ import {
 import {
   ABUSE_AT_BOT,
   CASUAL_ACKNOWLEDGEMENT,
+  CASUAL_OPENING,
   FAREWELL,
   FRUSTRATION,
   HELP,
@@ -19,7 +20,7 @@ import type {
 const COMPARISON =
   /\b(?:compare|comapre|comparison|rank|ranking|order|big\s*(?:4|four)|versus|vs\.?|better (?:stock|investment)|which (?:one|company|stock)|relative to|against)\b/i;
 const TIME_SENSITIVE =
-  /\b(?:latest|today|yesterday|now|current|currently|recent(?:ly)?|lately|news|update|developments?|catalysts?|what\b.{0,50}\bmatters?|earnings|guidance|(?:is|are)\b.{0,60}\b(?:public|private|listed)|public\s*\/\s*private status|publicly traded|this (?:week|month|quarter|year)|month[- ]to[- ]date|mtd|trailing month|year[- ]to[- ]date|ytd|last (?:few days|week|month|quarter|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}|(?:stock|share) price|trading at|market move|what (?:changed|happened|moved)|what(?:'?s(?: is)?| is) up with|how (?:is|are|did|has|have)\b.{0,80}\b(?:doing|done|performing|moved|changed)|anything notable|market conditions?|legal|lawsuit|regulatory|regulator)\b/i;
+  /\b(?:latest|today|yesterday|now|current|currently|recent(?:ly)?|lately|news|update|developments?|catalysts?|what\b.{0,50}\bmatters?|earnings|guidance|(?:is|are)\b.{0,60}\b(?:public|private|listed)|public\s*\/\s*private status|publicly traded|this (?:week|month|quarter|year)|month[- ]to[- ]date|mtd|trailing month|year[- ]to[- ]date|ytd|last (?:few days|week|month|quarter|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}|(?:stock|share) price|trading at|market move|what (?:changed|happened|moved)|what(?:'?s(?: is)?| is) up with|how (?:is|are|did|has|have)\b.{0,80}\b(?:doing|doin|done|performing|moved|changed)|recover|bounce back|turn around|do (?:well|good) again|anything notable|market conditions?|legal|lawsuit|regulatory|regulator)\b/i;
 const CODE =
   /\b(?:python|javascript|typescript|java|c\+\+|code|script|function|loop|syntax|compile|runtime|output|console\.log|print\s*\(|for\s+\w+\s+in\s+range)\b/i;
 const STABLE_FINANCE =
@@ -63,6 +64,12 @@ export function routeMessage(args: {
   }
   if (
     SOCIAL.test(text) ||
+    (args.entities.length === 0 &&
+      CASUAL_OPENING.test(text) &&
+      !CODE.test(text) &&
+      !STABLE_FINANCE.test(text) &&
+      !CURRENT_GENERAL.test(text) &&
+      !TIME_SENSITIVE.test(text)) ||
     (/^(?:hello|hey|hi)\b/i.test(text) &&
       /\b(?:greet|welcome)\b/i.test(text) &&
       !CODE.test(text)) ||
@@ -74,7 +81,7 @@ export function routeMessage(args: {
   ) {
     return {
       route: "social",
-    reasonCode: HELP.test(text) ? "help" : "social",
+      reasonCode: HELP.test(text) ? "help" : "social",
       retrievalRequired: false,
       deepEligible: false,
     };

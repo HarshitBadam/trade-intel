@@ -4,7 +4,7 @@ export function detectCriteria(message: string): string[] {
   const checks: [RegExp, string][] = [
     [/\b(?:p\/?e|valuation|multiple|price to earnings)\b/i, "valuation"],
     [
-      /\b(?:returns?|performance|price changes?|trading|momentum|moved?|doing|done)\b/i,
+      /\b(?:returns?|performance|price changes?|trading|momentum|moved?|doing|doin|done)\b/i,
       "performance",
     ],
     [/\b(?:dividend|yield|income)\b/i, "dividends"],
@@ -21,7 +21,7 @@ export function detectCriteria(message: string): string[] {
       "risk",
     ],
     [
-      /\b(?:outlook|prospects|forecast|catalysts?|drivers?|tailwinds?|headwinds?|what (?:matters|to watch)|developments?)\b/i,
+      /\b(?:outlook|prospects|forecast|catalysts?|drivers?|tailwinds?|headwinds?|what (?:matters|to watch)|developments?|recover|bounce back|turn around|do (?:well|good) again)\b/i,
       "outlook",
     ],
     [/\b(?:bigger|biggest|largest|market cap|capitali[sz]ation|size)\b/i, "size"],

@@ -55,6 +55,25 @@ function sweep() {
 }
 
 let upstashLimiters: Map<string, unknown> | null = null;
+const UPSTASH_DEADLINE_MS = 500;
+let lastUpstashWarningAt = 0;
+
+async function withDeadline<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Upstash deadline exceeded (${timeoutMs}ms)`)),
+          timeoutMs
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 async function upstashLimit(
   namespace: string,
@@ -95,9 +114,18 @@ export async function rateLimit(
 
   if (hasUpstash) {
     try {
-      return await upstashLimit(namespace, key, limit, windowSec);
+      return await withDeadline(
+        upstashLimit(namespace, key, limit, windowSec),
+        UPSTASH_DEADLINE_MS
+      );
     } catch (error) {
-      console.error("Upstash rate limit failed, using in-memory fallback:", error);
+      if (Date.now() - lastUpstashWarningAt > 30_000) {
+        lastUpstashWarningAt = Date.now();
+        console.error(
+          "Upstash rate limit unavailable; using in-memory fallback:",
+          error
+        );
+      }
     }
   }
 

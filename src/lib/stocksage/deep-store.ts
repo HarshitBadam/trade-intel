@@ -46,7 +46,7 @@ async function runWithRedis(
     return {
       workId,
       status: "failure",
-      text: "Research is still running. Please retry shortly.",
+      text: "The deeper evidence pass is in progress. Keep this answer open and select Research deeper again.",
       retryable: true,
     };
   }
@@ -87,7 +87,7 @@ export async function runIdempotentDeepWork(
           ? {
               workId,
               status: "failure",
-              text: "Research could not be completed. Please retry.",
+              text: "The answer above remains the supported view. Start a new Research deeper pass from that answer.",
               retryable: true,
             }
           : await task();

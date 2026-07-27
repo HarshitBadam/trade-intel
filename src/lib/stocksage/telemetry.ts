@@ -3,6 +3,7 @@ type StockSageEvent = {
   route?: string;
   reasonCode?: string;
   durationMs?: number;
+  guardMs?: number;
   retrievalMs?: number;
   synthesisMs?: number;
   providerCount?: number;

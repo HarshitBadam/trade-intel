@@ -155,7 +155,11 @@ test("degraded reply preserves state and is retryable", () => {
     Date.now()
   );
   assert.equal(reply.retryable, true);
-  assert.match(reply.text, /fresh market data|try again shortly/i);
+  assert.match(reply.text, /company, metric, and time period/i);
+  assert.doesNotMatch(
+    reply.text,
+    /\b(?:unavailable|stale|fallback|defaulting|couldn['’]?t verify|try again shortly)\b/i
+  );
   assert.equal(reply.dataStatus, "unavailable");
   assert.doesNotMatch(reply.text, /capacity|analysis engine|verifiable evidence/i);
   assert.deepEqual(
@@ -297,7 +301,7 @@ test("delivered verse is caught at publication", () => {
   );
 });
 
-test("missing criteria are flagged unless addressed or gap is named", () => {
+test("missing criteria are flagged unless substantively addressed", () => {
   assert.deepEqual(
     missingCriteria("Apple rose while Microsoft fell this week.", [
       "valuation",
@@ -315,7 +319,7 @@ test("missing criteria are flagged unless addressed or gap is named", () => {
       "Apple looks steadier here. I couldn't verify current valuation figures right now.",
       ["valuation"]
     ),
-    []
+    ["valuation"]
   );
   assert.deepEqual(
     missingCriteria("Microsoft is the safer pick for a conservative profile.", [

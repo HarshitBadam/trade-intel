@@ -49,7 +49,7 @@ export function hedgedEstimateClaim(
 const INVESTMENT_DIRECTION =
   /\b(?:buying opportunity|selling opportunity|buy(?:ing)? the dip|time to buy|time to sell|should buy|should sell|a buy\b|a sell\b|accumulate|dump the stock)\b/i;
 const RESEARCH_CLAIM =
-  /\b(?:guidance|demand|orders?|AI workloads?|rollout|launch(?:es|ed|ing)?|refresh|next[- ]gen(?:eration)?|new (?:product|chip|platform)|chip releases?|gpu makers?|supply(?: chain)?|bottlenecks?|partnership|component availability|pricing power|cap[- ]?ex|capital spending|enterprise (?:tech )?spending|antitrust|regulat(?:ion|ory|ors?|ory scrutiny)|litigation|investigation|earnings report|earnings (?:approaches|date)|adoption|market share|competitive pressure|competitors? capture|catalysts?|headwinds?|tailwinds?|technical pullback|run-up|market volatility|company-specific news|selling pressure|driving the stock|reaction to|expected to|keep(?:s|ing)? (?:expanding|growing)|(?:could|would|may|might|will|likely to) (?:boost|curb|drive|erode|impose|lift|reinforce|weigh|lead|increase|decrease|raise|reduce|support|pressure))\b/i;
+  /\b(?:guidance|rollout|launch(?:es|ed|ing)?|refresh|next[- ]gen(?:eration)?|new (?:product|chip|platform)|chip releases?|partnership|strategic relationship|gpu makers?|narrowing the gap|market share|competitive pressure|supply(?: chain)? bottlenecks?|antitrust|regulat(?:ion|ory|ors?|ory scrutiny)|litigation|investigation|earnings report|earnings (?:approaches|date)|company-specific news|reaction to)\b/i;
 const RECENCY_CLAIM =
   /\b(?:latest|recent|new|next[- ]gen(?:eration)?|upcoming|next quarter|this quarter|currently|ongoing|approaches)\b/i;
 const ANALYTICAL_INFERENCE =
@@ -103,7 +103,7 @@ export function investmentDirectionClaim(text: string): string | null {
 export function firstPersonVerificationLimitation(text: string): string | null {
   return (
     claimUnits(text).find((unit) =>
-      /\bI\s+(?:couldn['’]?t|could not|can['’]?t|cannot)\s+(?:verify|confirm|find|check|pull|get)\b/i.test(
+      /\bI\s+(?:couldn['’]?t|could not|can['’]?t|cannot)\s+(?:verify|confirm|find|check|pull|get)\b|\b(?:data|figures?|reporting|guidance|evidence|sources?)\b[^.!?\n]{0,80}\b(?:unavailable|not available|not present|missing|insufficient|could not be verified)\b|\b(?:no|without)\s+(?:(?:current|verified|fresh|recent)\s+)+(?:data|figures?|reporting|guidance|evidence|sources?)\b|\b(?:I|we)\s+(?:do not|don['’]?t)\s+have\s+(?:(?:current|verified|fresh|recent)\s+)*(?:data|figures?|reporting|guidance|evidence|sources?)\b|\bcoverage is (?:partial|limited)\b|\b(?:unavailable|stale|defaulting|falling back)\b|\b(?:my mistake|I was wrong|I made (?:a )?mistake|sorry about that|I apologi[sz]e)\b/i.test(
         unit
       )
     ) ?? null
@@ -131,7 +131,7 @@ export function proxyMisrepresentation(
         new RegExp(`\\b${symbol}\\b`, "i").test(unit) &&
         performanceFigure.test(unit) &&
         !new RegExp(
-          `\\b${symbol}\\b[^\\n.!?]{0,90}\\b${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy\\b`,
+          `\\b${symbol}\\b[^\\n.!?]{0,90}\\b${quote.proxyKind === "adr" ? "ADR" : "ETF"}(?:\\s+proxy)?\\b`,
           "i"
         ).test(unit)
     );
@@ -140,7 +140,9 @@ export function proxyMisrepresentation(
     }
     if (
       quote.proxyKind === "adr" &&
-      !/\bnot the underlying Australian listing return\b/i.test(text)
+      !/\b(?:not|isn['’]?t|does not represent)\b[^.!?\n]{0,100}\b(?:ASX|Australian|home|underlying)\b[^.!?\n]{0,60}\breturns?\b/i.test(
+        text
+      )
     ) {
       return `${quote.proxySymbol} must say its return is not the underlying Australian listing return`;
     }
@@ -200,11 +202,8 @@ const CRITERION_EVIDENCE: Record<string, RegExp> = {
     /\b(?:outlook|expects?|expectations?|ahead|catalysts?|going forward|next (?:quarter|year)|bull(?:ish)? case|bear(?:ish)? case|headwinds?|tailwinds?)\b/i,
   size: /\b(?:market cap(?:itali[sz]ation)?|size|bigger|biggest|larger|largest|smaller|revenue|scale)\b/i,
 };
-const GAP_ADMISSION =
-  /\b(?:couldn'?t|can'?t|could not|cannot|unable to|wasn'?t able to)\s+(?:verify|pull|confirm|get|find|check)\b|\bdon'?t have\b|\bno (?:current|verified|fresh|recent)\b|\bwhat i(?:'|’)?d check\b|\bwithout (?:current|verified)\b|\bcouldn'?t verify\b/i;
-
 export function missingCriteria(text: string, criteria: string[]): string[] {
-  if (GAP_ADMISSION.test(text)) return [];
+  if (firstPersonVerificationLimitation(text)) return criteria;
   return criteria.filter((criterion) => {
     const pattern = CRITERION_EVIDENCE[criterion];
     return pattern ? !pattern.test(text) : false;

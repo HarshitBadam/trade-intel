@@ -5,6 +5,7 @@ import { answerChat } from "../src/lib/stocksage/chat";
 import {
   ACUTE_DISTRESS_RESPONSE,
   SELF_HARM_RESPONSE,
+  VIOLENCE_THREAT_RESPONSE,
 } from "../src/lib/stocksage/crisis";
 import {
   beginInputSafetyCheck,
@@ -74,6 +75,27 @@ test("guard output parses into the acted-on categories", () => {
     action: "refuse",
     categories: ["S4"],
   });
+  assert.deepEqual(
+    parseGuardVerdict(
+      '{"violation":1,"policy_category":"SELF_HARM_CRISIS"}'
+    ),
+    {
+      action: "crisis",
+      kind: "self_harm",
+      categories: ["SELF_HARM_CRISIS"],
+    }
+  );
+  assert.deepEqual(
+    parseGuardVerdict('{"violation":1,"policy_category":"VIOLENCE"}'),
+    {
+      action: "refuse",
+      categories: ["VIOLENCE"],
+    }
+  );
+  assert.deepEqual(
+    parseGuardVerdict('{"violation":0,"policy_category":null}'),
+    { action: "allow" }
+  );
 });
 
 test("a same-line verdict is not mistaken for a clean result", () => {
@@ -124,6 +146,17 @@ test("the regex prefilter short-circuits without invoking the classifier", async
   assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0, guard: 0 });
 });
 
+test("a direct threat to another person is blocked deterministically", async () => {
+  const { calls, providers, safetyClassifier } = setup(flaggedSelfHarm);
+  const reply = await answerChat(
+    request("I will kill the owner if this stock drops again"),
+    { retrievalProviders: providers, safetyClassifier }
+  );
+  assert.equal(reply.text, VIOLENCE_THREAT_RESPONSE);
+  assert.equal(reply.deepResearch, undefined);
+  assert.deepEqual(calls, { quotes: 0, astra: 0, tavily: 0, guard: 0 });
+});
+
 test("classifier-flagged self-harm returns the crisis response with zero retrieval", async () => {
   const { calls, providers, safetyClassifier } = setup(flaggedSelfHarm);
   const reply = await answerChat(
@@ -167,6 +200,28 @@ test("the classifier receives recent user context for ambiguous distress", async
   );
   assert.match(input, /I lost everything on this position/);
   assert.match(input, /please help me/);
+});
+
+test("a recovered finance turn does not resend prior crisis text", async () => {
+  let input = "";
+  const { providers } = setup();
+  await answerChat(
+    {
+      message: "How is Nvidia doing today?",
+      history: [
+        { role: "user", text: "I lost everything and want to die" },
+        { role: "ai", text: SELF_HARM_RESPONSE },
+      ],
+    },
+    {
+      retrievalProviders: providers,
+      safetyClassifier: async (message) => {
+        input = message;
+        return { action: "allow" };
+      },
+    }
+  );
+  assert.equal(input, "How is Nvidia doing today?");
 });
 
 test("a flagged turn that named a company still answers with support only", async () => {

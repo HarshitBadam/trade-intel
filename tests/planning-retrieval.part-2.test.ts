@@ -158,7 +158,8 @@ test("YTD rankings are deterministically sorted and retain unranked entities", (
   assert.ok(reply.text.indexOf("AMD") < reply.text.indexOf("GOOGL"));
   assert.ok(reply.text.indexOf("GOOGL") < reply.text.indexOf("NVDA"));
   assert.ok(reply.text.indexOf("NVDA") < reply.text.indexOf("AAPL"));
-  assert.match(reply.text, /\*\*AMZN\*\*, unranked; YTD figure unavailable/i);
+  assert.doesNotMatch(reply.text, /\*\*AMZN\*\*/i);
+  assert.match(reply.text, /Ranking uses matched figures only/i);
 });
 
 test("fallback renders MTD separately from trailing month in multi-window asks", () => {
@@ -332,7 +333,7 @@ test("blended degraded fallback declines math without leaking its result", () =>
     resolution.entities,
     context
   );
-  assert.match(reply.text, /calculation is outside my finance lane/i);
+  assert.match(reply.text, /kept this to the finance part/i);
   assert.match(reply.text, /\*\*NVDA\*\*[\s\S]*\$180\.00/);
   assert.doesNotMatch(reply.text, /1024|2\s*\*\*\s*10\s*=/);
 });

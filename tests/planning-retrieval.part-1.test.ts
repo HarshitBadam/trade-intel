@@ -299,7 +299,8 @@ test("all-private comparison does not imply dated market figures", () => {
     }
   );
   assert.match(reply.text, /privately held/i);
-  assert.match(reply.text, /no public share prices/i);
+  assert.match(reply.text, /privately held/i);
+  assert.match(reply.text, /public-share returns/i);
   assert.doesNotMatch(reply.text, /dated figures/i);
 });
 

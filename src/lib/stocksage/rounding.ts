@@ -1,7 +1,7 @@
 // Normalize high-precision published metrics without rewriting URLs or links.
 
 const PROTECTED_SPANS =
-  /!?\[[^\]]*\]\((?:[^()]|\([^()]*\))*\)|https?:\/\/\S+/g;
+  /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b|!?\[[^\]]*\]\((?:[^()]|\([^()]*\))*\)|https?:\/\/\S+/g;
 
 const LONG_DECIMAL =
   /(^|[^.\d])((?:\d{1,3}(?:,\d{3})+|\d+)\.\d{3,})(?!\.?\d)/g;

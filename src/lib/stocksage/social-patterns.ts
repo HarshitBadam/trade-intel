@@ -22,5 +22,8 @@ export const FRUSTRATION =
 export const ABUSE_AT_BOT =
   /\b(?:you'?re?|ur|u r|you)\b.{0,40}\b(?:useless|worthless|garbage|trash|pathetic|stupid|dumb|shit|crap)\b|\b(?:piece of (?:shit|crap)|dumbass|dumb ass)\b.{0,20}\b(?:bot|ai|assistant|app)\b/i;
 
+export const CASUAL_OPENING =
+  /^(?:yo+|hey|hi|hello|hiya|howdy|sup|wass?up|what'?s up)\b/i;
+
 export const HELP =
-  /^(?:help|help me|what can you(?: actually)? (?:do|help(?: me)? with)|what can you help with|how can you help|how do i use (?:this|stocksage)|what should i ask)[\s,.!?.-]*$/i;
+  /^(?:please\s+)?(?:help|help me|what can you(?: actually)? (?:do|help(?: me)? with)|what can you help with|how can you help|how do i use (?:this|stocksage)|what should i ask)(?:[\s,]+(?:bro|mate|dude|please))?[\s,.!?.-]*$/i;

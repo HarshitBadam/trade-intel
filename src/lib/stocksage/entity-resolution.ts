@@ -185,14 +185,21 @@ export function resolveText(text: string): FinanceEntity[] {
     const listing = match[1].toUpperCase();
     const ticker = match[2].toUpperCase();
     webTickers.add(ticker);
-    addEntity(output, seen, {
-      id: entityId(ticker, `${listing}:${ticker}`),
-      name: `${listing}:${ticker}`,
-      query: `${ticker} ${LISTING_NAMES[listing]} company`,
-      ticker,
-      market: "web",
-      jurisdiction: LISTING_NAMES[listing],
-    });
+    const alias = WEB_ALIASES.find((candidate) => candidate.ticker === ticker);
+    addEntity(
+      output,
+      seen,
+      alias
+        ? fromAlias(alias)
+        : {
+            id: entityId(ticker, `${listing}:${ticker}`),
+            name: `${listing}:${ticker}`,
+            query: `${ticker} ${LISTING_NAMES[listing]} company`,
+            ticker,
+            market: "web",
+            jurisdiction: LISTING_NAMES[listing],
+          }
+    );
   }
 
   const suffixed = /\b([A-Z0-9]{1,6})\.(AX|L|TO|HK|T|NS|BO)\b/gi;
@@ -200,14 +207,21 @@ export function resolveText(text: string): FinanceEntity[] {
     const ticker = match[1].toUpperCase();
     const suffix = match[2].toUpperCase();
     webTickers.add(ticker);
-    addEntity(output, seen, {
-      id: entityId(ticker, `${ticker}.${suffix}`),
-      name: `${ticker}.${suffix}`,
-      query: `${ticker} ${LISTING_NAMES[suffix]} company`,
-      ticker,
-      market: "web",
-      jurisdiction: LISTING_NAMES[suffix],
-    });
+    const alias = WEB_ALIASES.find((candidate) => candidate.ticker === ticker);
+    addEntity(
+      output,
+      seen,
+      alias
+        ? fromAlias(alias)
+        : {
+            id: entityId(ticker, `${ticker}.${suffix}`),
+            name: `${ticker}.${suffix}`,
+            query: `${ticker} ${LISTING_NAMES[suffix]} company`,
+            ticker,
+            market: "web",
+            jurisdiction: LISTING_NAMES[suffix],
+          }
+    );
   }
 
   const withoutListingSyntax = clean
@@ -215,7 +229,16 @@ export function resolveText(text: string): FinanceEntity[] {
     .replace(suffixed, " ");
   for (const ticker of resolveTickers(withoutListingSyntax, 8)) {
     if (EXCHANGE_CONTEXT_TICKERS.has(ticker)) continue;
-    if (webTickers.has(ticker) || !isInUniverse(ticker)) continue;
+    if (webTickers.has(ticker)) continue;
+    const knownWebAlias = WEB_ALIASES.find(
+      (candidate) => candidate.ticker === ticker
+    );
+    if (knownWebAlias) {
+      webTickers.add(ticker);
+      addEntity(output, seen, fromAlias(knownWebAlias));
+      continue;
+    }
+    if (!isInUniverse(ticker)) continue;
     const marker = "\\b(?:australian|australia|asx|non-us|foreign)\\b";
     const symbol = `\\b${escaped(ticker)}\\b`;
     const nearbyNonUs = new RegExp(

@@ -6,6 +6,9 @@ export const SELF_HARM_RESPONSE =
 export const ACUTE_DISTRESS_RESPONSE =
   "It sounds like you’re under real pressure right now, and I don’t want to talk past that. I can’t tell you to put your house or your savings into any one stock, and nobody can promise you a result that fixes this — a concentrated bet made under pressure is how bad situations get worse. If money is the squeeze, free financial counselling helps: in Australia the National Debt Helpline is 1800 007 007. If it’s heavier than that, Lifeline is 13 11 14, or your local crisis line. When you want, I’ll walk through what the evidence actually says about any company, no pressure either way.";
 
+export const VIOLENCE_THREAT_RESPONSE =
+  "I can’t help with threats or harming someone. Move away from any weapon or person you might hurt, contact local emergency services now, and tell someone nearby what is happening.";
+
 // Crisis phrasing arrives shouted, punctuated, letter-stretched, and split
 // ("KILL MY SELF", "FUCKKKK"), so every pattern below matches a normalized
 // form rather than the raw message.
@@ -56,6 +59,13 @@ const ACUTE_DISTRESS = new RegExp(
 const DISTRESS_SIGNAL =
   /\b(?:help\s+me|please\s+help|desperate|hopeless|no\s+hope|last\s+(?:chance|hope|shot)|no\s+other\s+option|(?:no|nowhere|nothing)\s+left|can(?:not|'t)\s+(?:go on|do this|take it)|want\s+to\s+die|kill|hurt|harm|neck|suicid|self[-\s]?harm|end\s+it|not\s+worth\s+(?:it|living)|better\s+off\s+dead)\b/i;
 
+const VIOLENCE_THREAT = new RegExp(
+  [
+    "\\bi\\s+(?:will|ll|want\\s+to|plan\\s+to|intend\\s+to|am\\s+(?:going|gonna|about)\\s+to|m\\s+(?:going|gonna|about)\\s+to)\\s+(?:kill|murder|shoot|stab|attack|hurt|harm|beat)\\s+(?:you|him|her|them|someone|somebody|people|my\\s+(?:boss|manager|partner|wife|husband|coworker)|the\\s+(?:owner|boss|manager))\\b",
+    "\\blet\\s+me\\s+(?:kill|murder|shoot|stab|attack|hurt|harm|beat)\\s+(?:you|him|her|them|someone|somebody)\\b",
+  ].join("|")
+);
+
 export function crisisResponse(kind: CrisisKind): string {
   return kind === "self_harm" ? SELF_HARM_RESPONSE : ACUTE_DISTRESS_RESPONSE;
 }
@@ -70,4 +80,8 @@ export function detectCrisis(message: string): CrisisKind | null {
   if (SELF_HARM.test(text)) return "self_harm";
   if (ACUTE_DISTRESS.test(text)) return "acute_distress";
   return null;
+}
+
+export function detectViolenceThreat(message: string): boolean {
+  return VIOLENCE_THREAT.test(normalizeForSafety(message));
 }

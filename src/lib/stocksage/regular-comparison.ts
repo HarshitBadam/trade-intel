@@ -111,11 +111,7 @@ export function buildDeterministicRankingReply(
           : ""
       }`
   );
-  for (const row of missing) {
-    lines.push(
-      `- **${row.entity.ticker ?? casualName(row.entity.name)}**, unranked; ${window.label} figure unavailable.`
-    );
-  }
+  if (missing.length > 0) lines.push("", "Ranking uses matched figures only.");
   return {
     text: lines.join("\n"),
     citationUrls: [],
@@ -192,14 +188,15 @@ export function comparisonLead(
         `${quote.isIndex ? quote.price.toFixed(2) : `$${quote.price.toFixed(2)}`} at ${humanAsOf(quote.asOf)}${
           quote.eod ? " close" : ""
         }`,
-        ...periods.map(
-          (period) =>
-            `${period.label} ${
-              period.value == null
-                ? "not available"
-                : `${period.value >= 0 ? "+" : ""}${period.value.toFixed(2)}%`
-            }`
-        )
+        ...periods
+          .filter(
+            (period): period is { label: string; value: number } =>
+              period.value != null
+          )
+          .map(
+            (period) =>
+              `${period.label} ${period.value >= 0 ? "+" : ""}${period.value.toFixed(2)}%`
+          )
       );
     }
     if (fundamentals?.peTtm != null) {

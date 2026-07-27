@@ -282,7 +282,7 @@ export function buildGroundedDeterministicReply(
     return renderMostImportant(entity, context) ?? renderLatest(request, entity, context);
   }
   if (
-    /\b(?:bull|bear|catalysts?|risks?|outlook|next[- ]quarter|research)\b/i.test(
+    /\b(?:bull|bear|catalysts?|risks?|outlook|next[- ]quarter|research|recover|bounce back|turn around|do (?:well|good) again)\b/i.test(
       message
     )
   ) {

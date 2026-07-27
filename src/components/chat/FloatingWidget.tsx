@@ -255,7 +255,7 @@ export function FloatingWidget({
                 ...message,
                 deepState: {
                   status: "failure",
-          text: "The deeper report isn’t available right now, the answer above remains in place; try again shortly.",
+                  text: "The answer above remains the supported view. Run Research deeper again for a new evidence pass.",
                   retryable: true,
                 },
               }

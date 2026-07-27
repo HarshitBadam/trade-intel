@@ -40,6 +40,7 @@ type SynthesisArgs = {
   lane?: "full" | "light";
   accept?: (text: string) => boolean;
   correction?: string | ((draft: string) => string);
+  maxCandidates?: number;
 };
 
 const laneTails = new Map<string, Promise<void>>();
@@ -162,6 +163,7 @@ export async function synthesizeWithFallback(
   let lastError: unknown;
   const deadline = Date.now() + (args.totalTimeoutMs ?? 30_000);
   const inputChars = promptChars(args);
+  let attemptedCandidates = 0;
 
   for (const candidate of candidatesFor(args)) {
     if (
@@ -176,9 +178,14 @@ export async function synthesizeWithFallback(
     try {
       const remainingMs = deadline - Date.now();
       if (remainingMs < 1_000) continue;
+      const providerOpen = await isOpen(candidate.provider);
+      const quotaOpen =
+        candidate.quotaProvider === candidate.provider
+          ? providerOpen
+          : await isOpen(candidate.quotaProvider);
       if (
-        (await isOpen(candidate.provider)) ||
-        (await isOpen(candidate.quotaProvider)) ||
+        providerOpen ||
+        quotaOpen ||
         (await isCoolingDown(candidate.quotaProvider))
       ) {
         continue;
@@ -190,6 +197,10 @@ export async function synthesizeWithFallback(
         60
       );
       if (!admission.success) continue;
+      if (attemptedCandidates >= (args.maxCandidates ?? Number.POSITIVE_INFINITY)) {
+        break;
+      }
+      attemptedCandidates += 1;
       const base = {
         vendor: candidate.vendor,
         model: candidate.model,
