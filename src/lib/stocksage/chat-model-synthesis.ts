@@ -85,8 +85,9 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
       user: request.message,
       maxTokens: conversational ? 220 : 700,
       temperature: 0.55,
-      timeoutMs: conversational ? 8_000 : 18_000,
-      totalTimeoutMs: conversational ? 12_000 : 24_000,
+      timeoutMs: conversational ? 5_000 : 6_000,
+      totalTimeoutMs: conversational ? 7_000 : 10_000,
+      maxCandidates: 2,
       event: "regular_synthesis",
       lane: conversational ? "light" : "full",
       accept: (candidate) => {
@@ -125,7 +126,7 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
         const direction = investmentDirectionClaim(candidate);
         if (direction) return reject("investment_direction", direction);
         const limitation = firstPersonVerificationLimitation(candidate);
-        if (limitation) return reject("first_person_limitation", limitation);
+        if (limitation) return reject("limitation_language", limitation);
         if (
           requireCitations &&
           validCitationUrls(candidate, context.sources).length === 0
@@ -237,7 +238,7 @@ export async function synthesizeModelAnswer(args: SynthesisModelArgs): Promise<C
             : ""
         }${
           limitation
-            ? `Replace this first-person limitation with neutral gap wording: "${limitation}". For example: "Current guidance was not present in the available reporting." `
+            ? `Remove this limitation or system-status sentence: "${limitation}". Answer the supported portion directly without replacing it with another disclaimer. `
             : ""
         }${
           unmetCriteria.length > 0

@@ -15,12 +15,12 @@ Everything is configured through environment variables. `.env.example` documents
 | Market data | `ALPACA_*`, `FINNHUB_API_KEY`, `POLYGON_API_KEY` | Prices, metadata, news. |
 | Store | `ASTRA_DB_*` | Analyzed news and verdicts. |
 | AI and retrieval | `GROQ_*`, `TAVILY_API_KEY`, `LANGFLOW_*`, `STOCKSAGE_DEEP_SNAPSHOT_SECRET` | Regular/deeper chat synthesis and web context, plus optional Langflow batch analysis. The optional dedicated snapshot secret falls back to `AUTH_SECRET` or `NEXTAUTH_SECRET`. |
-| Chat safety | `GROQ_SAFETY_MODEL`, `STOCKSAGE_SAFETY_CLASSIFIER` | The Llama Guard input rail. Both optional. |
+| Chat safety | `GROQ_SAFETY_MODEL`, `STOCKSAGE_SAFETY_CLASSIFIER` | The custom-policy safeguard input rail. Both optional. |
 | Ops | `UPSTASH_REDIS_*`, `CRON_SECRET`, `CRON_BATCH_SIZE`, `CRON_MAX_ANALYSES` | Rate limiting, the breaker, the ingest cron. |
 
 ## The chat safety rail
 
-The model half of the safety rail rides on the Groq key: set `GROQ_API_KEY` and chat input is also scored by Llama Guard (`GROQ_SAFETY_MODEL`, default `meta-llama/llama-guard-4-12b`) alongside the regex prefilter. There is nothing extra to configure.
+The model half of the safety rail rides on the Groq key: set `GROQ_API_KEY` and chat input is also scored by the custom-policy safeguard (`GROQ_SAFETY_MODEL`, default `openai/gpt-oss-safeguard-20b`) alongside the deterministic crisis and violence prefilter. There is nothing extra to configure.
 
 Two escape hatches:
 

@@ -33,23 +33,34 @@ async function main() {
       return [];
     },
   };
+  const socialStartedAt = Date.now();
   const social = await answerChat(
-    { message: "Hello bro...", history: [] },
+    { message: "what's up my bitch ass hoe", history: [] },
     { retrievalProviders: providers }
   );
+  const socialMs = Date.now() - socialStartedAt;
+  const stableStartedAt = Date.now();
   const stable = await answerChat(
     { message: "What is a P/E ratio?", history: [] },
     { retrievalProviders: providers }
   );
+  const stableMs = Date.now() - stableStartedAt;
+  const currentStartedAt = Date.now();
   const current = await answerChat(
     { message: "What is Apple trading at?", history: [] },
     { retrievalProviders: providers }
   );
+  const currentMs = Date.now() - currentStartedAt;
   assert.match(social.text, /Hey/i);
   assert.match(stable.text, /earnings per share/i);
   assert.match(current.text, /\$210\.00/);
-  assert.deepEqual(calls, { quotes: 1, astra: 0, tavily: 0 });
-  console.info("StockSage smoke: ok");
+  assert.deepEqual(calls, { quotes: 1, astra: 1, tavily: 0 });
+  assert.ok(socialMs < 250, `social fast path took ${socialMs}ms`);
+  assert.ok(stableMs < 250, `stable fast path took ${stableMs}ms`);
+  assert.ok(currentMs < 1_000, `mocked current path took ${currentMs}ms`);
+  console.info(
+    `StockSage smoke: ok (social=${socialMs}ms stable=${stableMs}ms current=${currentMs}ms)`
+  );
 }
 
 main().catch((error) => {

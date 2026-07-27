@@ -82,7 +82,7 @@ export function deterministicModelAnswer(args: {
     context.quotes.length === 1 &&
     context.quotes[0].ticker === "AXJO" &&
     context.quotes[0].proxySymbol === "EWA" &&
-    /\b(?:today|latest session|doing|done)\b/i.test(request.message);
+    /\b(?:today|latest session|doing|doin|done)\b/i.test(request.message);
   if (asxProxySnapshot) {
     const fallback = buildFallbackReply(
       request,
@@ -121,7 +121,7 @@ export function deterministicModelAnswer(args: {
     prefetchEntities.length === 1 &&
     context.quotes.length > 0 &&
     !newsOrResearchSeeking &&
-    /\b(?:what(?:'?s| is) up|how\b.{0,50}\b(?:doing|done|performing|closed?)|price|trading at|latest|today|this week|last week|last month|last year|year[- ]to[- ]date|ytd)\b/i.test(
+    /\b(?:what(?:'?s| is) up|how\b.{0,50}\b(?:doing|doin|done|performing|closed?)|price|trading at|latest|today|this week|last week|last month|last year|year[- ]to[- ]date|ytd)\b/i.test(
       request.message
     );
   if (deterministicMarketSnapshot) {

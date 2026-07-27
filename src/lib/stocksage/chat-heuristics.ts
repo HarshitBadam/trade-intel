@@ -31,7 +31,7 @@ function hasExplicitConversationReference(message: string): boolean {
 }
 
 const DEGRADED_RESPONSE =
-  "Fresh market data isn’t available at this moment. Try again shortly, your conversation and question are still here.";
+  "Name the company, metric, and time period, and I’ll return only matched dated evidence.";
 
 function outageFloor(
   entities: ReturnType<typeof resolveConversationState>["entities"]
@@ -44,9 +44,7 @@ function outageFloor(
     names.length > 1
       ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`
       : names[0];
-  return `${list} ${names.length === 1 ? "is" : "are"} privately held, so ${
-    names.length === 1 ? "its shares aren’t" : "their shares aren’t"
-  } publicly traded. Current reporting is temporarily unavailable; try again shortly for the business, news, and risk picture.`;
+  return `${list} ${names.length === 1 ? "is" : "are"} privately held, so the relevant lens is business performance, financing, growth, and risk rather than public-share returns. Name the dimension you want analyzed.`;
 }
 
 // Deterministic fallback for when every LLM lane is unavailable.

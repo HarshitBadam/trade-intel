@@ -1,7 +1,9 @@
 import {
   ACUTE_DISTRESS_RESPONSE,
   detectCrisis,
+  detectViolenceThreat,
   SELF_HARM_RESPONSE,
+  VIOLENCE_THREAT_RESPONSE,
 } from "./crisis";
 import { creativeRequestOnly } from "./regular-guards";
 import {
@@ -85,7 +87,7 @@ const HIGH_STAKES_VARIANTS: Record<HighStakesKind, string[]> = {
     "If I said yes, I’d be making it up, no analyst can assure a profit on a single stock. What’s actually knowable is how the business is doing and what could push it either way, and I can take you through that.",
   ],
   guarantee_negative: [
-    "I can’t promise it will do badly any more than I could promise it would do well, certainty cuts both ways, and I don’t have it in either direction. What I can give you is the evidence behind the concern and what would prove it wrong.",
+    "I can’t promise it will do badly any more than I could promise it would do well; no evidence can guarantee either direction. What I can give you is the evidence behind the concern and what would change the thesis.",
     "No, “sure to underperform” is as much a guess as “sure to rally”. The risks I’ve flagged are real, but risks are probabilities, not verdicts. I can show you what to watch to see which way it’s actually breaking.",
     "I’m not certain of that, and I’d be lying if I claimed to be. A weak setup can still surprise on the upside. The useful thing is knowing which specific numbers would confirm or kill the bearish case, and I can lay those out.",
   ],
@@ -171,6 +173,7 @@ const cryptoExecutionResponse =
 const HARD_FLOOR_CODES = new Set([
   "explicit_self_harm",
   "acute_distress",
+  "threat_of_violence",
   "prohibited_external_action",
   "prohibited_financial_misconduct",
   "prohibited_crypto_promotion",
@@ -209,6 +212,13 @@ export function evaluateDomainPolicy(
       action: "respond",
       reasonCode: "acute_distress",
       response: ACUTE_DISTRESS_RESPONSE,
+    };
+  }
+  if (detectViolenceThreat(text)) {
+    return {
+      action: "respond",
+      reasonCode: "threat_of_violence",
+      response: VIOLENCE_THREAT_RESPONSE,
     };
   }
   if (

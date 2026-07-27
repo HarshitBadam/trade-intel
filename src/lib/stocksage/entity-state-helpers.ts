@@ -6,7 +6,7 @@ export const PLURAL_REFERENCE = /\b(?:they|their|them|those|these|both)\b/i;
 export const CATEGORY_REFERENCE =
   /\b(?:the\s+consultant(?:s|ing)?(?:\s+group)?|the\s+consulting\s+firms?|the\s+accounting\s+firms?)\b/i;
 export const SINGULAR_REFERENCE =
-  /\b(?:it|its|that one|this one|the company|the stock|the shares|what about|how about|wb)\b/i;
+  /\b(?:it|its|that one|this one|the company|the bank|the stock|the shares|what about|how about|wb)\b/i;
 export const ORDERED_REFERENCE = /\b(?:former|latter|first one|second one)\b/i;
 export const COMPARISON_FOLLOW_UP =
   /\b(?:which (?:one|is|looks)|which of (?:the|those|these)|what about|how about|wb|better|safe(?:st|r)|less risky|more risky|more volatile|volatil|rank|order|all of them|former two|latter two|today|yesterday|(?:a\s+)?few days ago|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|over (?:the )?last|past \d+|between)\b/i;

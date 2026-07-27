@@ -187,7 +187,7 @@ export function FloatingWidgetView({
                     </button>
                   </div>
                   <p className="mt-4 text-center text-xs text-muted-foreground">
-                    StockSage is AI and can be wrong or out of date.{" "}
+                    Verify material decisions against cited sources and timestamps.{" "}
                     <button
                       type="button"
                       onClick={() => setShowLegal(true)}

@@ -133,6 +133,18 @@ export function resolveConversationState(
       removed = base.entities.filter((entity) => !keepIds.has(entity.id));
     }
   }
+  // Listing clarifications such as "I mean ASX:MQG, not Macquarie" can resolve
+  // both sides to the same canonical company. Treat that as a clarification,
+  // not as deleting the company from conversation state.
+  if (
+    removed.length > 0 &&
+    direct.length > 0 &&
+    direct.every((entity) =>
+      removed.some((candidate) => candidate.id === entity.id)
+    )
+  ) {
+    removed = [];
+  }
   let correctedBase = base.entities;
   let correctedExplicitSet = base.explicitEntitySet;
   if (removed.length > 0) {

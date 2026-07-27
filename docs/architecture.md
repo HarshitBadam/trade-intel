@@ -94,7 +94,7 @@ sequenceDiagram
 | Finnhub | Company profile, peers, symbol search fallback | Read path |
 | Polygon | Bulk news and per-article interim sentiment | Cron only |
 | Astra DB | Stored articles and per-ticker verdicts | Both |
-| Groq | Batch analysis, isolated primary and fallback chat models, and the Llama Guard input rail | Cron and chat |
+| Groq | Batch analysis, isolated primary and fallback chat models, and the GPT-OSS Safeguard input rail | Cron and chat |
 | Tavily | Planned, filtered web evidence for current/comparison routes | Chat |
 | Langflow | Optional batch orchestration | Cron |
 
@@ -124,7 +124,7 @@ Safety is two layers, because either one alone fails in a way the other covers.
 
 **The prefilter** (`src/lib/stocksage/crisis.ts`) is a regex over a normalized form of the message: lowercased, punctuation stripped, stretched letters collapsed, so "KILL MY SELF" and "FUCKKKK" match the same patterns as their tidy spellings. It costs nothing, runs before entity resolution so a distressed message never reaches the market path on the strength of ticker-shaped words, and when it fires the turn returns the crisis response immediately. Nothing else runs, including the classifier.
 
-**The classifier** (`src/lib/stocksage/safety-classifier.ts`) is Llama Guard 4 on Groq, and it exists because the prefilter can only catch phrasings someone thought of. It scores the current turn only, since guard accuracy degrades on long context. It runs on turns that reach the answering pipeline, which is where a model-composed reply could be produced.
+**The classifier** (`src/lib/stocksage/safety-classifier.ts`) is GPT-OSS Safeguard on Groq with StockSage’s explicit JSON policy, and it exists because the prefilter can only catch phrasings someone thought of. It scores the current turn only; recent user context is added only for ambiguous distress language. It runs on turns that reach the answering pipeline, which is where a model-composed reply could be produced.
 
 ```mermaid
 flowchart LR
@@ -132,7 +132,7 @@ flowchart LR
   R -->|match| C["crisis response"]
   R -->|no match| P["policy, routing"]
   P --> A["retrieval + synthesis"]
-  P -.->|started, not awaited| G["Llama Guard"]
+  P -.->|started, not awaited| G["GPT-OSS Safeguard"]
   A --> J{"join verdict"}
   G --> J
   J -->|allow| OUT["answer"]

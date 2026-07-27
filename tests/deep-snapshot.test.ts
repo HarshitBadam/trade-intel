@@ -87,7 +87,7 @@ test("deep snapshot is signed, bounded, immutable, and tamper resistant", async 
   assert.equal(parseDeepResearchSnapshot(tampered), null);
 });
 
-test("deep pre-flight keeps a quote-only offer disabled with clear copy", async () => {
+test("deep pre-flight keeps a quote-only offer available for broader retrieval", async () => {
   process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET =
     "test-only-snapshot-secret-with-sufficient-length";
   process.env.GROQ_API_KEY = "test-groq-key";
@@ -118,8 +118,8 @@ test("deep pre-flight keeps a quote-only offer disabled with clear copy", async 
     asOf: new Date().toISOString(),
   });
   assert.ok(created.offer);
-  assert.equal(created.offer?.available, false);
-  assert.match(created.offer?.unavailableReason ?? "", /refreshing/i);
+  assert.equal(created.offer?.available, true);
+  assert.equal(created.offer?.unavailableReason, undefined);
 });
 
 test("deep availability distinguishes broad reports from focused questions", async () => {
@@ -141,8 +141,8 @@ test("deep availability distinguishes broad reports from focused questions", asy
     sources: [skHynix],
   });
   assert.deepEqual(narrow, {
-    available: false,
-    reason: "insufficient_independent_sources",
+    available: true,
+    reason: "available_retrieval_needed",
     distinctSourceCount: 1,
     coveredCriteria: ["risk", "outlook"],
   });
@@ -198,15 +198,12 @@ test("deep availability distinguishes broad reports from focused questions", asy
     sources: [skHynix],
     asOf: new Date().toISOString(),
   });
-  assert.equal(offer.offer?.available, false);
-  assert.equal(
-    offer.offer?.unavailableReason,
-    "live research is refreshing, try again shortly"
-  );
-  assert.equal(isDeepResearchOfferAvailable(offer.offer), false);
+  assert.equal(offer.offer?.available, true);
+  assert.equal(offer.offer?.unavailableReason, undefined);
+  assert.equal(isDeepResearchOfferAvailable(offer.offer), true);
 });
 
-test("deep availability requires coverage of every requested report criterion", async () => {
+test("deep availability requests missing report criteria during deeper retrieval", async () => {
   const { assessDeepResearchAvailability } = await import(
     "../src/lib/stocksage/deep-snapshot"
   );
@@ -218,8 +215,8 @@ test("deep availability requires coverage of every requested report criterion", 
       source("S2", "https://two.example/competition", "Two", ["risk"]),
     ],
   });
-  assert.equal(result.available, false);
-  assert.equal(result.reason, "missing_criteria_coverage");
+  assert.equal(result.available, true);
+  assert.equal(result.reason, "available_retrieval_needed");
   assert.deepEqual(result.coveredCriteria, ["risk"]);
 });
 
@@ -279,7 +276,7 @@ test("deep result requires every entity and verifiable citations", () => {
   );
 });
 
-test("deep comparison preflight requires evidence for every entity", async () => {
+test("deep comparison preflight retrieves evidence missing for an entity", async () => {
   const { assessDeepResearchAvailability } = await import(
     "../src/lib/stocksage/deep-snapshot"
   );
@@ -299,6 +296,6 @@ test("deep comparison preflight requires evidence for every entity", async () =>
       },
     ],
   });
-  assert.equal(result.available, false);
-  assert.equal(result.reason, "missing_entity_coverage");
+  assert.equal(result.available, true);
+  assert.equal(result.reason, "available_retrieval_needed");
 });

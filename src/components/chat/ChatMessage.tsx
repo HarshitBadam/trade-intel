@@ -149,7 +149,7 @@ export function ChatMessage({
                 className="inline-flex rounded-full bg-muted/70 px-2 py-0.5 text-[0.7rem] font-medium text-muted-foreground"
                 role="status"
               >
-                live data limited
+                dated evidence
               </div>
             )}
             {message.retryable && (
@@ -159,7 +159,7 @@ export function ChatMessage({
                 className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground/75 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
-                Try again
+                Regenerate
               </button>
             )}
             {showResearch && (
@@ -170,13 +170,13 @@ export function ChatMessage({
                 title={
                   !message.deepResearch?.available
                     ? message.deepResearch?.unavailableReason ??
-                      "live research is refreshing, try again shortly"
+                      "Research deeper opens for a resolved finance subject."
                     : undefined
                 }
                 className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground/75 transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Telescope className="h-3.5 w-3.5" />
-                {deep?.status === "failure" ? "Retry research" : "Research deeper"}
+                {deep?.status === "failure" ? "Run research again" : "Research deeper"}
               </button>
             )}
             {deep?.status === "pending" && (

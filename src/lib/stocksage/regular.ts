@@ -61,7 +61,7 @@ export async function answerRegularChat(
     entities.some((entity) => /^Fortune (?:100|500)$/.test(entity.name))
   ) {
     return {
-      text: "A sufficiently recent source for the current Fortune revenue ranking was not available, so the names and order are omitted rather than guessed. Try again shortly for a fresh ranking.",
+      text: "Specify the Fortune 100 or Fortune 500 and the ranking year, and I’ll keep every name and revenue position tied to that published table.",
       citationUrls: [],
       retryable: true,
       live,

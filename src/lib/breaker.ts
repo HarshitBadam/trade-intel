@@ -31,6 +31,7 @@ const OPEN_MS = 10 * 60 * 1000;
 const OPEN_S = OPEN_MS / 1000;
 const UNAVAILABLE_MS = 24 * 60 * 60 * 1000;
 const UNAVAILABLE_S = UNAVAILABLE_MS / 1000;
+const UPSTASH_DEADLINE_MS = 500;
 
 type MemState = { fails: number; openUntil: number };
 const memory = new Map<Provider, MemState>();
@@ -50,15 +51,37 @@ async function redis() {
   return Redis.fromEnv();
 }
 
+async function withRedisDeadline<T>(operation: () => Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(`Upstash deadline exceeded (${UPSTASH_DEADLINE_MS}ms)`)
+            ),
+          UPSTASH_DEADLINE_MS
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function recordFailure(provider: Provider): Promise<void> {
   if (hasUpstash) {
     try {
-      const r = await redis();
-      const fails = await r.incr(`breaker:${provider}:fails`);
-      await r.expire(`breaker:${provider}:fails`, OPEN_S);
-      if (fails >= FAILURE_THRESHOLD) {
-        await r.set(`breaker:${provider}:open`, 1, { ex: OPEN_S });
-      }
+      await withRedisDeadline(async () => {
+        const r = await redis();
+        const fails = await r.incr(`breaker:${provider}:fails`);
+        await r.expire(`breaker:${provider}:fails`, OPEN_S);
+        if (fails >= FAILURE_THRESHOLD) {
+          await r.set(`breaker:${provider}:open`, 1, { ex: OPEN_S });
+        }
+      });
       return;
     } catch (error) {
       console.error(
@@ -78,8 +101,10 @@ export async function recordFailure(provider: Provider): Promise<void> {
 export async function recordUnavailable(provider: Provider): Promise<void> {
   if (hasUpstash) {
     try {
-      const r = await redis();
-      await r.set(`breaker:${provider}:open`, 1, { ex: UNAVAILABLE_S });
+      await withRedisDeadline(async () => {
+        const r = await redis();
+        await r.set(`breaker:${provider}:open`, 1, { ex: UNAVAILABLE_S });
+      });
       return;
     } catch (error) {
       console.error(
@@ -96,8 +121,10 @@ export async function recordUnavailable(provider: Provider): Promise<void> {
 export async function recordSuccess(provider: Provider): Promise<void> {
   if (hasUpstash) {
     try {
-      const r = await redis();
-      await r.del(`breaker:${provider}:fails`, `breaker:${provider}:open`);
+      await withRedisDeadline(async () => {
+        const r = await redis();
+        await r.del(`breaker:${provider}:fails`, `breaker:${provider}:open`);
+      });
       return;
     } catch (error) {
       console.error(
@@ -114,8 +141,10 @@ export async function recordSuccess(provider: Provider): Promise<void> {
 export async function isOpen(provider: Provider): Promise<boolean> {
   if (hasUpstash) {
     try {
-      const r = await redis();
-      const open = await r.get(`breaker:${provider}:open`);
+      const open = await withRedisDeadline(async () => {
+        const r = await redis();
+        return r.get(`breaker:${provider}:open`);
+      });
       return open !== null && open !== undefined;
     } catch (error) {
       console.error(
@@ -143,8 +172,10 @@ export async function recordCooldown(
   );
   if (hasUpstash) {
     try {
-      await (await redis()).set(`breaker:${provider}:cooldown`, 1, {
-        ex: ttlSeconds,
+      await withRedisDeadline(async () => {
+        await (await redis()).set(`breaker:${provider}:cooldown`, 1, {
+          ex: ttlSeconds,
+        });
       });
       return;
     } catch (error) {
@@ -160,7 +191,9 @@ export async function recordCooldown(
 export async function isCoolingDown(provider: Provider): Promise<boolean> {
   if (hasUpstash) {
     try {
-      const value = await (await redis()).get(`breaker:${provider}:cooldown`);
+      const value = await withRedisDeadline(async () =>
+        (await redis()).get(`breaker:${provider}:cooldown`)
+      );
       return value !== null && value !== undefined;
     } catch (error) {
       console.error(

@@ -5,8 +5,77 @@ import {
   emptyConversationState,
   resolveConversationState,
 } from "../src/lib/stocksage/entities";
+import { answerChat } from "../src/lib/stocksage/chat";
 import { routeMessage } from "../src/lib/stocksage/intent";
 import { evaluateDomainPolicy } from "../src/lib/stocksage/policy";
+
+test("open-ended profane greeting stays on the instant social route", () => {
+  const decision = routeMessage({
+    message: "what's up my bitch ass hoe",
+    entities: [],
+    state: emptyConversationState(),
+  });
+  assert.equal(decision.route, "social");
+  assert.equal(decision.retrievalRequired, false);
+});
+
+test("typoed company snapshot language still takes the current-data route", () => {
+  const resolved = resolveConversationState(
+    "How is Nvidiea doin",
+    undefined,
+    []
+  );
+  assert.equal(resolved.entities[0]?.ticker, "NVDA");
+  const decision = routeMessage({
+    message: "How is Nvidiea doin",
+    entities: resolved.entities,
+    state: resolved.state,
+  });
+  assert.equal(decision.route, "current_finance");
+});
+
+test("Macquarie listing clarification preserves the Australian company", () => {
+  const initial = resolveConversationState(
+    "How is Macquarie doing?",
+    undefined,
+    []
+  );
+  const pronoun = resolveConversationState(
+    "the bank is aussie",
+    initial.state,
+    []
+  );
+  assert.equal(pronoun.entities[0]?.ticker, "MQG");
+  assert.equal(pronoun.state.jurisdiction, "Australia");
+
+  const listing = resolveConversationState(
+    "I mean ASX:MQG, not Macquarie",
+    initial.state,
+    []
+  );
+  assert.deepEqual(
+    listing.state.entities.map((entity) => entity.ticker),
+    ["MQG"]
+  );
+  assert.equal(listing.state.entities[0]?.name, "Macquarie Group");
+  assert.equal(listing.state.entities[0]?.market, "au");
+});
+
+test("Macquarie Australian clarification answers without a proxy retry", async () => {
+  const initial = resolveConversationState(
+    "How is Macquarie doing?",
+    undefined,
+    []
+  );
+  const reply = await answerChat({
+    message: "the bank is aussie",
+    history: [],
+    state: initial.state,
+  });
+  assert.match(reply.text, /primary listing is ASX:MQG/i);
+  assert.match(reply.text, /ADR and ASX returns can differ/i);
+  assert.equal(reply.dataStatus, "limited");
+});
 
 test("swap-in phrasing removes the named outgoing entity", () => {
   const pair = resolveConversationState("compare tesla and nvidia", undefined, []);

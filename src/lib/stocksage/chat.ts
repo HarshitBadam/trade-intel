@@ -30,7 +30,30 @@ import {
   pickHighStakesReply,
 } from "./policy";
 import { creativeRequestOnly } from "./regular-guards";
-import type { ChatReply, ChatRequest } from "./types";
+import type { ChatReply, ChatRequest, FinanceEntity } from "./types";
+
+function australianListingClarification(
+  message: string,
+  entities: FinanceEntity[]
+): string | null {
+  const entity = entities.find(
+    (candidate) =>
+      candidate.market === "au" || candidate.jurisdiction === "Australia"
+  );
+  if (
+    !entity ||
+    !/\b(?:australia|australian|aussie|asx|home listing|primary listing|underlying listing)\b/i.test(
+      message
+    ) ||
+    !/\b(?:actually|i mean|not|is aussie|is australian|it'?s aussie|it is australian|home listing|primary listing|underlying listing)\b/i.test(
+      message
+    )
+  ) {
+    return null;
+  }
+  const listing = entity.ticker ? `ASX:${entity.ticker}` : "its ASX listing";
+  return `Yes — ${entity.name} is Australian and its primary listing is ${listing}. The displayed market figure is for the clearly labelled U.S. ADR; ADR and ASX returns can differ, so each instrument stays explicitly identified. Business and reporting analysis remains anchored to ${entity.name}.`;
+}
 
 export async function answerChat(
   request: ChatRequest,
@@ -96,11 +119,27 @@ export async function answerChat(
       state,
       route:
         floor.reasonCode === "explicit_self_harm" ||
-        floor.reasonCode === "acute_distress"
+        floor.reasonCode === "acute_distress" ||
+        floor.reasonCode === "threat_of_violence"
           ? "safety_support"
           : "refused",
       reasonCode: floor.reasonCode,
       startedAt,
+    });
+  }
+
+  const listingClarification = australianListingClarification(
+    normalized,
+    policyEntities
+  );
+  if (listingClarification) {
+    return immediateResponse({
+      text: listingClarification,
+      state: initialResolution.state,
+      route: "current_finance",
+      reasonCode: "australian_listing_clarified",
+      startedAt,
+      dataStatus: "limited",
     });
   }
 
@@ -123,11 +162,16 @@ export async function answerChat(
     state: socialResolution.state,
     clarification: socialResolution.clarification,
   });
+  // History is useful for an ambiguous "please help me" after a distress
+  // disclosure, but sending it with every later finance question can keep a
+  // recovered user stuck in the safety route.
   const safetyInput = [
-    ...request.history
-      .filter((turn) => turn.role === "user")
-      .slice(-3)
-      .map((turn) => turn.text),
+    ...(hasDistressSignal(normalized)
+      ? request.history
+          .filter((turn) => turn.role === "user")
+          .slice(-3)
+          .map((turn) => turn.text)
+      : []),
     normalized,
   ]
     .join("\n")

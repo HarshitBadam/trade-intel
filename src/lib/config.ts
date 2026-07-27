@@ -44,16 +44,16 @@ const rawLangflowAnalyze = Boolean(
 
 export const GROQ_API_KEY = process.env.GROQ_API_KEY;
 export const GROQ_ANALYSIS_MODEL =
-  process.env.GROQ_ANALYSIS_MODEL ?? "llama-3.1-8b-instant";
+  process.env.GROQ_ANALYSIS_MODEL ?? "openai/gpt-oss-20b";
 export const GROQ_CHAT_MODEL =
   process.env.GROQ_CHAT_MODEL ?? "qwen/qwen3.6-27b";
 export const GROQ_FALLBACK_MODEL =
-  process.env.GROQ_FALLBACK_MODEL ?? "llama-3.3-70b-versatile";
+  process.env.GROQ_FALLBACK_MODEL ?? "openai/gpt-oss-120b";
 // Groq quotas are per model, so an extra model family is an extra 429 budget.
 export const GROQ_OSS_MODEL =
   process.env.GROQ_OSS_MODEL ?? "openai/gpt-oss-20b";
 export const GROQ_SAFETY_MODEL =
-  process.env.GROQ_SAFETY_MODEL ?? "meta-llama/llama-guard-4-12b";
+  process.env.GROQ_SAFETY_MODEL ?? "openai/gpt-oss-safeguard-20b";
 const rawGroq = Boolean(GROQ_API_KEY);
 // A rail that can false-positive needs an off switch that does not also take
 // chat synthesis down with it.

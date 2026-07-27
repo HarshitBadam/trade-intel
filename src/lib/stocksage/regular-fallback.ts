@@ -66,7 +66,7 @@ export function buildFallbackReply(
         ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
         : names[0];
     return {
-      text: `${list} are privately held, so there are no public share prices to compare. Current company reporting is temporarily unavailable; try again shortly for a news- and business-based comparison.`,
+      text: `${list} are privately held, so the useful comparison is operating performance, funding, growth, and risk rather than public-share returns. Name the dimension you want ranked.`,
       citationUrls: [],
       retryable: true,
     };
@@ -104,15 +104,16 @@ export function buildFallbackReply(
       );
       if (periods.length === 0) periods.push({ label: "latest session", value: quote.dayPct });
       const changes = periods
+        .filter(
+          (period): period is { label: string; value: number } =>
+            period.value != null
+        )
         .map(
           (period) =>
-            `${period.label} ${
-              period.value == null
-                ? "not available"
-                : `${period.value >= 0 ? "+" : ""}${period.value.toFixed(2)}%`
-            }`
+            `${period.label} ${period.value >= 0 ? "+" : ""}${period.value.toFixed(2)}%`
         )
         .join("; ");
+      const changesSuffix = changes ? `, ${changes}` : "";
       if (quote.proxySymbol) {
         const entity = entities.find((item) => item.ticker === quote.ticker);
         if (
@@ -138,6 +139,12 @@ export function buildFallbackReply(
         const distinction =
           quote.ticker === "AXJO" && quote.proxySymbol === "EWA"
             ? "It tracks broad Australian equities; this is not an ASX index return."
+            : quote.proxyKind === "adr"
+              ? `These are ${quote.proxySymbol} ADR returns, not ${
+                  entity?.ticker
+                    ? `ASX:${entity.ticker}`
+                    : "the underlying Australian listing"
+                } returns.`
             : `This is ${quote.proxySymbol} performance; it is not ${
                 entity ? casualName(entity.name) : quote.ticker
               } itself.`;
@@ -146,7 +153,7 @@ export function buildFallbackReply(
             2
           )} at ${humanAsOf(quote.asOf)}${
             quote.eod ? " close" : ""
-          }, ${changes.replace(/^latest session /, "")}. ${distinction}`
+          }${changesSuffix.replace(", latest session ", ", ")}. ${distinction}`
         );
       } else {
         lines.push(
@@ -156,7 +163,7 @@ export function buildFallbackReply(
               : `$${quote.price.toFixed(2)}`
           } as of ${humanAsOf(quote.asOf)}${
             quote.eod ? " close (end-of-day)" : ""
-          }${quote.sourceNote ? `; ${quote.sourceNote}` : ""}; ${changes}.`
+          }${quote.sourceNote ? `; ${quote.sourceNote}` : ""}${changesSuffix}.`
         );
       }
     }
@@ -222,8 +229,8 @@ export function buildFallbackReply(
         entities.length > 0 && entities.every((entity) => entity.private);
       return {
         text: allPrivate
-          ? `${list} are privately held, so there are no public share prices to compare. Current company reporting is temporarily unavailable; try again shortly for a news- and business-based comparison.`
-          : `Current, like-for-like figures for ${list} aren’t available at this moment. Try again shortly and I’ll run the comparison from fresh data.`,
+          ? `${list} are privately held, so the useful comparison is operating performance, funding, growth, and risk rather than public-share returns. Name the dimension you want ranked.`
+          : `Choose one common metric and period for ${list}—price performance, valuation, growth, or risk—and I’ll keep the ranking strictly like-for-like.`,
         citationUrls: [],
         retryable: true,
       };
@@ -231,10 +238,10 @@ export function buildFallbackReply(
     if (missing.length > 0) {
       lines.push(
         "",
-        `Coverage is partial for ${list}; ${
+        `${list} remain outside the matched ranking; ${
           comparisonNeedsArticles && context.sources.length > 0
-            ? "the dated figures and cited reporting above are the reliable portion"
-            : "the dated figures above are the reliable portion"
+            ? "the ranking above is limited to the dated figures and cited reporting"
+            : "the ranking above is limited to the dated figures"
         }.`
       );
     }
@@ -273,7 +280,7 @@ export function buildFallbackReply(
     /\bfortune\s*(?:100|500)\b/i.test(request.message)
   ) {
     return {
-      text: "The current Fortune revenue ranking isn’t available from a recent source right now. Try again shortly for the names and revenue figures.",
+      text: "Specify the Fortune 100 or Fortune 500 and the ranking year, and I’ll keep every name and revenue position tied to that published table.",
       citationUrls: [],
       retryable: true,
     };
@@ -290,12 +297,10 @@ export function buildFallbackReply(
       text: allPrivate
         ? `${privateList} ${
             entities.length === 1 ? "is" : "are"
-          } privately held, so ${
-            entities.length === 1 ? "its shares aren’t" : "their shares aren’t"
-          } publicly traded. Current reporting is temporarily unavailable; try again shortly for the business, news, and risk picture.`
+          } privately held, so the relevant lens is business performance, financing, growth, and risk rather than public-share returns. Name the dimension you want analyzed.`
         : decision.route === "current_finance" || decision.route === "comparison"
-          ? "Fresh market data isn’t available at this moment. Try again shortly, your conversation and question are still here."
-          : "That answer didn’t come together cleanly. Try again in a moment.",
+          ? "Name the company, metric, and time period, and I’ll return only matched dated figures."
+          : "Ask with a company, metric, or period and I’ll answer directly from verified evidence.",
       citationUrls: [],
       retryable: true,
     };
@@ -307,13 +312,13 @@ export function buildFallbackReply(
         /\b(?:news|development|catalyst|outlook|guidance|risks?|bull case|bear case)\b/i.test(
           request.message
         )
-        ? "No specific news catalyst is attached to these market figures in the available reporting."
-        : "This is the current dated picture; coverage is partial."
+        ? "The dated figures above do not establish a specific news catalyst."
+        : "This snapshot reflects the dated figures and cited reporting above."
     );
   }
   if (hasSmuggledOffTopicTask(request.message)) {
     lines.unshift(
-      "The calculation is outside my finance lane, so I haven’t evaluated it. Here’s the market part:",
+      "I kept this to the finance part:",
       ""
     );
   }

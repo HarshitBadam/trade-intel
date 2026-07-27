@@ -39,6 +39,10 @@ test("rounding sanitizer applies display precision without touching identifiers"
   );
   assert.equal(roundFiguresForDisplay("$211.86 and +2.31%"), "$211.86 and +2.31%");
   assert.equal(roundFiguresForDisplay("1,234.5678 shares"), "1,234.57 shares");
+  assert.equal(
+    roundFiguresForDisplay("as of 2026-07-27T05:05:30.315Z"),
+    "as of 2026-07-27T05:05:30.315Z"
+  );
 });
 test("Stooq CSV fixture produces honest end-of-day quote windows", async () => {
   const bars = parseStooqDailyCsv(`${STOOQ_FIXTURE}\ninvalid,row`);
@@ -256,6 +260,50 @@ test("fallback labels ETF returns without representing them as index returns", (
     ),
     null
   );
+
+  const macquarie = {
+    id: "ticker:MQG",
+    name: "Macquarie Group",
+    query: "Macquarie Group Australia ASX",
+    ticker: "MQG",
+    market: "au" as const,
+    jurisdiction: "Australia",
+  };
+  const mqbky = {
+    ...quote("MQG"),
+    proxySymbol: "MQBKY",
+    proxyKind: "adr" as const,
+    sourceNote: "MQBKY US OTC ADR in USD",
+  };
+  const macquarieReply = buildFallbackReply(
+    { message: "How is Macquarie Group doing?", history: [] },
+    {
+      route: "current_finance",
+      reasonCode: "degraded_from_data",
+      retrievalRequired: true,
+      deepEligible: true,
+    },
+    [macquarie],
+    {
+      quotes: [mqbky],
+      fundamentals: [],
+      sources: [],
+      coverage: {},
+      plan: {
+        version: 1,
+        route: "current_finance",
+        asOf: "2026-07-16T00:00:00.000Z",
+        queries: [proxyQuery(["MQG"])],
+        requiredEntityIds: [],
+        criteria: [],
+      },
+    }
+  );
+  assert.match(macquarieReply.text, /not ASX:MQG returns/i);
+  assert.equal(
+    proxyMisrepresentation(macquarieReply.text, [macquarie], [mqbky]),
+    null
+  );
 });
 
 test("research grounding is enforced per claim unit", () => {
@@ -284,7 +332,6 @@ test("research grounding is enforced per claim unit", () => {
     "- An H100 refresh would reinforce the AI narrative.",
     "- A next-gen Tensor-core launch could lift the stock.",
     "- Emerging Chinese GPU makers are narrowing the gap.",
-    "- Enterprise capex could slow data-center orders.",
   ]);
   assert.deepEqual(
     uncitedResearchClaimUnits(
@@ -318,7 +365,7 @@ test("research grounding is enforced per claim unit", () => {
   );
 });
 
-test("publication guards reject investment direction and first-person gaps", () => {
+test("publication guards reject investment direction and limitation language", () => {
   assert.match(
     investmentDirectionClaim("The dip looks like a buying opportunity.") ?? "",
     /buying opportunity/
@@ -329,10 +376,24 @@ test("publication guards reject investment direction and first-person gaps", () 
     ) ?? "",
     /couldn't verify/
   );
-  assert.equal(
+  assert.match(
     firstPersonVerificationLimitation(
       "Current guidance was not present in the available reporting."
-    ),
-    null
+    ) ?? "",
+    /not present/
   );
+  for (const limitation of [
+    "Market data is unavailable.",
+    "Coverage is partial.",
+    "There is no current verified reporting.",
+    "We don't have current figures.",
+    "My mistake, I was wrong about the listing.",
+    "That source may be stale.",
+  ]) {
+    assert.equal(
+      firstPersonVerificationLimitation(limitation),
+      limitation,
+      limitation
+    );
+  }
 });
