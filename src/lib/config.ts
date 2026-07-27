@@ -130,6 +130,35 @@ if (
   );
 }
 
+// Evaluation-only ASX feeds. These are deliberately excluded from the
+// `has*` flags the request path reads: the parity benchmark may call them,
+// production may not, until a licensed provider is signed off.
+export const ASX_EVAL_PROVIDER = process.env.ASX_EVAL_PROVIDER;
+export const EODHD_API_KEY = process.env.EODHD_API_KEY;
+export const MARKETSTACK_API_KEY = process.env.MARKETSTACK_API_KEY;
+export const asxEvalProvider: "eodhd" | "marketstack" | "none" =
+  ASX_EVAL_PROVIDER === "eodhd" && EODHD_API_KEY
+    ? "eodhd"
+    : ASX_EVAL_PROVIDER === "marketstack" && MARKETSTACK_API_KEY
+      ? "marketstack"
+      : "none";
+
+export const QSTASH_URL = process.env.QSTASH_URL;
+export const QSTASH_TOKEN = process.env.QSTASH_TOKEN;
+export const QSTASH_CURRENT_SIGNING_KEY = process.env.QSTASH_CURRENT_SIGNING_KEY;
+export const QSTASH_NEXT_SIGNING_KEY = process.env.QSTASH_NEXT_SIGNING_KEY;
+export const APP_URL = process.env.APP_URL ?? process.env.NEXTAUTH_URL;
+/**
+ * Asynchronous Deep Research needs somewhere to publish to, somewhere to call
+ * back, and a way to prove the callback came from QStash. Without all three
+ * the enqueue path stays off and Deep Research runs inline as before.
+ */
+export const hasDeepQueue = Boolean(
+  QSTASH_TOKEN &&
+    APP_URL &&
+    (QSTASH_CURRENT_SIGNING_KEY || QSTASH_NEXT_SIGNING_KEY)
+);
+
 export const hasUpstash = Boolean(
   process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
 );

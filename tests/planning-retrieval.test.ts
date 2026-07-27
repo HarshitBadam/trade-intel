@@ -328,7 +328,12 @@ test("Big Four comparison plans equal criteria for all entities", () => {
     state: resolution.state,
   });
   const tavily = plan.queries.filter((query) => query.provider === "tavily");
-  assert.equal(tavily.length, 5);
+  // Web queries are consolidated, but every entity still has to be covered.
+  assert.ok(tavily.length <= 3, `expected at most 3 web queries, got ${tavily.length}`);
+  assert.deepEqual(
+    [...new Set(tavily.flatMap((query) => query.entityIds))].sort(),
+    resolution.entities.map((entity) => entity.id).sort()
+  );
   for (const query of tavily) assert.deepEqual(query.criteria, plan.criteria);
   assert.deepEqual(plan.requiredEntityIds, resolution.entities.map((e) => e.id));
 });

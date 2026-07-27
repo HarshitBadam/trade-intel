@@ -12,6 +12,8 @@
     "smoke:stocksage": "tsx --conditions=react-server scripts/stocksage-smoke.ts",
     "smoke:safety": "tsx --conditions=react-server scripts/safety-classifier-smoke.ts",
     "eval:stocksage": "tsx --conditions=react-server scripts/stocksage-eval.ts",
+    "bench:stocksage": "tsx --conditions=react-server scripts/stocksage-benchmark.ts",
+    "bench:asx": "tsx --conditions=react-server scripts/asx-parity-benchmark.ts",
     "ops:qstash": "tsx scripts/setup-qstash.ts"
   },
   "dependencies": {
@@ -47,7 +49,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@upstash/qstash": "^2.11.1",
+    "@upstash/qstash": "^2.11.3",
     "eslint": "^9",
     "eslint-config-next": "^15.5.19",
     "tailwindcss": "^4",

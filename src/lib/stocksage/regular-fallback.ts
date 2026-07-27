@@ -156,14 +156,18 @@ export function buildFallbackReply(
           }${changesSuffix.replace(", latest session ", ", ")}. ${distinction}`
         );
       } else {
+        const quoteLabel =
+          quote.venue === "ASX" ? `ASX:${quote.ticker}` : quote.ticker;
         lines.push(
-          `- **${quote.ticker}**, ${
+          `- **${quoteLabel}**, ${
             quote.isIndex
               ? `${quote.price.toFixed(2)} points`
-              : `$${quote.price.toFixed(2)}`
+              : `${quote.currency === "AUD" ? "A$" : "$"}${quote.price.toFixed(2)}`
           } as of ${humanAsOf(quote.asOf)}${
             quote.eod ? " close (end-of-day)" : ""
-          }${quote.sourceNote ? `; ${quote.sourceNote}` : ""}${changesSuffix}.`
+          }${quote.sourceNote ? `; ${quote.sourceNote}` : ""}${changesSuffix}${
+            quote.venue === "ASX" ? " on its native ASX listing in AUD" : ""
+          }.`
         );
       }
     }

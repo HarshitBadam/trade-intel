@@ -121,3 +121,4 @@ export {
 } from "./api";
 
 export { getStooqQuotes } from "./stooq";
+export { getYahooAsxQuotes } from "./yahoo-asx";

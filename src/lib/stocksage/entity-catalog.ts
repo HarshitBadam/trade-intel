@@ -138,13 +138,13 @@ export const WEB_ALIASES: WebAlias[] = [
   { name: "Commonwealth Bank", query: "Commonwealth Bank Australia ASX", ticker: "CBA", aliases: ["commonwealth bank", "commbank", "cba"], jurisdiction: "Australia", market: "au" },
   { name: "National Australia Bank", query: "National Australia Bank ASX", ticker: "NAB", aliases: ["national australia bank", "nab"], jurisdiction: "Australia", market: "au" },
   { name: "Macquarie Group", query: "Macquarie Group Australia ASX", ticker: "MQG", aliases: ["macquarie group", "macquarie"], jurisdiction: "Australia", market: "au" },
-  { name: "Woolworths Group", query: "Woolworths Group Australia ASX", ticker: "WOW", aliases: ["woolworths group", "woolworths"] },
-  { name: "WiseTech Global", query: "WiseTech Global Australia ASX", ticker: "WTC", aliases: ["wisetech global", "wisetech"] },
-  { name: "Goodman Group", query: "Goodman Group Australia ASX", ticker: "GMG", aliases: ["goodman group"] },
+  { name: "Woolworths Group", query: "Woolworths Group Australia ASX", ticker: "WOW", aliases: ["woolworths group", "woolworths"], jurisdiction: "Australia", market: "au" },
+  { name: "WiseTech Global", query: "WiseTech Global Australia ASX", ticker: "WTC", aliases: ["wisetech global", "wisetech"], jurisdiction: "Australia", market: "au" },
+  { name: "Goodman Group", query: "Goodman Group Australia ASX", ticker: "GMG", aliases: ["goodman group"], jurisdiction: "Australia", market: "au" },
   { name: "Westpac", query: "Westpac Banking Corporation Australia ASX", ticker: "WBC", aliases: ["westpac"], jurisdiction: "Australia", market: "au" },
   { name: "ANZ Group", query: "ANZ Group Australia ASX", ticker: "ANZ", aliases: ["anz group", "anz"], jurisdiction: "Australia", market: "au" },
-  { name: "BHP Group", query: "BHP Group Australia ASX", ticker: "BHP", aliases: ["bhp group", "bhp"] },
-  { name: "CSL Limited", query: "CSL Limited Australia ASX", ticker: "CSL", aliases: ["csl limited", "csl"] },
+  { name: "BHP Group", query: "BHP Group Australia ASX", ticker: "BHP", aliases: ["bhp group", "bhp"], jurisdiction: "Australia", market: "au" },
+  { name: "CSL Limited", query: "CSL Limited Australia ASX", ticker: "CSL", aliases: ["csl limited", "csl"], jurisdiction: "Australia", market: "au" },
   { name: "Atlassian", query: "Atlassian company financial news", ticker: "TEAM", aliases: ["atlassian"] },
   { name: "SpaceX", query: "SpaceX company financial news", aliases: ["spacex", "space x"], private: true },
   { name: "Nasdaq Composite", query: "Nasdaq Composite IXIC market index", ticker: "IXIC", aliases: ["nasdaq composite", "ixic", "nasdaq"], market: "index" },
@@ -155,15 +155,15 @@ export const WEB_ALIASES: WebAlias[] = [
   { name: "EY", query: "EY global financial performance", aliases: ["ey", "ernst and young"], private: true },
   { name: "KPMG", query: "KPMG global financial performance", aliases: ["kpmg"], private: true },
   { name: "DraftKings", query: "DraftKings DKNG earnings financial news", ticker: "DKNG", aliases: ["draftkings", "draft kings"], market: "us", jurisdiction: "United States" },
-  { name: "Wesfarmers", query: "Wesfarmers Australia ASX", ticker: "WES", aliases: ["wesfarmers"] },
-  { name: "Qantas", query: "Qantas Airways Australia ASX", ticker: "QAN", aliases: ["qantas airways", "qantas"] },
-  { name: "Rio Tinto", query: "Rio Tinto Australia ASX", ticker: "RIO", aliases: ["rio tinto"] },
-  { name: "Fortescue", query: "Fortescue Australia ASX", ticker: "FMG", aliases: ["fortescue metals", "fortescue"] },
-  { name: "Telstra", query: "Telstra Australia ASX", ticker: "TLS", aliases: ["telstra"] },
-  { name: "Woodside Energy", query: "Woodside Energy Australia ASX", ticker: "WDS", aliases: ["woodside energy", "woodside"] },
-  { name: "REA Group", query: "REA Group Australia ASX", ticker: "REA", aliases: ["rea group"] },
-  { name: "Xero", query: "Xero company Australia financial news", ticker: "XRO", aliases: ["xero"] },
-  { name: "Aristocrat Leisure", query: "Aristocrat Leisure Australia ASX", ticker: "ALL", aliases: ["aristocrat leisure"] },
+  { name: "Wesfarmers", query: "Wesfarmers Australia ASX", ticker: "WES", aliases: ["wesfarmers"], jurisdiction: "Australia", market: "au" },
+  { name: "Qantas", query: "Qantas Airways Australia ASX", ticker: "QAN", aliases: ["qantas airways", "qantas"], jurisdiction: "Australia", market: "au" },
+  { name: "Rio Tinto", query: "Rio Tinto Australia ASX", ticker: "RIO", aliases: ["rio tinto"], jurisdiction: "Australia", market: "au" },
+  { name: "Fortescue", query: "Fortescue Australia ASX", ticker: "FMG", aliases: ["fortescue metals", "fortescue"], jurisdiction: "Australia", market: "au" },
+  { name: "Telstra", query: "Telstra Australia ASX", ticker: "TLS", aliases: ["telstra"], jurisdiction: "Australia", market: "au" },
+  { name: "Woodside Energy", query: "Woodside Energy Australia ASX", ticker: "WDS", aliases: ["woodside energy", "woodside"], jurisdiction: "Australia", market: "au" },
+  { name: "REA Group", query: "REA Group Australia ASX", ticker: "REA", aliases: ["rea group"], jurisdiction: "Australia", market: "au" },
+  { name: "Xero", query: "Xero company Australia financial news", ticker: "XRO", aliases: ["xero"], jurisdiction: "Australia", market: "au" },
+  { name: "Aristocrat Leisure", query: "Aristocrat Leisure Australia ASX", ticker: "ALL", aliases: ["aristocrat leisure"], jurisdiction: "Australia", market: "au" },
   { name: "Samsung Electronics", query: "Samsung Electronics financial news", aliases: ["samsung electronics", "samsung"] },
   { name: "Taiwan Semiconductor", query: "Taiwan Semiconductor TSMC financial news", ticker: "TSM", aliases: ["taiwan semiconductor", "tsmc"] },
   { name: "Toyota", query: "Toyota Motor financial news Japan", ticker: "TM", aliases: ["toyota motor", "toyota"] },
@@ -175,6 +175,12 @@ export const WEB_ALIASES: WebAlias[] = [
   { name: "Siemens", query: "Siemens financial news Germany", aliases: ["siemens"] },
 ];
 
+export const ASX_NATIVE_TICKERS = new Set(
+  WEB_ALIASES.flatMap((alias) =>
+    alias.market === "au" && alias.ticker ? [alias.ticker] : []
+  )
+);
+
 export const PRIVATE_COMPANY_NAMES = new Set(
   WEB_ALIASES.filter((alias) => alias.private).map((alias) => alias.name)
 );
@@ -182,6 +188,8 @@ export const PRIVATE_COMPANY_NAMES = new Set(
 export type CanonicalGroup = {
   id: string;
   version: 1;
+  /** Human-readable identity used when the answer must name the group. */
+  label: string;
   aliases: RegExp;
   members: string[];
 };
@@ -190,6 +198,7 @@ export const CANONICAL_GROUPS: CanonicalGroup[] = [
   {
     id: "professional-services-big-four",
     version: 1,
+    label: "the professional-services Big Four",
     aliases:
       /\b(?:(?:consulting|consultancy|accounting|audit|professional services)\s+big\s*(?:4|four)|big\s*(?:4|four)\s+(?:consulting|consultanc(?:y|ies)|consultants?|accounting|accountants?|audit(?:ors?)?|professional services|firms))\b/i,
     members: ["Deloitte", "PwC", "EY", "KPMG"],
@@ -197,6 +206,7 @@ export const CANONICAL_GROUPS: CanonicalGroup[] = [
   {
     id: "australian-big-four",
     version: 1,
+    label: "the Australian Big Four banks",
     aliases:
       /(?<!(?:other|another)\s)\b(?:(?:(?:australian|aussie|asx)\s+)?big\s*(?:4|four)(?:\s+(?:(?:australian|aussie|asx)\s+)?banks?)?|(?:australian|aussie)\s+banks)\b/i,
     members: ["CBA", "NAB", "ANZ", "WBC"],
@@ -204,6 +214,7 @@ export const CANONICAL_GROUPS: CanonicalGroup[] = [
   {
     id: "magnificent-seven",
     version: 1,
+    label: "the Magnificent Seven",
     aliases: /\b(?:mag\s*7|magnificent\s+(?:7|seven))\b/i,
     members: ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA"],
   },

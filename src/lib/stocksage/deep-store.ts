@@ -114,4 +114,67 @@ export async function runIdempotentDeepWork(
 export function resetDeepWorkMemory(): void {
   pending.clear();
   completed.clear();
+  accepted.clear();
+}
+
+/** Work handed to the queue but not yet finished, so polling can say so. */
+const accepted = new Set<string>();
+
+const ACCEPTED_TTL_SEC = 15 * 60;
+
+export async function markDeepWorkAccepted(workId: string): Promise<void> {
+  accepted.add(workId);
+  if (!hasUpstash) return;
+  await (await redis())
+    .set(`stocksage:deep:accepted:${workId}`, "1", { ex: ACCEPTED_TTL_SEC })
+    .catch(() => undefined);
+}
+
+export type DeepWorkStatus =
+  | { state: "unknown" }
+  | { state: "pending" }
+  | { state: "done"; reply: DeepResearchReply };
+
+/**
+ * Polling view of a job. It reads the same keys the worker writes, so an
+ * asynchronous result and a synchronous one are indistinguishable to callers.
+ */
+export async function readDeepWorkStatus(
+  workId: string
+): Promise<DeepWorkStatus> {
+  const done = completed.get(workId);
+  if (done) return { state: "done", reply: done };
+  if (hasUpstash) {
+    const stored = await readRedisResult(workId).catch(() => null);
+    if (stored) return { state: "done", reply: stored };
+    const inFlight = await (await redis())
+      .get(`stocksage:deep:accepted:${workId}`)
+      .catch(() => null);
+    if (inFlight) return { state: "pending" };
+  }
+  if (pending.has(workId) || accepted.has(workId)) return { state: "pending" };
+  return { state: "unknown" };
+}
+
+/** Called by the worker so a completed job stops looking in-flight. */
+export async function clearDeepWorkAccepted(workId: string): Promise<void> {
+  accepted.delete(workId);
+  if (!hasUpstash) return;
+  await (await redis())
+    .del(`stocksage:deep:accepted:${workId}`)
+    .catch(() => undefined);
+}
+
+/** Persists a worker result so later polls and repeat clicks reuse it. */
+export async function storeDeepWorkResult(
+  reply: DeepResearchReply
+): Promise<void> {
+  if (reply.status !== "success" && reply.retryable) return;
+  completed.set(reply.workId, reply);
+  if (!hasUpstash) return;
+  await (await redis())
+    .set(`stocksage:deep:result:${reply.workId}`, reply, {
+      ex: 24 * 60 * 60,
+    })
+    .catch(() => undefined);
 }

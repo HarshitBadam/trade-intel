@@ -52,10 +52,10 @@ function quoteBlock(context: Awaited<ReturnType<typeof executeEvidencePlan>>): s
   return context.quotes
     .map(
       (quote) =>
-        `${quote.proxySymbol ? `${quote.proxySymbol} (${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy for requested ${quote.ticker})` : quote.ticker}: as of ${quote.asOf}${quote.eod ? " close (end-of-day)" : ""}, ${
+        `${quote.proxySymbol ? `${quote.proxySymbol} (${quote.proxyKind === "adr" ? "ADR" : "ETF"} proxy for requested ${quote.ticker})` : quote.venue === "ASX" ? `ASX:${quote.ticker} (native ${quote.instrumentSymbol ?? `${quote.ticker}.AX`} listing, AUD)` : quote.ticker}: as of ${quote.asOf}${quote.eod ? " close (end-of-day)" : ""}, ${
           quote.isIndex
             ? `${quote.price.toFixed(2)} points`
-            : `$${quote.price.toFixed(2)}`
+            : `${quote.currency === "AUD" ? "A$" : "$"}${quote.price.toFixed(2)}`
         }${quote.sourceNote ? ` (${quote.sourceNote})` : ""}, day ${percent(quote.dayPct)}, 1W ${percent(quote.weekPct)}, 1M ${percent(quote.monthPct)}, 1Y ${percent(quote.yearPct)}${
           quote.proxySymbol
             ? `. Start every quote line with ${quote.proxySymbol}. Attribute every figure to ${quote.proxySymbol}, never to ${quote.ticker} or the underlying index/listing${

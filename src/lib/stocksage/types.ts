@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { LatencyClass, RouteClass } from "./telemetry";
+import type { MarketCalendar, TemporalInterval } from "./temporal";
 
 export type ChatRoute =
   | "social"
@@ -39,7 +41,7 @@ export type ChatReply = {
   dataStatus?: ChatDataStatus;
 };
 
-// Index/AU quotes use delayed keyless Stooq; US quotes use primary providers.
+// ASX quotes use native Yahoo data; Stooq/ADRs remain labeled fallbacks.
 export type FinanceMarket = "us" | "web" | "index" | "au";
 
 export type FinanceEntity = {
@@ -52,15 +54,36 @@ export type FinanceEntity = {
   private?: boolean;
 };
 
+/**
+ * A group the user named as a unit ("the Aussie Big Four"). Group identity is
+ * kept beside the flat entity list because a later "them" can refer to the
+ * last named group rather than to the whole prior comparison.
+ */
+export type NamedGroupRef = {
+  id: string;
+  label: string;
+  memberIds: string[];
+  /** State revision at which the group was named. */
+  namedAtRevision: number;
+};
+
 export type ConversationState = {
   version: 1;
   revision: number;
   entities: FinanceEntity[];
   explicitEntitySet: string[];
   criteria: string[];
+  /** Legacy wire format retained while clients migrate to `intervals`. */
   horizon?: string;
   jurisdiction?: string;
   safetyRepliesUsed?: string[];
+  /** Ordered named-group reference frames, oldest first. */
+  groups?: NamedGroupRef[];
+  /** The subset the next bare pronoun should resolve to. */
+  focusEntityIds?: string[];
+  /** Normalized market-calendar intervals for this turn. */
+  intervals?: TemporalInterval[];
+  pendingClarification?: string;
 };
 
 export type SourceKind = "astra" | "tavily";
@@ -150,7 +173,9 @@ export type EvidencePlan = {
   requiredEntityIds: string[];
   criteria: string[];
   explicitCriteria?: string[];
+  /** Legacy label; `intervals` carries the normalized market-calendar window. */
   horizon?: string;
+  intervals?: TemporalInterval[];
 };
 
 export type RouteDecision = {
@@ -159,6 +184,67 @@ export type RouteDecision = {
   retrievalRequired: boolean;
   deepEligible: boolean;
   clarification?: string;
+};
+
+/**
+ * The single authoritative classification of a turn. Every answer executor
+ * consumes a frozen decision; none of them may re-run policy or routing.
+ */
+export type TurnDecisionKind =
+  | "supported_stable"
+  | "supported_current"
+  | "supported_comparison"
+  | "high_stakes_finance"
+  | "ambiguous"
+  | "out_of_scope"
+  | "prohibited"
+  | "safety_support"
+  | "social";
+
+export type TurnDecision = {
+  readonly version: 1;
+  readonly kind: TurnDecisionKind;
+  /** Legacy route, preserved so existing consumers and telemetry keep working. */
+  readonly route: ChatRoute;
+  readonly reasonCode: string;
+  readonly latencyClass: LatencyClass;
+  readonly routeClass: RouteClass;
+  /** No executor may call a market or web provider when this is false. */
+  readonly retrievalAuthorized: boolean;
+  /** Model synthesis may shape wording only when this is true. */
+  readonly synthesisAuthorized: boolean;
+  readonly deepEligible: boolean;
+  readonly retryEligible: boolean;
+  /**
+   * False only where the reply is itself the safe output (crisis, hard safety
+   * floor, refusal copy); every other turn joins the classifier verdict before
+   * publishing.
+   */
+  readonly safetyRailRequired: boolean;
+  /** Set for instant routes that answer without any executor work. */
+  readonly immediateText?: string;
+  readonly clarification?: string;
+};
+
+export type TurnContext = {
+  readonly version: 1;
+  /** NFKC-normalized message the decision was made from. */
+  readonly message: string;
+  readonly state: ConversationState;
+  /** Ordered active entities for this turn. */
+  readonly entities: FinanceEntity[];
+  /** The subset a bare pronoun currently refers to. */
+  readonly focusEntities: FinanceEntity[];
+  readonly groups: NamedGroupRef[];
+  readonly intervals: TemporalInterval[];
+  readonly calendar: MarketCalendar;
+  readonly criteria: string[];
+  readonly jurisdiction?: string;
+};
+
+export type Turn = {
+  readonly decision: TurnDecision;
+  readonly context: TurnContext;
 };
 
 export type DomainReasonCode =
@@ -214,6 +300,24 @@ const EntitySchema = z.object({
   private: z.boolean().optional(),
 });
 
+const GroupSchema = z.object({
+  id: z.string().min(1).max(60),
+  label: z.string().min(1).max(80),
+  memberIds: z.array(z.string().min(1).max(40)).max(12),
+  namedAtRevision: z.number().int().min(0).max(10_000),
+});
+
+const IntervalSchema = z.object({
+  version: z.literal(1),
+  label: z.string().min(1).max(60),
+  kind: z.enum(["session", "prior_session", "to_date", "trailing", "range"]),
+  calendar: z.enum(["US", "AU"]),
+  startSession: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endSession: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  source: z.enum(["explicit", "inherited", "default"]),
+  raw: z.string().max(60).optional(),
+});
+
 const ConversationStateSchema = z.object({
   version: z.literal(1),
   revision: z.number().int().min(0).max(10_000),
@@ -223,6 +327,10 @@ const ConversationStateSchema = z.object({
   horizon: z.string().max(120).optional(),
   jurisdiction: z.string().max(40).optional(),
   safetyRepliesUsed: z.array(z.string().min(1).max(60)).max(24).optional(),
+  groups: z.array(GroupSchema).max(4).optional(),
+  focusEntityIds: z.array(z.string().min(1).max(40)).max(12).optional(),
+  intervals: z.array(IntervalSchema).max(4).optional(),
+  pendingClarification: z.string().max(300).optional(),
 });
 
 type ParseResult =

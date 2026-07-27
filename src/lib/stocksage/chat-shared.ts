@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import type { RequestBudget } from "./budget";
 import type { RetrievalProviders } from "./retrieve";
 import type { SafetyClassifier } from "./safety-classifier";
 import { logStockSage } from "./telemetry";
@@ -8,11 +9,19 @@ import type {
   ChatDataStatus,
   ChatReply,
   ConversationState,
+  Turn,
+  TurnDecision,
 } from "./types";
 
 export type ChatDependencies = {
   retrievalProviders?: RetrievalProviders;
   safetyClassifier?: SafetyClassifier;
+};
+
+/** Frozen classification handed to an executor; never re-derived downstream. */
+export type ExecutorOptions = {
+  turn?: Turn;
+  budget?: RequestBudget;
 };
 
 export {
@@ -31,6 +40,7 @@ export function immediateResponse(args: {
   startedAt: number;
   retryable?: boolean;
   dataStatus?: ChatDataStatus;
+  decision?: TurnDecision;
 }): ChatReply {
   logStockSage({
     event: "request_complete",
@@ -38,6 +48,15 @@ export function immediateResponse(args: {
     reasonCode: args.reasonCode,
     durationMs: Date.now() - args.startedAt,
     providerCount: 0,
+    ...(args.decision
+      ? {
+          decisionKind: args.decision.kind,
+          routeClass: args.decision.routeClass,
+          latencyClass: args.decision.latencyClass,
+          deepEligible: args.decision.deepEligible,
+          retryVisible: args.decision.retryEligible,
+        }
+      : { latencyClass: "instant" as const }),
   });
   return {
     text: args.text,

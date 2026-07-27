@@ -4,6 +4,7 @@ import {
   CANONICAL_GROUPS,
   LISTING_NAMES,
   WEB_ALIASES,
+  type CanonicalGroup,
   type WebAlias,
 } from "./entity-catalog";
 import { isWithinOneEdit } from "./text-normalization";
@@ -85,8 +86,12 @@ export function canonicalizeEntity(entity: FinanceEntity): FinanceEntity | null 
   };
 }
 
-export function resolveGroup(text: string): FinanceEntity[] {
-  const groups = CANONICAL_GROUPS.map((candidate) => ({
+/**
+ * The groups a message named, in the order they appear. Callers that only need
+ * members use `resolveGroup`; state tracking needs the group identities too.
+ */
+export function resolveGroupRefs(text: string): CanonicalGroup[] {
+  return CANONICAL_GROUPS.map((candidate) => ({
     candidate,
     index: text.search(candidate.aliases),
   }))
@@ -103,6 +108,9 @@ export function resolveGroup(text: string): FinanceEntity[] {
     })
     .sort((left, right) => left.index - right.index)
     .map((match) => match.candidate);
+}
+
+export function groupMembers(groups: CanonicalGroup[]): FinanceEntity[] {
   return [
     ...new Map(
       groups
@@ -117,6 +125,10 @@ export function resolveGroup(text: string): FinanceEntity[] {
         .map((entity): [string, FinanceEntity] => [entity.id, entity])
     ).values(),
   ];
+}
+
+export function resolveGroup(text: string): FinanceEntity[] {
+  return groupMembers(resolveGroupRefs(text));
 }
 
 const EXCHANGE_CONTEXT_TICKERS = new Set(["ASX", "LSE", "TSX", "HKEX", "TSE", "NSE", "BSE", "NYSE", "AX"]);
