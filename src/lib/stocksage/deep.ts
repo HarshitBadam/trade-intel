@@ -115,10 +115,6 @@ function snapshotContext(snapshot: DeepResearchSnapshot): {
   };
 }
 
-// Deep research is the one surface where the hosted Langflow flow fits:
-// low-volume, opt-in, latency-tolerant, and idempotent, with the direct
-// multi-provider path as fallback. Output must pass the same acceptance
-// checks as direct synthesis or it is discarded.
 async function langflowDeepSynthesis(args: {
   system: string;
   user: string;
@@ -258,10 +254,6 @@ ${snapshot.horizon ?? "not specified"}`;
 
 Today is ${today}. Treat that as the date anchor. Use "upcoming", "next-gen", "new", "recent", or "latest" only when a retrieved source explicitly dates the claim relative to today.
 Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw URL or invent an ID. The server will turn valid IDs into links.`;
-    // The same no-leakage bar as regular synthesis: when the original
-    // question smuggled an off-topic task alongside the finance ask, deep
-    // output must not perform it either (leaks propagate through the
-    // REGULAR ANSWER block otherwise).
     const smuggled = hasSmuggledOffTopicTask(snapshot.question);
     const accept = (candidate: string) =>
       validCitationUrls(candidate, context.sources).length > 0 &&

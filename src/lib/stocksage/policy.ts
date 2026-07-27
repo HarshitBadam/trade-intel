@@ -44,8 +44,6 @@ const FINANCE =
 const GENERAL_NEWS =
   /\b(?:celebrity|gossip|movie|music|entertainment|election|politics|politician|weather|recipe|travel)\b/i;
 const PREDICTION_MARKET = /\bprediction markets?\b/i;
-// Inflections matter: "guaranteeing"/"promising"/"assuring" must hit this
-// floor exactly like the base verb forms do (F0.1/FQ-01).
 const GUARANTEE =
   /\b(?:guarantee(?:s|d|ing)?|promis(?:e|es|ed|ing)|assur(?:e|es|ed|ing)|are you (?:sure|positive|certain)|can you (?:guarantee|promise|assure))\b.{0,90}\b(?:returns?|profits?|double|triple|\d{1,4}x|gains?|go(?:es|ing)? (?:up|down)|positive|negative|perform(?:s|ance|ing)?(?:\s+poorly|\s+well)?|money|lose|loss|year end)\b|\b(?:guaranteed|risk[- ]free|sure[- ]thing)\s+(?:returns?|profits?|picks?|stocks?|winners?)\b|\bno risk\b|\b(?:no|zero)\s+chance\b.{0,80}\b(?:fall|drop|decline|crash|lose|rise|rally|gain|go (?:up|down)|perform (?:poorly|well))\b|\bso you(?:'re| are) saying\b.{0,80}\b(?:will|won't|cannot|can't)\b.{0,30}\b(?:fall|drop|decline|crash|lose|rise|rally|gain|perform (?:poorly|well))\b/i;
 const LIFE_EVENT_STAKE =
@@ -58,7 +56,6 @@ const CASINO_OR_SPORTSBOOK =
   /\b(?:sportsbook|casino|poker|roulette|blackjack|parlay|bookie|odds|lock)\b/i;
 const INVESTING_CONTEXT =
   /\b(?:stocks?|tickers?|shares?|etfs?|index|indices|portfolio|invest(?:ing|ment)?|equit(?:y|ies)|market|returns?|profits?|positions?|holdings?|perform(?:s|ing|ance)?)\b/i;
-// "put it all into NVDA" carries investing context via the bare ticker alone.
 const TICKER_MENTION =
   /(?:^|\s)\$?[A-Z]{2,5}(?:\.[A-Z]{1,3})?(?=[\s,.!?]|$)/;
 
@@ -70,11 +67,6 @@ function investingContext(text: string, entities: FinanceEntity[]): boolean {
   );
 }
 
-// High-stakes refusals keep the deterministic safety floor (no guarantees,
-// ever) but must read like a person, not a replayed template: variants per
-// trigger, direction-aware (promised gains vs promised losses), and
-// forward-looking vs already-done aware. chat.ts tracks which variant IDs a
-// session has seen so no body is replayed verbatim.
 export type HighStakesKind =
   | "guarantee_positive"
   | "guarantee_negative"
@@ -155,8 +147,6 @@ export function pickHighStakesReply(
     const id = `${kind}:${index}`;
     if (!usedSet.has(id)) return { id, text: pool[index] };
   }
-  // Pool exhausted (long session): cycle from the start rather than repeat
-  // the most recent body back to back.
   const index = used.filter((id) => id.startsWith(`${kind}:`)).length % pool.length;
   return { id: `${kind}:${index}`, text: pool[index] };
 }
@@ -184,9 +174,7 @@ const HARD_FLOOR_CODES = new Set([
   "high_stakes_finance",
 ]);
 
-// Safety outcomes that must never depend on LLM availability. Runs before
-// the model call; soft outcomes (out_of_scope, clarify, social) fall through
-// to the model, which judges them better.
+// Hard safety outcomes must not depend on LLM availability.
 export function hardSafetyFloor(
   message: string,
   entities: FinanceEntity[]
@@ -261,8 +249,7 @@ export function evaluateDomainPolicy(
       response: cryptoPromotionResponse,
     };
   }
-  // Gambling instructions take precedence over finance language such as
-  // "guaranteed" or "lock". A parlay never becomes a stock recommendation.
+  // Gambling instructions take precedence over finance language.
   if (
     GAMBLING.test(text) &&
     !(INVESTING_CONTEXT.test(text) && !CASINO_OR_SPORTSBOOK.test(text) && !SPORTS.test(text))
@@ -309,10 +296,6 @@ export function evaluateDomainPolicy(
         "Are you asking about a listed prediction-market business, regulation, or financial risk? I can cover those topics, but not betting picks or strategies.",
     };
   }
-  // A creative-writing request stays out of scope even when its subject is a
-  // stock — "a haiku about nvidia" must not slide into finance analysis just
-  // because an entity resolved. Only pure requests refuse here; a message
-  // that also carries a real finance question falls through to be answered.
   if (creativeRequestOnly(text)) {
     return {
       action: "respond",

@@ -45,6 +45,7 @@ yarn-error.log*
 
 # internal notes (not committed)
 /docs/internal/
+/.tmp/
 
 # vercel
 .vercel

@@ -54,10 +54,7 @@ export async function answerChat(
   }
 
   const base = baseConversationState(request.state, request.history);
-  // Resolve the current message before policy classification. Otherwise a
-  // newly named (or safely typo-recovered) company is invisible to the safety
-  // floor, which can downgrade "sell my house and put it all into X" to a
-  // generic position reply and preserve stale entities from the prior turn.
+  // Resolve entities before policy so safety checks see newly named subjects.
   const initialResolution = resolveConversationState(
     normalized,
     request.state,
@@ -72,9 +69,6 @@ export async function answerChat(
   const floor = hardSafetyFloor(normalized, policyEntities);
   if (floor?.response) {
     const resolved = initialResolution;
-    // High-stakes refusals rotate through context-aware variants; the IDs
-    // already shown ride in conversation state so a session never sees the
-    // same body twice.
     const highStakes =
       floor.reasonCode === "high_stakes_finance"
         ? classifyHighStakes(normalized, policyEntities)
@@ -104,13 +98,7 @@ export async function answerChat(
     });
   }
 
-  // Closed-class social turns are deterministic and need neither retrieval
-  // nor synthesis. Resolve state first so a farewell or acknowledgement does
-  // not erase finance context needed by a later follow-up.
   const socialResolution = initialResolution;
-  // A creative request remains outside the product lane even when its subject
-  // is an inherited or explicitly named stock. This must run before the model
-  // path so an outage cannot turn it into market-data boilerplate.
   if (creativeRequestOnly(normalized)) {
     const policy = evaluateDomainPolicy(normalized, []);
     return immediateResponse({
@@ -149,15 +137,9 @@ export async function answerChat(
     }
   }
 
-  // One model call per turn: the model reads the raw conversation, classifies
-  // the turn itself, resolves references itself, and answers with prefetched
-  // data. Deterministic code above this line handles only hard safety; below,
-  // it only decides what data to prefetch.
   if (hasAnySynthesisLlm) {
     return answerWithModel(scoped, dependencies, startedAt, initialResolution);
   }
-  // No LLM configured at all (offline dev/tests): deterministic brain is the
-  // only brain, so use it fully.
   return answerWithHeuristics(scoped, dependencies, startedAt);
 }
 

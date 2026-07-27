@@ -92,10 +92,6 @@ function mergeDetails(prev: StockData, fresh: StockData): StockData {
           searchVolume: prev.searchVolume,
         }
       : {}),
-    // The analysis-doc read fails independently of the article read, so a
-    // transient Astra error drops the verdict while news still loads. Verdicts
-    // are only ever overwritten, never deleted, so keeping the last known-good
-    // one is safe and stops the trigger flickering out between polls.
     ...(!fresh.newsVerdict && prev.newsVerdict
       ? { newsVerdict: prev.newsVerdict }
       : {}),
@@ -136,16 +132,23 @@ export default function DetailsView({
     let attempts = 0;
 
     const poll = () => {
-      fetchDetails(ticker).then((data) => {
-        if (cancelled || !data) return;
-        const merged = mergeDetails(stockDataRef.current, data);
-        setStockData(merged);
-        setNews(merged.news);
-        attempts += 1;
-        if (!TERMINAL_NEWS.has(data.newsStatus) && attempts < MAX_ATTEMPTS) {
-          timer = setTimeout(poll, POLL_MS);
-        }
-      });
+      fetchDetails(ticker)
+        .then((data) => {
+          if (cancelled || !data) return;
+          const merged = mergeDetails(stockDataRef.current, data);
+          setStockData(merged);
+          setNews(merged.news);
+          attempts += 1;
+          if (!TERMINAL_NEWS.has(data.newsStatus) && attempts < MAX_ATTEMPTS) {
+            timer = setTimeout(poll, POLL_MS);
+          }
+        })
+        .catch(() => {
+          if (!cancelled && attempts < MAX_ATTEMPTS) {
+            attempts += 1;
+            timer = setTimeout(poll, POLL_MS);
+          }
+        });
     };
 
     timer = setTimeout(poll, POLL_MS);
@@ -170,19 +173,12 @@ export default function DetailsView({
 
   const handleRequestRange = useCallback(
     async (kind: "intraday" | "week" | "fine") => {
-      // Both FlipCard faces (price + popularity) share this one handler, so the
-      // dedup below is load-bearing: mark the range as in-flight BEFORE the
-      // await so a click on the second face never re-fetches a resolution the
-      // first face already requested. One fetch per resolution feeds both charts.
       if (fetchedRanges.current.has(kind)) return;
       fetchedRanges.current.add(kind);
       loadingCount.current++;
       setLoadingRange(true);
       try {
         const data = await fetchChartRange(ticker, kind);
-        // An empty series means the fetch was rate-limited/failed (the chart
-        // falls back to the daily view). Un-mark the range so a later click
-        // retries instead of being stuck on the fallback until a reload.
         if (data.length < 2) fetchedRanges.current.delete(kind);
         switch (kind) {
           case "intraday":

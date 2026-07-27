@@ -44,8 +44,6 @@ function formatAnalyzedAt(iso?: string): string | null {
   });
 }
 
-// -1..1 mapped onto the track width so the marker reads as a position between
-// bearish and bullish rather than a magnitude bar growing from the left edge.
 function ScoreMeter({ score }: { score: number }) {
   const clamped = Math.max(-1, Math.min(1, score));
   const position = ((clamped + 1) / 2) * 100;
@@ -76,9 +74,6 @@ export function VerdictModal({
   ticker?: string;
   onClose: () => void;
 }) {
-  // Portal target only exists on the client; gate the portal on mount so SSR
-  // and the first hydration pass render nothing (the modal is always opened by
-  // a post-mount user interaction anyway).
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -104,8 +99,6 @@ export function VerdictModal({
     verdict.sourceWindowDays ? `${verdict.sourceWindowDays}-day window` : null,
   ].filter(Boolean);
 
-  // Same portal rationale as NewsModal: `position: fixed` would otherwise be
-  // captured by the nearest `backdrop-filter` ancestor (the .glass-card panel).
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/30 backdrop-blur-xl animate-in fade-in duration-200"

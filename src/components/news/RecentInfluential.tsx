@@ -154,12 +154,7 @@ export function RecentInfluential({
   const [selected, setSelected] = useState<NewsArticle | null>(null);
   const [verdictOpen, setVerdictOpen] = useState(false);
 
-  // Chromium drops paint invalidations for content inside a `backdrop-filter`
-  // ancestor (this panel is a frosted `.glass-card` in dark mode). So when the
-  // 30s news poll swaps in fresh articles via state, the new rows land in the
-  // DOM but stay invisible until a pointer/scroll event dirties the compositor.
-  // Toggling a no-op `translateZ(0)` for one frame forces the layer to
-  // re-composite (and thus repaint) without any visible movement.
+  // Force a repaint after polling because Chromium can retain stale layers under backdrop-filter.
   const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = panelRef.current;
@@ -242,11 +237,7 @@ export function RecentInfluential({
               onOpen={verdict ? () => setVerdictOpen(true) : undefined}
             />
           </div>
-          {/* Cap the list height so it scrolls internally. On `lg` the panel is
-              absolutely positioned to the chart's height, so `flex-1` bounds it
-              and we drop the cap; below `lg` the panel is in normal flow with no
-              bounded parent, so an explicit max-height is what makes it scroll
-              instead of unfolding every item. */}
+          {/* The cap is needed below lg, where the panel has no bounded parent. */}
           <div className="flex-1 min-h-0 overflow-y-auto max-h-[26rem] lg:max-h-none">
             <div className="flex relative">
               <div className="flex-1 flex flex-col divide-y divide-border/70 overflow-x-hidden">

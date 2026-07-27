@@ -1,185 +1,29 @@
-import {
-  CANONICAL_GROUPS,
-  WEB_ALIASES,
-  type WebAlias,
-} from "./entity-catalog";
-import {
-  detectCriteria,
-  detectHorizon,
-  detectJurisdiction,
-} from "./conversation-attributes";
-import {
-  canonicalizeEntity,
-  fromAlias,
-  resolveGroup,
-  resolveText,
-} from "./entity-resolution";
+import { CANONICAL_GROUPS, WEB_ALIASES, type WebAlias } from "./entity-catalog";
+import { detectCriteria, detectHorizon, detectJurisdiction } from "./conversation-attributes";
+import { canonicalizeEntity, fromAlias, resolveGroup, resolveText } from "./entity-resolution";
 import { sanitizeConversationState } from "./state";
-import { isWithinOneEdit } from "./text-normalization";
-import type {
-  ChatTurn,
-  ConversationState,
-  FinanceEntity,
-} from "./types";
-
-const PLURAL_REFERENCE = /\b(?:they|their|them|those|these|both)\b/i;
-// Conversational category references ("the consultant group") should
-// inherit whichever named group is currently active, same as "they".
-const CATEGORY_REFERENCE =
-  /\b(?:the\s+consultant(?:s|ing)?(?:\s+group)?|the\s+consulting\s+firms?|the\s+accounting\s+firms?)\b/i;
-const SINGULAR_REFERENCE =
-  /\b(?:it|its|that one|this one|the company|the stock|the shares|what about|how about|wb)\b/i;
-const ORDERED_REFERENCE = /\b(?:former|latter|first one|second one)\b/i;
-const COMPARISON_FOLLOW_UP =
-  /\b(?:which (?:one|is|looks)|which of (?:the|those|these)|what about|how about|wb|better|safe(?:st|r)|less risky|more risky|more volatile|volatil|rank|order|all of them|former two|latter two|today|yesterday|(?:a\s+)?few days ago|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|over (?:the )?last|past \d+|between)\b/i;
-const CONTEXTUAL_FOLLOW_UP =
-  /^(?:(?:and|so|ok(?:ay)?|\.{2,})\s+)?(?:today|yesterday|(?:a\s+)?few days ago|anything notable|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|what (?:changed|happened|moved)|what(?:'?s| is) (?:your|the) (?:current\s+)?outlook|which (?:one|is|looks|parts?)|(?:can you )?reconcile|how (?:did|has|is|are|was)|why\b|rank\b|order\b|all of them\b|only the (?:former|latter) two\b)/i;
-const REMOVAL =
-  /\b(?:forget|drop|remove|ignore|skip|leave out|without)\s+(?:about\s+)?(.+?)(?=\s*(?:[—–-]{1,2}|,|\.|;|!|\?|$))/i;
-// "swap X out for Y" / "replace X with Y" is a targeted substitution: X
-// leaves, Y takes X's slot, and everything else in the active set stays
-// (the FQ swap-correction hard fail: Nasdaq must survive the Tesla→Rivian
-// swap). "swap in Y for X" reverses which capture names the outgoing one.
-const SWAP_IN_CORRECTION =
-  /\b(?:swap|sub(?:stitute)?)\s+in\s+(.+?)\s+(?:for|instead of|in place of)\s+(.+?)(?=[.!?,;]|$)/i;
-const SWAP_CORRECTION =
-  /\b(?:swap|switch|replace|sub(?:stitute)?)\s+(?:out\s+)?(.+?)\s+(?:out\s+)?(?:for|with|to)\s+(.+?)(?=[.!?,;]|$)/i;
-// "Forget the others, between those two..." names no specific entity, so it
-// cannot resolve via REMOVAL above — it narrows to whichever subset the
-// assistant's own last reply most recently focused on (FQ-08/F1.2).
-const NARROWING_TO_SUBSET =
-  /\b(?:forget\s+(?:the\s+)?(?:others?|rest)|only\s+(?:those|these)\s+(?:two|three|four|couple)|between\s+(?:those|these)\s+(?:two|three|couple)|just\s+(?:those|these)\s+(?:two|three))\b/i;
-const RESET = /^(?:reset|start (?:over|fresh|again)|clear (?:the )?(?:context|conversation|slate)|new topic)[\s,.!?]*$/i;
-const AUSTRALIAN_BANK_TICKERS = new Set(["CBA", "NAB", "ANZ", "WBC"]);
-const CONSULTING_NAMES = new Set(["Deloitte", "PwC", "EY", "KPMG"]);
-const INDEX_TICKERS = new Set(["IXIC", "GSPC", "DJI", "AXJO"]);
-
-const STATE_COMMANDS = [
-  "forget",
-  "drop",
-  "remove",
-  "ignore",
-  "skip",
-  "swap",
-  "switch",
-  "replace",
-  "substitute",
-] as const;
-
-// Fuzzy matching is deliberately confined to a command verb at the start of
-// a clause and to one deletion/substitution. Ordinary prose such as "target
-// those" never enters command parsing.
-export function normalizeStateCommand(message: string): string {
-  return message.replace(
-    /(^|[.!?;]\s*)([a-z]{3,10})(?=\s)/i,
-    (match, prefix: string, token: string) => {
-      const lower = token.toLowerCase();
-      if (STATE_COMMANDS.includes(lower as (typeof STATE_COMMANDS)[number])) {
-        return match;
-      }
-      const command = STATE_COMMANDS.find((candidate) =>
-        isWithinOneEdit(lower, candidate)
-      );
-      return command ? `${prefix}${command}` : match;
-    }
-  );
-}
-
-function normalizeOrderedReference(
-  message: string,
-  hasExplicitPair: boolean
-): string {
-  if (!hasExplicitPair) return message;
-  const hasReferenceContext =
-    /\b(?:what about|how about|wb|vs\.?|versus|against|compare|look|doing|perform)\b/i.test(
-      message
-    );
-  if (!hasReferenceContext) return message;
-  return message.replace(/\bthe\s+([a-z]{4,8})\b/gi, (match, token: string) => {
-    const lower = token.toLowerCase();
-    const candidates = ["former", "latter"].filter(
-      (candidate) => lower !== candidate && isWithinOneEdit(lower, candidate)
-    );
-    return candidates.length === 1 ? `the ${candidates[0]}` : match;
-  });
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function subsetKeepCount(message: string): number {
-  const match = message.match(/\b(two|three|four|couple)\b/i);
-  const word = match?.[1].toLowerCase();
-  if (word === "three") return 3;
-  if (word === "four") return 4;
-  return 2;
-}
-
-// Counts name/ticker mentions of each currently-known entity in the most
-// recent assistant turn, so "those two"/"the others" can resolve against
-// whichever subset the assistant itself just highlighted rather than the
-// full original explicit set.
-function lastAssistantMentionCounts(
-  base: FinanceEntity[],
-  history: ChatTurn[]
-): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (let index = history.length - 1; index >= 0; index -= 1) {
-    const turn = history[index];
-    if (turn.role !== "ai") continue;
-    for (const entity of base) {
-      const terms = [
-        entity.ticker,
-        entity.name,
-        entity.name.split(/[\s,.]+/)[0],
-      ].filter(
-        (term): term is string => typeof term === "string" && term.length >= 2
-      );
-      let count = 0;
-      for (const term of new Set(terms)) {
-        const matches = turn.text.match(
-          new RegExp(`\\b${escapeRegExp(term)}\\b`, "gi")
-        );
-        count += matches?.length ?? 0;
-      }
-      counts.set(entity.id, count);
-    }
-    return counts;
-  }
-  return counts;
-}
-
-function isIndexEntity(entity: FinanceEntity): boolean {
-  return (
-    (Boolean(entity.ticker) && INDEX_TICKERS.has(entity.ticker as string)) ||
-    /\b(?:composite|index|500)\b/i.test(entity.name)
-  );
-}
-
-function removalTargets(
-  phrase: string,
-  base: FinanceEntity[]
-): FinanceEntity[] {
-  const resolved = resolveText(phrase);
-  if (resolved.length > 0) return resolved;
-  if (/\b(?:index(?:es)?|indices)\b/i.test(phrase)) {
-    return base.filter(isIndexEntity);
-  }
-  if (/\bbanks?\b/i.test(phrase)) {
-    return base.filter(
-      (entity) => entity.ticker && AUSTRALIAN_BANK_TICKERS.has(entity.ticker)
-    );
-  }
-  if (/\bconsult|accountants?|firms\b/i.test(phrase)) {
-    return base.filter((entity) => CONSULTING_NAMES.has(entity.name));
-  }
-  if (/\b(?:those|these|them|others?|rest)\b/i.test(phrase)) {
-    return base;
-  }
-  return [];
-}
-
+import type { ChatTurn, ConversationState, FinanceEntity } from "./types";
+import {
+  AUSTRALIAN_BANK_TICKERS,
+  CATEGORY_REFERENCE,
+  COMPARISON_FOLLOW_UP,
+  CONSULTING_NAMES,
+  CONTEXTUAL_FOLLOW_UP,
+  NARROWING_TO_SUBSET,
+  ORDERED_REFERENCE,
+  PLURAL_REFERENCE,
+  REMOVAL,
+  RESET,
+  SINGULAR_REFERENCE,
+  SWAP_CORRECTION,
+  SWAP_IN_CORRECTION,
+  isIndexEntity,
+  lastAssistantMentionCounts,
+  normalizeOrderedReference,
+  normalizeStateCommand,
+  removalTargets,
+  subsetKeepCount,
+} from "./entity-state-helpers";
 export function emptyConversationState(): ConversationState {
   return {
     version: 1,
@@ -189,7 +33,6 @@ export function emptyConversationState(): ConversationState {
     criteria: [],
   };
 }
-
 export function baseConversationState(
   previous: ConversationState | undefined,
   history: ChatTurn[]
@@ -198,7 +41,6 @@ export function baseConversationState(
     ? sanitizeConversationState(previous, canonicalizeEntity)
     : stateFromHistory(history);
 }
-
 function stateFromHistory(history: ChatTurn[]): ConversationState {
   let state = emptyConversationState();
   for (const turn of history) {
@@ -215,14 +57,12 @@ function stateFromHistory(history: ChatTurn[]): ConversationState {
   }
   return state;
 }
-
 export type StateResolution = {
   state: ConversationState;
   entities: FinanceEntity[];
   clarification?: string;
   reasonCode: string;
 };
-
 export function resolveConversationState(
   message: string,
   previous: ConversationState | undefined,
@@ -362,10 +202,6 @@ export function resolveConversationState(
     ...commandMessage.matchAll(/\b(former|latter|first one|second one)\b/gi),
   ];
   const orderedMatch = orderedMatches[0];
-  // True when an ordered reference ("the former") is paired with a newly
-  // named entity in the same message ("... vs IXIC"), meaning the user is
-  // deliberately pivoting the active comparison pair rather than just
-  // re-referring to the existing one (F1.1/FQ-02).
   let orderedPivot = false;
   if (subsetMatch) {
     if (base.explicitEntitySet.length < 2) {
@@ -419,7 +255,6 @@ export function resolveConversationState(
     orderedPivot = direct.length > 0;
     direct.unshift(...resolved);
   }
-
   const referencesPlural =
     PLURAL_REFERENCE.test(message) || CATEGORY_REFERENCE.test(message);
   const referencesSingular = SINGULAR_REFERENCE.test(message);
@@ -431,8 +266,6 @@ export function resolveConversationState(
       message
     ) &&
       /\bit\b/i.test(message));
-  // A message that IS the comparison connector ("vs amd", "against the S&P")
-  // names only the new side; the old side is whatever was just discussed.
   const bareComparison =
     /^(?:(?:and|or|ok(?:ay)?|so|now)\s+)?(?:vs\.?|versus|against|compared?\s+(?:to|with))\b/i.test(
       message
@@ -451,8 +284,6 @@ export function resolveConversationState(
             (entity) => !direct.some((candidate) => candidate.id === entity.id)
           )
       : [];
-  // "is it beating the index" re-attaches whichever index is already in
-  // play, even when this turn also names a company explicitly.
   const indexReference =
     removed.length === 0 &&
     /\bthe\s+(?:index(?:es)?|indices|benchmark)\b/i.test(message) &&
@@ -515,8 +346,6 @@ export function resolveConversationState(
   const next: ConversationState = {
     version: 1,
     revision: base.revision + 1,
-    // After a removal, the corrected set stands even when it came out empty
-    // ("forget the consultants" must not silently keep the consultants).
     entities: retainComparisonContext
       ? base.entities
       : removed.length > 0 || entities.length > 0
@@ -546,8 +375,6 @@ export function resolveConversationState(
     horizon: horizon ?? (startsNewTopic ? undefined : base.horizon),
     jurisdiction:
       jurisdiction ?? (startsNewTopic ? undefined : base.jurisdiction),
-    // Safety-reply bookkeeping is session-scoped, not topic-scoped: a new
-    // topic must not license replaying a refusal the user already read.
     safetyRepliesUsed: base.safetyRepliesUsed,
   };
   return {

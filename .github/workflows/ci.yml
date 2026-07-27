@@ -29,9 +29,6 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # No secrets are provided, so config.ts leaves every has* gate false and
-      # the suite runs against mocked providers — the same path tests/no-live-keys.ts
-      # enforces locally.
       - name: Test
         run: npm test
 

@@ -40,7 +40,6 @@ export type StockData = {
   news: News[];
   newsStatus: NewsStatus;
   newsUpdatedAt?: string;
-  /** Holistic AI verdict for the ticker; absent until a run has succeeded. */
   newsVerdict?: NewsVerdict;
 };
 

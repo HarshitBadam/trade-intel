@@ -97,7 +97,6 @@ const SCENARIOS: Scenario[] = [
       "how does that apply to nvidia right now?",
     ],
   },
-  // Audit reproduction scenarios (2026-07-14) — the highest-value regressions.
   {
     name: "audit-off-topic-containment",
     turns: [

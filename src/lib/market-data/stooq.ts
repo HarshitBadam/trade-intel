@@ -2,15 +2,11 @@ import "server-only";
 
 import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
 import type { ChatQuote } from "./types";
+import { buildChatQuote } from "./quote-metrics";
 
-// Stooq serves keyless end-of-day CSVs — free coverage for market indices
-// and Australian listings (via their US ADR series) that the primary US
-// intraday providers don't carry. Data is EOD/delayed; ChatQuote.eod flags
-// that so answers can label the as-of date honestly.
+// Keyless EOD coverage for indices and Australian listings via US ADRs.
 const STOOQ_HISTORY_URL = "https://stooq.com/q/d/l/";
-// Stooq is a last fallback behind the authenticated proxy feed. Fail fast on
-// its anti-bot interstitial so one HTML response cannot consume the whole
-// retrieval budget.
+// Last fallback; reject anti-bot HTML before it consumes the retrieval budget.
 const STOOQ_TIMEOUT_MS = 4_000;
 const STOOQ_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -21,8 +17,7 @@ const quoteCache = new Map<
   { expiresAt: number; value: Promise<ChatQuote | null> }
 >();
 
-// Stooq daily history CSV: "Date,Open,High,Low,Close,Volume" with ISO dates,
-// oldest first. Malformed rows are skipped rather than failing the series.
+// Stooq CSV is oldest-first with ISO dates; malformed rows are skipped.
 export function parseStooqDailyCsv(csv: string): DailyBar[] {
   const lines = csv.trim().split(/\r?\n/);
   if (lines.length < 2 || !/^date,open,high,low,close/i.test(lines[0])) {
@@ -41,69 +36,24 @@ export function parseStooqDailyCsv(csv: string): DailyBar[] {
   return bars;
 }
 
-// Same window math as the primary chat-quote path (api-chat.ts): trailing
-// sessions for day/week/month/year, calendar baselines for YTD and MTD.
+// Uses trailing-session windows and calendar baselines for YTD/MTD.
 export function chatQuoteFromDailyBars(
   ticker: string,
   bars: DailyBar[]
 ): ChatQuote | null {
-  if (bars.length < 2) return null;
-  const closes = bars.map((bar) => bar.close);
-  const i = closes.length - 1;
-  const pctBack = (sessions: number): number | null => {
-    const j = i - sessions;
-    return j >= 0 && closes[j] > 0
-      ? ((closes[i] - closes[j]) / closes[j]) * 100
-      : null;
-  };
-  const dateBack = (sessions: number): string | undefined => {
-    const j = i - sessions;
-    return j >= 0 ? bars[j].date : undefined;
-  };
-  const prevSessionPct =
-    i >= 2 && closes[i - 2] > 0
-      ? ((closes[i - 1] - closes[i - 2]) / closes[i - 2]) * 100
-      : null;
-  const prevSessionDate = i >= 1 ? bars[i - 1].date : undefined;
-  const currentYear = bars[i].date.slice(0, 4);
-  const firstOfYear = bars.findIndex((bar) => bar.date.startsWith(currentYear));
-  const ytdBase = firstOfYear > 0 ? firstOfYear - 1 : firstOfYear;
-  const ytdPct =
-    ytdBase >= 0 && ytdBase < i && closes[ytdBase] > 0
-      ? ((closes[i] - closes[ytdBase]) / closes[ytdBase]) * 100
-      : null;
-  const ytdStart = ytdBase >= 0 && ytdBase < i ? bars[ytdBase].date : undefined;
-  const currentMonth = bars[i].date.slice(0, 7);
-  const firstOfMonth = bars.findIndex((bar) =>
-    bar.date.startsWith(currentMonth)
-  );
-  const mtdBase = firstOfMonth > 0 ? firstOfMonth - 1 : firstOfMonth;
-  const mtdPct =
-    mtdBase >= 0 && mtdBase < i && closes[mtdBase] > 0
-      ? ((closes[i] - closes[mtdBase]) / closes[mtdBase]) * 100
-      : null;
-  const mtdStart = mtdBase >= 0 && mtdBase < i ? bars[mtdBase].date : undefined;
-  return {
+  const points = bars.map(({ date, close }) => ({ date, value: close }));
+  const latest = points[points.length - 1];
+  const previous = points[points.length - 2];
+  const dayPct =
+    latest && previous && previous.value > 0
+      ? ((latest.value - previous.value) / previous.value) * 100
+      : 0;
+  return buildChatQuote(points, {
     ticker,
-    price: closes[i],
-    asOf: bars[i].date,
+    price: latest?.value ?? 0,
+    dayPct,
     eod: true,
-    dayPct: pctBack(1) ?? 0,
-    prevSessionPct,
-    prevSessionDate,
-    fewDaysPct: pctBack(3),
-    weekPct: pctBack(5),
-    monthPct: pctBack(21),
-    yearPct: pctBack(252),
-    ytdPct,
-    ytdStart,
-    mtdPct,
-    mtdStart,
-    fewDaysStart: dateBack(3),
-    weekStart: dateBack(5),
-    monthStart: dateBack(21),
-    yearStart: dateBack(252),
-  };
+  });
 }
 
 export type StooqFetcher = (symbol: string) => Promise<string>;
@@ -121,8 +71,7 @@ async function fetchStooqCsv(symbol: string): Promise<string> {
   const url = `${STOOQ_HISTORY_URL}?s=${encodeURIComponent(symbol)}&i=d&d1=${d1}&d2=${d2}`;
   const response = await fetch(url, {
     headers: {
-      // Stooq serves the CSV to ordinary browsers; a bare fetch UA is more
-      // likely to hit its bot interstitial.
+      // A browser-like user agent avoids Stooq's bot interstitial.
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
       Accept: "text/csv,text/plain,*/*",
@@ -157,9 +106,7 @@ async function loadStooqQuote(
   return quote;
 }
 
-// Fetches EOD ChatQuotes for (app ticker, stooq symbol) pairs, with a short
-// cache and the shared circuit breaker. Partial success is success; the
-// breaker only counts turns where every symbol failed.
+// Fetches cached EOD quotes; partial success does not trip the breaker.
 export async function getStooqQuotes(
   pairs: { ticker: string; symbol: string }[],
   fetcher: StooqFetcher = fetchStooqCsv

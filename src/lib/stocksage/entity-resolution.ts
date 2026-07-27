@@ -121,9 +121,7 @@ export function resolveGroup(text: string): FinanceEntity[] {
 
 const EXCHANGE_CONTEXT_TICKERS = new Set(["ASX", "LSE", "TSX", "HKEX", "TSE", "NSE", "BSE", "NYSE", "AX"]);
 
-// Bare "the ASX" means the Australian market index only when the message is
-// asking how the market itself is doing ("how's the ASX done today"), never
-// when ASX names the listing venue ("investable on the ASX", "ASX:CBA").
+// Treat bare "the ASX" as the market index only in market-performance asks.
 const ASX_INDEX_CONTEXT =
   /\bhow(?:'?s| is| has| did| was| are)?\s+(?:the\s+)?asx\b|\b(?:the\s+)?asx\b[^.!?\n]{0,24}\b(?:done|doing|perform\w*|today|up|down|fell|rose|dropped|climbed|this (?:week|month|year)|ytd|year[- ]to[- ]date)\b/i;
 
@@ -151,11 +149,7 @@ export function resolveText(text: string): FinanceEntity[] {
     addEntity(output, seen, fromAlias(alias));
   }
 
-  // Recover a single typo in a distinctive one-word entity alias. Matching is
-  // deliberately bounded: short/common aliases and ambiguous nearest matches
-  // are excluded, exact matches still win above, and no arbitrary ticker is
-  // manufactured. This keeps typo tolerance in the canonical catalog layer
-  // instead of scattering benchmark-specific spellings through route regexes.
+  // Only recover distinctive aliases; reject short or ambiguous near-matches.
   const words = [...clean.toLowerCase().matchAll(/\b[a-z][a-z0-9]{5,}\b/g)];
   const fuzzyMatches: { alias: WebAlias; index: number }[] = [];
   for (const word of words) {

@@ -218,9 +218,6 @@ test("a five-turn high-stakes sequence never repeats a refusal body", async () =
     seen.add(reply.text);
     state = reply.state;
   }
-  // Direction awareness: the "perform poorly" turn must not promise gains.
-  // Tense awareness: the forward-looking savings turn must not reference a
-  // past decision.
   const forward = await answerChat(
     request("should I put my remaining savings in too?", {
       state: comparisonState,
@@ -262,14 +259,12 @@ test("finance-dressed creative requests classify as pure off-topic", () => {
   assert.ok(creativeRequestOnly("write me a haiku about the ocean"));
   assert.ok(creativeRequestOnly("write a story about tesla's rise"));
   assert.ok(creativeRequestOnly("compose a rap about the S&P 500"));
-  // Not creative at all.
   assert.ok(!creativeRequestOnly("give me a rundown on nvidia"));
   assert.ok(
     !creativeRequestOnly(
       "the earnings call read like pure poetry — how's nvidia doing?"
     )
   );
-  // Creative + a separate finance question is blended, not pure.
   assert.ok(
     !creativeRequestOnly("write me a haiku, then compare tesla and rivian")
   );
@@ -279,20 +274,17 @@ test("finance-dressed creative requests classify as pure off-topic", () => {
 });
 
 test("delivered verse is caught at publication", () => {
-  // Inline haiku with " / " separators (the exact audit leak shape).
   assert.ok(
     performsSmuggledTask(
       "GPU dreams rise, / NVIDIA climbs the sky— / Market pulse in code."
     )
   );
-  // Multiline stanza.
   assert.ok(
     performsSmuggledTask(
       "GPU dreams rise,\nNVIDIA climbs the sky—\nMarket pulse in code."
     )
   );
   assert.ok(performsSmuggledTask("Here's a little haiku for you:"));
-  // Legit finance answers — figures, bullets, colorful quoted language.
   assert.ok(
     !performsSmuggledTask(
       "Nvidia's CFO called the quarter 'pure poetry'. Shares rose +4.12% to $211.86, and the trailing month is +3.38%."
