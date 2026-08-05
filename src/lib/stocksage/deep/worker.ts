@@ -1,22 +1,10 @@
 import "server-only";
 
+import { hasDeepResearch } from "@/lib/config";
 import {
-  hasDeepResearch,
-  hasLangflow,
-  LANGFLOW_FLOW_ID,
-} from "@/lib/config";
-import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
-import { runLangflowFlow } from "@/lib/langflow";
-import {
-  expandValidCitations,
-  stripTickerCitationMarkers,
-  validCitationUrls,
-} from "./citations";
-import {
-  parseDeepResearchSnapshot,
   type DeepResearchSnapshot,
-} from "./deep-snapshot";
-import { unsupportedFigures } from "./figures";
+} from "./snapshot";
+import { unsupportedFigures } from "../figures";
 import {
   firstPersonVerificationLimitation,
   hasSmuggledOffTopicTask,
@@ -25,20 +13,23 @@ import {
   performsSmuggledTask,
   proxyMisrepresentation,
   uncitedResearchClaimUnits,
-} from "./regular-guards";
-import { roundFiguresForDisplay } from "./rounding";
-import { runIdempotentDeepWork } from "./deep-store";
-import { validateDeepResearchResult } from "./deep-validation";
-import { planEvidence } from "./planning";
-import { STOCKSAGE_DEEP_SYSTEM } from "./prompt";
-import { executeEvidencePlan } from "./retrieve";
-import { synthesizeWithFallback } from "./synthesis";
+} from "../regular-guards";
+import {
+  deepSynthesisChecks,
+  evaluatePublicationCandidate,
+  finalizePublicationText,
+} from "../publication";
+import { validateDeepResearchResult } from "./validation";
+import { planEvidence } from "../evidence/planner";
+import { STOCKSAGE_DEEP_SYSTEM } from "../prompt";
+import { executeEvidencePlan } from "../evidence/retrieve";
+import { synthesizeWithFallback } from "../synthesis";
 import type {
   ConversationState,
   DeepResearchReply,
   EvidenceSource,
   FinanceEntity,
-} from "./types";
+} from "../types";
 
 function percent(value: number | null): string {
   if (value === null || Number.isNaN(value)) return "—";
@@ -131,11 +122,14 @@ function snapshotContext(snapshot: DeepResearchSnapshot): {
   entities: FinanceEntity[];
   state: ConversationState;
 } {
-  const entities = snapshot.entities.map((entity) => ({
-    ...entity,
-    query: entity.ticker ?? entity.name,
-    jurisdiction: snapshot.jurisdiction,
-  }));
+  const entities: FinanceEntity[] =
+    snapshot.version === 2
+      ? snapshot.entities.map((entity) => ({ ...entity }))
+      : snapshot.entities.map((entity) => ({
+          ...entity,
+          query: entity.ticker ?? entity.name,
+          jurisdiction: snapshot.jurisdiction,
+        }));
   return {
     entities,
     state: {
@@ -146,61 +140,13 @@ function snapshotContext(snapshot: DeepResearchSnapshot): {
       criteria: snapshot.criteria,
       horizon: snapshot.horizon,
       jurisdiction: snapshot.jurisdiction,
+      groups: snapshot.version === 2 ? snapshot.groups : [],
+      intervals: snapshot.version === 2 ? snapshot.intervals : undefined,
     },
   };
 }
 
-async function langflowDeepSynthesis(args: {
-  system: string;
-  user: string;
-  accept: (text: string) => boolean;
-}): Promise<string | null> {
-  if (!hasLangflow || !LANGFLOW_FLOW_ID) return null;
-  if (await isOpen("langflow-deep")) return null;
-  try {
-    const text = await runLangflowFlow({
-      flowId: LANGFLOW_FLOW_ID,
-      input: `${args.system}\n\n${args.user}`,
-      timeoutMs: 5_000,
-    });
-    const trimmed = text.trim();
-    if (!trimmed || !args.accept(trimmed)) {
-      console.error(
-        `[stocksage] ${JSON.stringify({
-          event: "deep_synthesis",
-          provider: "langflow-deep",
-          name: "SynthesisValidationError",
-        })}`
-      );
-      return null;
-    }
-    await recordSuccess("langflow-deep");
-    console.info(
-      `[stocksage] ${JSON.stringify({
-        event: "deep_synthesis",
-        provider: "langflow-deep",
-        status: "success",
-      })}`
-    );
-    return trimmed;
-  } catch (error) {
-    await recordFailure("langflow-deep");
-    console.error(
-      `[stocksage] ${JSON.stringify({
-        event: "deep_synthesis",
-        provider: "langflow-deep",
-        name: error instanceof Error ? error.name : "unknown",
-        detail:
-          error instanceof Error
-            ? error.message.slice(0, 200)
-            : String(error).slice(0, 200),
-      })}`
-    );
-    return null;
-  }
-}
-
-async function executeDeepResearch(
+export async function executeDeepResearch(
   snapshot: DeepResearchSnapshot
 ): Promise<DeepResearchReply> {
   if (!hasDeepResearch) {
@@ -214,42 +160,24 @@ async function executeDeepResearch(
   let stage = "setup";
   try {
     const { entities, state } = snapshotContext(snapshot);
-    const route = entities.length > 1 ? "comparison" : "current_finance";
-    const retrievalMessage = `${snapshot.question}\nResearch context: catalysts, outlook, and material risks.`;
+    const route =
+      snapshot.version === 2
+        ? snapshot.route
+        : entities.length > 1
+          ? "comparison"
+          : "current_finance";
     const plan = planEvidence({
       route,
-      message: retrievalMessage,
+      depth: "deep",
+      message: snapshot.question,
       entities,
       state,
+      asOf: snapshot.asOf,
+      intervals:
+        snapshot.version === 2
+          ? snapshot.intervals
+          : state.intervals,
     });
-    if (entities.length === 1) {
-      const entity = entities[0];
-      const tickers = entity.ticker ? [entity.ticker] : [];
-      plan.queries.push(
-        {
-          id: "tavily-deep-risks",
-          provider: "tavily",
-          query: `${entity.query} latest investor risks regulation litigation competition`,
-          entityIds: [entity.id],
-          tickers,
-          criteria: ["risk"],
-          freshnessDays: 120,
-          topic: "news",
-          limit: 4,
-        },
-        {
-          id: "tavily-deep-fundamentals",
-          provider: "tavily",
-          query: `${entity.query} latest earnings investor relations guidance outlook`,
-          entityIds: [entity.id],
-          tickers,
-          criteria: ["earnings", "outlook"],
-          freshnessDays: 180,
-          topic: "general",
-          limit: 4,
-        }
-      );
-    }
     stage = "retrieval";
     const context = await executeEvidencePlan({ plan, entities });
     if (context.sources.length === 0) {
@@ -291,14 +219,14 @@ Today is ${today}. Treat that as the date anchor. Use "upcoming", "next-gen", "n
 Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw URL or invent an ID. The server will turn valid IDs into links.`;
     const smuggled = hasSmuggledOffTopicTask(snapshot.question);
     const accept = (candidate: string) =>
-      validCitationUrls(candidate, context.sources).length > 0 &&
-      uncitedResearchClaimUnits(candidate, context.sources).length === 0 &&
-      investmentDirectionClaim(candidate) === null &&
-      firstPersonVerificationLimitation(candidate) === null &&
-      unsupportedFigures(candidate, user).length === 0 &&
-      hedgedEstimateClaim(candidate, user) === null &&
-      proxyMisrepresentation(candidate, entities, context.quotes) === null &&
-      !(smuggled && performsSmuggledTask(candidate));
+      evaluatePublicationCandidate(candidate, deepSynthesisChecks({ smuggled }), {
+        corpus: user,
+        entities,
+        quotes: context.quotes,
+        sources: context.sources,
+        requestedCriteria: [],
+        hasSources: true,
+      }) === null;
     let text: string;
     try {
       text = await synthesizeWithFallback({
@@ -308,7 +236,8 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
         temperature: 0.35,
         timeoutMs: 5_000,
         totalTimeoutMs: 8_000,
-        maxCandidates: 2,
+        maxCandidates: 1,
+        modelAttempts: "primary_only",
         event: "deep_synthesis",
         accept,
         correction: (draft) => {
@@ -358,38 +287,30 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
           }Every claim taken from RETRIEVED SOURCES must end with its ID like [S1]. Keep the same structure and depth.`;
         },
       });
-    } catch (error) {
-      // Langflow is a bounded fallback, not a serial prerequisite. If both
-      // synthesis paths fail publication checks, preserve the retrieved work
-      // in a source-grounded report instead of claiming there was no evidence.
-      const validationOnly =
-        error instanceof Error &&
-        error.message === "Synthesis output failed publication checks";
-      text = validationOnly
-        ? deterministicDeepReport(entities, context.sources, plan.asOf)
-        : ((await langflowDeepSynthesis({ system, user, accept })) ??
-          deterministicDeepReport(entities, context.sources, plan.asOf));
+    } catch {
+      // Provider and publication-check failures converge on the same
+      // deterministic evidence report. Deep never calls Langflow.
+      text = deterministicDeepReport(entities, context.sources, plan.asOf);
     }
     stage = "citation_validation";
-    let cleaned = stripTickerCitationMarkers(
-      text,
-      context.quotes.map((quote) => quote.ticker)
-    );
-    let citationUrls = validCitationUrls(cleaned, context.sources);
-    let expanded = roundFiguresForDisplay(
-      expandValidCitations(cleaned, context.sources)
-    );
+    let finalized = finalizePublicationText(text, context.sources, {
+      stripTickers: true,
+      tickers: context.quotes.map((quote) => quote.ticker),
+    });
+    let citationUrls = finalized.citationUrls;
+    let expanded = finalized.text;
     let validationError = validateDeepResearchResult({
       snapshot,
       text: expanded,
       citationUrls,
     });
     if (validationError) {
-      cleaned = deterministicDeepReport(entities, context.sources, plan.asOf);
-      citationUrls = validCitationUrls(cleaned, context.sources);
-      expanded = roundFiguresForDisplay(
-        expandValidCitations(cleaned, context.sources)
+      finalized = finalizePublicationText(
+        deterministicDeepReport(entities, context.sources, plan.asOf),
+        context.sources
       );
+      citationUrls = finalized.citationUrls;
+      expanded = finalized.text;
       validationError = validateDeepResearchResult({
         snapshot,
         text: expanded,
@@ -435,20 +356,4 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
       retryable: true,
     };
   }
-}
-
-export async function runDeepResearch(
-  token: unknown
-): Promise<DeepResearchReply> {
-  const snapshot = parseDeepResearchSnapshot(token);
-  if (!snapshot) {
-    return {
-      workId: "invalid",
-      status: "failure",
-      text: "Open Research deeper from the latest StockSage answer.",
-    };
-  }
-  return runIdempotentDeepWork(snapshot.workId, () =>
-    executeDeepResearch(snapshot)
-  );
 }

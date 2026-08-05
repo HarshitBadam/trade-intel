@@ -1,4 +1,4 @@
-import type { RegularContext } from "./retrieve";
+import type { RegularContext } from "./evidence/retrieve";
 import { humanAsOf } from "./regular-dates";
 import type {
   ChatReply,

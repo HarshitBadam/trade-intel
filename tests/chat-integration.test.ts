@@ -2,8 +2,7 @@ import "./no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { answerChat } from "../src/lib/stocksage/chat";
-import { answerWithModel } from "../src/lib/stocksage/chat-model";
-import type { RetrievalProviders } from "../src/lib/stocksage/retrieve";
+import type { RetrievalProviders } from "../src/lib/stocksage/evidence/retrieve";
 import type { ChatRequest } from "../src/lib/stocksage/types";
 
 function setup() {
@@ -127,10 +126,9 @@ test("news ask with a quote present still reaches the grounded cited answer", as
     ],
     tavily: async () => [],
   };
-  const reply = await answerWithModel(
+  const reply = await answerChat(
     request("What's the latest cited Nvidia news?"),
-    { retrievalProviders: providers },
-    Date.now()
+    { retrievalProviders: providers }
   );
   assert.doesNotMatch(reply.text, /Market snapshot/i);
   assert.match(reply.text, /Nvidia Blackwell shipments accelerate/);

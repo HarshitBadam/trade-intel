@@ -1,12 +1,12 @@
-import { listingCapability } from "./listing-capability";
-import { describeInterval, type TemporalInterval } from "./temporal";
+import { listingCapability } from "../listing-capability";
+import { describeInterval, type TemporalInterval } from "../temporal";
 import type {
   ChatRoute,
   ConversationState,
   EvidencePlan,
   EvidenceQuery,
   FinanceEntity,
-} from "./types";
+} from "../types";
 
 const DEFAULT_COMPARISON_CRITERIA = [
   "valuation",
@@ -90,6 +90,7 @@ function supportsTrailingQuote(message: string): boolean {
  * number of consolidated queries instead of one per entity.
  */
 const MAX_WEB_QUERIES = 3;
+const MAX_DEEP_ENTITY_GROUPS = 2;
 
 function consolidate<T>(items: T[], maxGroups: number): T[][] {
   if (items.length <= maxGroups) return items.map((item) => [item]);
@@ -134,6 +135,8 @@ function query(
 
 export function planEvidence(args: {
   route: ChatRoute;
+  /** Deep uses the same planner contract; regular behavior remains the default. */
+  depth?: "regular" | "deep";
   message: string;
   entities: FinanceEntity[];
   state: ConversationState;
@@ -171,6 +174,17 @@ export function planEvidence(args: {
         : historicalPeriod(args.message)
           ? ["performance"]
           : ["current developments"];
+  const deepCriteria = [
+    ...new Set([
+      ...currentCriteria,
+      ...args.state.criteria,
+      "risk",
+      "earnings",
+      "outlook",
+    ]),
+  ].slice(0, 8);
+  const plannedCriteria =
+    args.depth === "deep" ? deepCriteria : currentCriteria;
   const groundedQuery = [
     args.message,
     entityContext ? `Context: ${entityContext}` : "",
@@ -222,7 +236,7 @@ export function planEvidence(args: {
           "astra",
           args.message,
           astraEligible,
-          currentCriteria,
+          plannedCriteria,
           "news",
           isPriceOnly(args.message) ? 4 : 8,
           astraFreshnessDays(args.message, freshnessDays)
@@ -230,13 +244,40 @@ export function planEvidence(args: {
       );
     }
     if (
+      args.depth === "deep" ||
       !isPriceOnly(args.message) ||
       historical ||
       web.length > 0 ||
       args.entities.length === 0
     ) {
       const targets = web.length > 0 ? web : args.entities;
-      if (targets.length > 1) {
+      if (args.depth === "deep") {
+        for (const group of consolidate(targets, MAX_DEEP_ENTITY_GROUPS)) {
+          const names = group.map((entity) => entity.query).join(" OR ");
+          queries.push(
+            query(
+              groupId("tavily-deep-risk", group),
+              "tavily",
+              `${names} material risks regulation litigation competition. Context: ${args.message.slice(0, 160)}`,
+              group,
+              ["risk"],
+              "news",
+              Math.min(8, 4 * group.length),
+              180
+            ),
+            query(
+              groupId("tavily-deep-outlook", group),
+              "tavily",
+              `${names} latest earnings investor relations guidance catalysts outlook. Context: ${args.message.slice(0, 160)}`,
+              group,
+              ["earnings", "outlook"],
+              "general",
+              Math.min(8, 4 * group.length),
+              240
+            )
+          );
+        }
+      } else if (targets.length > 1) {
         for (const group of consolidate(targets, MAX_WEB_QUERIES)) {
           queries.push(
             query(
@@ -270,7 +311,9 @@ export function planEvidence(args: {
 
   if (args.route === "comparison") {
     const criteria =
-      args.state.criteria.length > 0
+      args.depth === "deep"
+        ? deepCriteria
+        : args.state.criteria.length > 0
         ? args.state.criteria
         : DEFAULT_COMPARISON_CRITERIA;
     const topic = /\b(?:today|yesterday|current|recent|latest|earnings|regulat|legal|last|past|over|between)\b/i.test(
@@ -329,25 +372,55 @@ export function planEvidence(args: {
         )
       );
     }
-    for (const group of consolidate(args.entities, MAX_WEB_QUERIES)) {
-      queries.push(
-        query(
-          groupId("tavily", group),
-          "tavily",
-          `${group.map((entity) => entity.query).join(" OR ")} ${criteria.join(" ")}. Context: ${args.message.slice(0, 160)}`,
-          group,
-          criteria,
-          topic,
-          3 * group.length,
-          topic === "news" ? freshnessDays : undefined
-        )
-      );
+    for (const group of consolidate(
+      args.entities,
+      args.depth === "deep" ? MAX_DEEP_ENTITY_GROUPS : MAX_WEB_QUERIES
+    )) {
+      const names = group.map((entity) => entity.query).join(" OR ");
+      if (args.depth === "deep") {
+        queries.push(
+          query(
+            groupId("tavily-deep-risk", group),
+            "tavily",
+            `${names} material risks regulation litigation competition. Context: ${args.message.slice(0, 160)}`,
+            group,
+            ["risk"],
+            "news",
+            Math.min(8, 4 * group.length),
+            180
+          ),
+          query(
+            groupId("tavily-deep-outlook", group),
+            "tavily",
+            `${names} latest earnings investor relations guidance catalysts outlook. Context: ${args.message.slice(0, 160)}`,
+            group,
+            ["earnings", "outlook"],
+            "general",
+            Math.min(8, 4 * group.length),
+            240
+          )
+        );
+      } else {
+        queries.push(
+          query(
+            groupId("tavily", group),
+            "tavily",
+            `${names} ${criteria.join(" ")}. Context: ${args.message.slice(0, 160)}`,
+            group,
+            criteria,
+            topic,
+            3 * group.length,
+            topic === "news" ? freshnessDays : undefined
+          )
+        );
+      }
     }
   }
 
   if (args.retrievalAuthorized === false) {
     return {
       version: 1,
+      depth: args.depth ?? "regular",
       route: args.route,
       asOf,
       queries: [],
@@ -361,21 +434,28 @@ export function planEvidence(args: {
 
   return {
     version: 1,
+    depth: args.depth ?? "regular",
     route: args.route,
     asOf,
     queries,
     requiredEntityIds:
-      args.route === "comparison"
+      args.depth === "deep" || args.route === "comparison"
         ? args.entities.map((entity) => entity.id)
         : [],
     criteria:
-      args.route === "comparison"
+      args.depth === "deep"
+        ? deepCriteria
+        : args.route === "comparison"
         ? args.state.criteria.length > 0
           ? args.state.criteria
           : DEFAULT_COMPARISON_CRITERIA
         : [],
     explicitCriteria:
-      args.route === "comparison" ? [...args.state.criteria] : currentCriteria,
+      args.depth === "deep"
+        ? deepCriteria
+        : args.route === "comparison"
+          ? [...args.state.criteria]
+          : currentCriteria,
     horizon: args.state.horizon,
     intervals: args.intervals,
   };

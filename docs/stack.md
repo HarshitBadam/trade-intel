@@ -24,5 +24,5 @@ Grouped by role. The choices that actually shape the app are explained in [archi
 
 - **Groq** runs isolated model lanes: 8B batch analysis, 70B primary chat, and GPT OSS/8B chat failover.
 - **Tavily** supplies only explicitly planned, filtered evidence for current and comparison routes.
-- **Langflow** remains an optional primary batch-analysis orchestration layer; user-facing chat and deeper research run in-app.
+- **Langflow** is retained only as an explicit manual analysis-evaluation adapter; production analysis and StockSage call Groq directly.
 - **Auth.js** handles Google sign-in.

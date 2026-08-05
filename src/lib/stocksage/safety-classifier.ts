@@ -16,6 +16,7 @@ import {
 } from "@/lib/llm";
 import { rateLimit } from "@/lib/rate-limit";
 import type { CrisisKind } from "./crisis";
+import { logStockSage } from "./telemetry";
 
 export type SafetyVerdict =
   | { action: "allow" }
@@ -180,20 +181,44 @@ export async function classifyInputSafety(
   }
 }
 
+/**
+ * Races the classifier against the deadline and fails open either way. The
+ * classifier promise always has its own `.catch` attached before the race
+ * starts, so a classifier that rejects after losing the race — e.g. it
+ * settles a moment after the deadline already resolved `ALLOW` — can never
+ * surface as an unhandled rejection; it just resolves to a value nothing
+ * awaits anymore. When the deadline wins, that outcome is a distinct,
+ * explicitly logged `classifier_timeout` fail-open rather than an
+ * indistinguishable ALLOW, so a hung classifier is visible in telemetry
+ * separately from an outright classifier error or a real "safe" verdict.
+ */
 export function beginInputSafetyCheck(
   message: string,
   classifier: SafetyClassifier = classifyInputSafety
 ): Promise<SafetyVerdict> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let classifierSettled = false;
   const verdict = Promise.resolve()
     .then(() => classifier(message))
-    .catch(() => ALLOW);
-  return Promise.race([
-    verdict,
-    new Promise<SafetyVerdict>((resolve) => {
-      timer = setTimeout(() => resolve(ALLOW), DEADLINE_MS);
-    }),
-  ]).finally(() => {
-    if (timer) clearTimeout(timer);
+    .catch(() => ALLOW)
+    .finally(() => {
+      classifierSettled = true;
+    });
+  const deadline = new Promise<SafetyVerdict>((resolve) => {
+    timer = setTimeout(() => resolve(ALLOW), DEADLINE_MS);
   });
+  return Promise.race([verdict, deadline])
+    .then((result) => {
+      if (!classifierSettled) {
+        logStockSage({
+          event: "safety_classifier_fail_open",
+          reasonCode: "classifier_timeout",
+          durationMs: DEADLINE_MS,
+        });
+      }
+      return result;
+    })
+    .finally(() => {
+      if (timer) clearTimeout(timer);
+    });
 }

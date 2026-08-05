@@ -1,16 +1,15 @@
-import { detectCriteria } from "./conversation-attributes";
+import { buildTurnContext, resolveTurnContext } from "./context";
 import {
   crisisResponse,
   detectCrisis,
 } from "./crisis";
-import { resolveConversationState, type StateResolution } from "./entities";
+import type { StateResolution } from "./entities";
 import {
   immediateReply,
   normalizeMessage,
   routeMessage,
   STABLE_FINANCE,
 } from "./intent";
-import { primaryCalendar } from "./listing-capability";
 import {
   classifyHighStakes,
   evaluateDomainPolicy,
@@ -18,27 +17,15 @@ import {
   pickHighStakesReply,
 } from "./policy";
 import { creativeRequestOnly } from "./regular-guards";
-import { defaultInterval, parseIntervals } from "./temporal";
 import type {
   ChatRequest,
   ChatRoute,
   ConversationState,
   FinanceEntity,
-  RouteDecision,
   Turn,
-  TurnContext,
   TurnDecision,
   TurnDecisionKind,
 } from "./types";
-
-export type TurnDecisionMode = "on" | "shadow" | "off";
-
-export const turnDecisionMode: TurnDecisionMode =
-  process.env.STOCKSAGE_TURN_DECISION === "shadow"
-    ? "shadow"
-    : process.env.STOCKSAGE_TURN_DECISION === "off"
-      ? "off"
-      : "on";
 
 /** "What is a P/E ratio?" stays a concept answer even beside a named company. */
 const DEFINITIONAL =
@@ -113,57 +100,6 @@ function supported(args: {
   });
 }
 
-function buildContext(args: {
-  message: string;
-  resolution: StateResolution;
-  entities: FinanceEntity[];
-  now?: Date;
-}): TurnContext {
-  const { state } = args.resolution;
-  const calendar = primaryCalendar(
-    args.entities.length > 0 ? args.entities : state.entities
-  );
-  const intervals =
-    state.intervals && state.intervals.length > 0
-      ? state.intervals
-      : [defaultInterval(calendar, args.now)];
-  const focusIds = new Set(state.focusEntityIds ?? []);
-  const focusEntities = args.entities.filter((entity) =>
-    focusIds.has(entity.id)
-  );
-  return Object.freeze({
-    version: 1,
-    message: args.message,
-    state,
-    entities: args.entities,
-    focusEntities: focusEntities.length > 0 ? focusEntities : args.entities,
-    groups: state.groups ?? [],
-    intervals,
-    calendar,
-    criteria: state.criteria,
-    jurisdiction: state.jurisdiction,
-  } as TurnContext);
-}
-
-/**
- * Mirrors the entity view the domain policy has always been given: an explicit
- * conversation reference lets a bare follow-up inherit the prior subjects.
- */
-export function hasExplicitConversationReference(message: string): boolean {
-  return (
-    /\b(?:it|its|that|they|their|them|those|these|both|former|latter|what about|how about|wb|which (?:one|is|looks)|all of them)\b/i.test(
-      message
-    ) ||
-    /\b(?:a|the)\s+\w+(?:er)?\s+one(?:s)?\b/i.test(message) ||
-    /^(?:(?:and|so|ok(?:ay)?)\s+)?(?:why|what (?:changed|happened|moved)|today|yesterday|(?:a\s+)?few days ago|anything notable|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year))\b/i.test(
-      message
-    ) ||
-    /\b(?:which developments?\b.*\bmatters?|what\b.*\bmatters?|catalysts?|what should investors? watch)\b/i.test(
-      message
-    )
-  );
-}
-
 function australianListingClarification(
   message: string,
   entities: FinanceEntity[]
@@ -192,6 +128,8 @@ const PROHIBITED_FALLBACK_ROUTE: ChatRoute = "refused";
 /**
  * The one place a turn is classified. Executors receive the frozen result and
  * must not re-derive route, entities, retrieval authorization or safety.
+ * Entity/group/listing/temporal resolution itself lives in `./context`; this
+ * module only owns the policy and routing decisions built on top of it.
  */
 export function decideTurn(
   request: ChatRequest,
@@ -223,7 +161,7 @@ export function decideTurn(
         text: crisisResponse(crisis),
         safetyRailRequired: false,
       }),
-      context: buildContext({
+      context: buildTurnContext({
         message,
         resolution,
         entities: [],
@@ -232,43 +170,14 @@ export function decideTurn(
     };
   }
 
-  const resolution = resolveConversationState(
-    message,
-    request.state,
-    request.history
-  );
-  // A bare follow-up that names only a time window ("and over the last
-  // month?") or only a criterion ("what risks should I research first?")
-  // continues the active subject rather than leaving the finance domain.
-  const carriesFollowUpAttribute =
-    resolution.entities.length === 0 &&
-    resolution.state.entities.length > 0 &&
-    (parseIntervals({
-      message,
-      calendar: primaryCalendar(resolution.state.entities),
-      now: options.now,
-    }).length > 0 ||
-      detectCriteria(message).length > 0);
-  const conversationReference =
-    hasExplicitConversationReference(message) || carriesFollowUpAttribute;
-  const effectiveEntities =
-    resolution.entities.length > 0
-      ? resolution.entities
-      : conversationReference
-        ? resolution.state.entities
-        : [];
-  const policyEntities =
-    resolution.entities.length > 0
-      ? resolution.entities
-      : resolution.state.entities.length > 0
-        ? resolution.state.entities
-        : [];
-  const context = buildContext({
-    message,
+  const scoped: ChatRequest = { ...request, message };
+  const {
+    context,
     resolution,
-    entities: effectiveEntities,
-    now: options.now,
-  });
+    effectiveEntities,
+    policyEntities,
+    conversationReference,
+  } = resolveTurnContext({ message, request: scoped, now: options.now });
 
   const floor = hardSafetyFloor(message, policyEntities);
   if (floor?.response) {
@@ -507,50 +416,4 @@ export function decideTurn(
 
 export function isInstantDecision(value: TurnDecision): boolean {
   return value.latencyClass === "instant" && value.immediateText !== undefined;
-}
-
-/**
- * Wraps a legacy `RouteDecision` in the frozen contract so the reversible
- * self-classifying path produces the same shape as `decideTurn`.
- */
-export function turnFromRoute(args: {
-  message: string;
-  route: RouteDecision;
-  entities: FinanceEntity[];
-  state: ConversationState;
-  now?: Date;
-}): Turn {
-  const kind: TurnDecisionKind =
-    args.route.route === "comparison"
-      ? "supported_comparison"
-      : args.route.route === "current_finance"
-        ? "supported_current"
-        : "supported_stable";
-  return {
-    decision: decision({
-      kind,
-      route: args.route.route,
-      reasonCode: args.route.reasonCode,
-      safetyRailRequired: true,
-      latencyClass: "regular",
-      routeClass: args.route.retrievalRequired ? "retrieval" : "instant_clarify",
-      retrievalAuthorized: args.route.retrievalRequired,
-      synthesisAuthorized: true,
-      deepEligible: args.route.deepEligible,
-      retryEligible: true,
-      ...(args.route.clarification
-        ? { clarification: args.route.clarification }
-        : {}),
-    }),
-    context: buildContext({
-      message: args.message,
-      resolution: {
-        state: args.state,
-        entities: args.entities,
-        reasonCode: "legacy_route",
-      },
-      entities: args.entities,
-      now: args.now,
-    }),
-  };
 }

@@ -6,12 +6,10 @@ The source tree, annotated. Config and generated files are omitted.
 .
 ├── .github/workflows/
 │   ├── ci.yml                   # typecheck, lint, tests, and production build
-│   ├── news-cron.yml            # legacy/manual cron diagnostic
-│   └── keep-warm.yml            # legacy/manual Langflow diagnostic
+│   └── news-cron.yml            # legacy/manual cron diagnostic
 ├── langflow/
-│   ├── README.md                # the Deep Research and analysis flows
-│   ├── stocksage-chat.json      # RAG chat flow (Astra + Tavily + Groq 70B)
-│   └── stocksage-analysis.json  # stateless article-to-labels flow (Groq 8B)
+│   ├── README.md                # manual evaluation instructions
+│   └── stocksage-analysis.json  # optional analysis comparison flow
 ├── scripts/
 │   ├── build-universe.mjs       # rebuilds universe.json from Alpaca's asset list
 │   ├── run-showcase-cron.ts     # invokes the showcase scheduler manually
@@ -20,7 +18,7 @@ The source tree, annotated. Config and generated files are omitted.
 │   ├── setup-qstash.ts          # reconciles showcase + maintenance schedules
 │   ├── stocksage-smoke.ts       # runs the StockSage smoke scenarios
 │   ├── stocksage-eval.ts        # runs the broader StockSage evaluation set
-│   └── sync-system-prompt.mjs   # bakes the app prompts into the Langflow JSONs
+│   └── sync-system-prompt.mjs   # syncs analysis instructions to the retained flow
 ├── docs/
 │   ├── screenshots.md
 │   ├── stack.md
@@ -81,17 +79,15 @@ The source tree, annotated. Config and generated files are omitted.
     │   ├── useStaleData.ts      # stale-while-revalidate client hook
     │   ├── utils.ts             # cn() and small shared helpers
     │   ├── stocksage/
-    │   │   ├── chat.ts          # selective request lifecycle orchestration
-    │   │   ├── chat-model*.ts   # model routing, deterministic paths, and synthesis
+    │   │   ├── chat.ts          # stable wrapper for the unified engine
+    │   │   ├── engine.ts / answer.ts # five-stage lifecycle and sole answer executor
+    │   │   ├── router.ts / context.ts # authoritative frozen turn resolution
+    │   │   ├── publication.ts   # shared regular/deep publication contract
+    │   │   ├── deterministic-answer.ts / degraded-answer.ts # focused safe answer helpers
     │   │   ├── conversation-entity-state.ts / entity-state-helpers.ts # entity state transitions
-    │   │   ├── regular*.ts      # regular synthesis, guards, and safe fallback
-    │   │   ├── deep.ts          # per-response in-app deeper research
-    │   │   ├── deep-snapshot.ts # signed immutable research snapshots
-    │   │   ├── deep-store.ts    # idempotent research result reuse
-    │   │   ├── deep-validation.ts # deep-report publication checks
-    │   │   ├── retrieve.ts / retrieval-*.ts # typed evidence-plan execution
-    │   │   ├── planning.ts      # bounded provider/query planning
-    │   │   ├── evidence.ts      # relevance, freshness, and coverage filters
+    │   │   ├── regular-*.ts     # focused prompt, guards, history, and fallback helpers
+    │   │   ├── deep/            # durable queue, worker, snapshot, store, validation
+    │   │   ├── evidence/        # planner, cache-first retrieval, filters, provider helpers
     │   │   ├── policy.ts        # finance-domain and misuse policy
     │   │   ├── crisis.ts        # zero-cost crisis-language prefilter
     │   │   ├── safety-classifier.ts # custom-policy safeguard rail behind the prefilter
@@ -127,6 +123,7 @@ The source tree, annotated. Config and generated files are omitted.
     │       ├── analysis.ts      # validated direct-Groq analysis preparation
     │       ├── analysis-helpers.ts  # prompt build, Zod schema, runAnalysisLLM
     │       ├── universe.ts      # local search over universe.json
+    │       ├── langflow-analysis-provider.ts # manual/evaluation-only Langflow adapter
     │       ├── limiter.ts       # per-provider sliding rate limiter
     │       ├── queries.ts / transforms*.ts  # normalization, sentiment math, activity series
     │       └── types.ts         # shared market-data types

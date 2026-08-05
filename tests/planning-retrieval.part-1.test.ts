@@ -2,12 +2,11 @@ import "./no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveConversationState } from "../src/lib/stocksage/entities";
-import { planEvidence } from "../src/lib/stocksage/planning";
+import { planEvidence } from "../src/lib/stocksage/evidence/planner";
 import {
-  astraInput,
   executeEvidencePlan,
   type RetrievalProviders,
-} from "../src/lib/stocksage/retrieve";
+} from "../src/lib/stocksage/evidence/retrieve";
 import {
   expandValidCitations,
   validCitationUrls,
@@ -15,13 +14,13 @@ import {
 import {
   buildDeterministicRankingReply,
   buildFallbackReply,
-} from "../src/lib/stocksage/regular";
-import { filterEvidenceWithDiagnostics } from "../src/lib/stocksage/evidence";
+} from "../src/lib/stocksage/regular-fallback";
+import { filterEvidenceWithDiagnostics } from "../src/lib/stocksage/evidence/filters";
 import {
   readCachedEvidence,
   resetEvidenceCacheMemory,
   writeCachedEvidence,
-} from "../src/lib/stocksage/evidence-cache";
+} from "../src/lib/stocksage/evidence/cache";
 import { buildGroundedDeterministicReply } from "../src/lib/stocksage/grounded-answer";
 import type {
   FinanceEntity,

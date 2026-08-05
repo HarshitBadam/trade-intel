@@ -15,7 +15,7 @@ import {
   uncitedResearchClaimUnits,
 } from "../src/lib/stocksage/regular-guards";
 import { buildFallbackReply } from "../src/lib/stocksage/regular-fallback";
-import { retrieveMarketProxy } from "../src/lib/stocksage/retrieve";
+import { retrieveMarketProxy } from "../src/lib/stocksage/evidence/market";
 import { roundFiguresForDisplay } from "../src/lib/stocksage/rounding";
 import type { ChatQuote } from "../src/lib/market-data/types";
 import type { EvidenceQuery, EvidenceSource } from "../src/lib/stocksage/types";

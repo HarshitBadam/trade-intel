@@ -5,7 +5,7 @@ import {
   validCitationUrls,
 } from "./citations";
 import { humanAsOf, humanPublishedAt } from "./regular-fallback";
-import type { RegularContext } from "./retrieve";
+import type { RegularContext } from "./evidence/retrieve";
 import type {
   ChatReply,
   ChatRequest,

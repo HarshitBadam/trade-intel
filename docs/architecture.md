@@ -134,6 +134,22 @@ Reads go through `unstable_cache` with tag-based revalidation. The cron calls `r
 | Symbol search | 86400s | `search` |
 | Stored articles / verdict | 600s | `news` |
 
+## StockSage execution
+
+`src/lib/stocksage/chat.ts` is the stable public wrapper over one engine.
+`engine.ts` gates the request, freezes one turn from `router.ts` and
+`context.ts`, retrieves through `evidence/planner.ts` and
+`evidence/retrieve.ts`, then calls the sole executor in `answer.ts`.
+Retrieval reads revision-scoped cache and published market intelligence first,
+computes entity-by-criterion gaps, and calls fundamentals or Tavily only for
+uncovered cells. Regular synthesis uses direct Groq primary/fallback lanes;
+deterministic ASX, proxy, ranking, concept, and degraded answers remain local.
+
+Deep Research lives under `src/lib/stocksage/deep/`. Signed snapshots are
+accepted by `queue.ts`, executed only by the signed QStash worker, and tracked
+durably by `store.ts` through terminal success or failure. Queue outages never
+fall back to inline work.
+
 ## Chat safety
 
 Safety is two layers, because either one alone fails in a way the other covers.
@@ -147,16 +163,17 @@ flowchart LR
   M["user turn"] --> R{"crisis regex"}
   R -->|match| C["crisis response"]
   R -->|no match| P["policy, routing"]
-  P --> A["retrieval + synthesis"]
+  P --> RT["retrieval"]
   P -.->|started, not awaited| G["GPT-OSS Safeguard"]
-  A --> J{"join verdict"}
+  RT --> J{"join verdict"}
   G --> J
-  J -->|allow| OUT["answer"]
+  J -->|allow| A["synthesis"]
+  A --> OUT["answer"]
   J -->|S11| C
   J -->|S3/S4/S9| REF["refusal"]
 ```
 
-The classifier promise starts before retrieval and is awaited after synthesis, so on a normal finance turn its ~460ms hides entirely behind seconds of retrieval and adds no measurable wall clock. The verdict is checked before any reply leaves `answerChat`.
+The classifier promise starts before retrieval and is awaited before synthesis, so on a normal finance turn its ~460ms hides entirely behind seconds of retrieval and adds no measurable wall clock, while still gating any model-composed reply. The verdict is checked before any reply leaves `answerChat`.
 
 It acts on four of the fourteen MLCommons categories: `S11` (Suicide & Self-Harm) routes to the same crisis response as the prefilter, and `S3`, `S4`, `S9` refuse. Everything else is allowed through deliberately. `S6` (Specialized Advice) and `S2` (Non-Violent Crimes) matter most here: they fire on ordinary investment questions and on analysis of insider trading or market manipulation as subjects, which is the product's core function. Actual misconduct facilitation is refused deterministically in `policy.ts`, which does not depend on a model being reachable.
 
@@ -166,7 +183,7 @@ The rail fails open at every step. No key, open breaker, exhausted budget, HTTP 
 
 Two mechanisms keep a flaky provider from becoming a broken page.
 
-**Circuit breaker** (`src/lib/breaker.ts`) isolates Polygon, retrieval providers, Langflow analysis, and each Groq model lane. Three persistent failures inside ten minutes opens only that circuit; transient Groq 429s follow the server retry window and fail over without opening a ten-minute breaker. State lives in Redis so it is shared across serverless instances, with an in-process map as the local fallback. A shared synthesis admission limit prevents parallel chat requests from stampeding a model token bucket.
+**Circuit breaker** (`src/lib/breaker.ts`) isolates Polygon, retrieval providers, and each Groq model lane. Three persistent failures inside ten minutes opens only that circuit; transient Groq 429s follow the server retry window and fail over without opening a ten-minute breaker. State lives in Redis so it is shared across serverless instances, with an in-process map as the local fallback. A shared synthesis admission limit prevents parallel chat requests from stampeding a model token bucket.
 
 **Sliding rate limiter** (`src/lib/market-data/limiter.ts`) smooths outgoing bursts to each provider (Alpaca 180/min, Finnhub 50/min). It never rejects, it delays. Callers just `await acquire()`.
 

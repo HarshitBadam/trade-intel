@@ -117,7 +117,7 @@ async function main(): Promise<void> {
   const { answerChat } = await import("../src/lib/stocksage/chat");
   const { onStockSageEvent } = await import("../src/lib/stocksage/telemetry");
   const { isDeepResearchOfferAvailable } = await import(
-    "../src/lib/stocksage/deep-snapshot"
+    "../src/lib/stocksage/deep/snapshot"
   );
   const { LATENCY_BUDGET_MS } = await import("../src/lib/stocksage/budget");
 

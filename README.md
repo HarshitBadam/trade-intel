@@ -32,9 +32,9 @@ No API keys required. An empty `.env.local` runs the whole app on mock data; cop
 | [Data pipeline](docs/data-pipeline.md)   | How news gets fetched, analyzed, and stored        |
 | [API reference](docs/api.md)             | The HTTP routes and server actions                 |
 | [Configuration](docs/configuration.md)   | Environment variables and run modes                |
-| [Deployment](docs/deployment.md)         | Hosting, the cron jobs, and the Langflow host      |
+| [Deployment](docs/deployment.md)         | Hosting, cron jobs, queues, and provider setup     |
 | [Repo structure](docs/repo-structure.md) | The source tree, annotated                         |
-| [Langflow flows](langflow/README.md)     | The chat and analysis flows                        |
+| [Optional Langflow flow](langflow/README.md) | Manual analysis evaluation only                |
 
 
 ---

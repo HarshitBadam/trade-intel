@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { decideTurn } from "../src/lib/stocksage/turn-decision";
+import { decideTurn } from "../src/lib/stocksage/router";
 import { LATENCY_BUDGET_MS } from "../src/lib/stocksage/budget";
 import type {
   ChatTurn,

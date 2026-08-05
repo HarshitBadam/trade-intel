@@ -86,27 +86,50 @@ export function canonicalizeEntity(entity: FinanceEntity): FinanceEntity | null 
   };
 }
 
+// Shared by both directions of the professional-services qualifier check: a
+// qualifier immediately before ("consulting Big 4") or after ("Big 4
+// consulting firms") the bare "big four" phrase means the professional-
+// services group matched, not the Australian banks.
+const PROFESSIONAL_SERVICES_QUALIFIER =
+  /consulting|consultanc(?:y|ies)|consultants?|accounting|accountants?|audit(?:ors?)?|professional services/i;
+
 /**
  * The groups a message named, in the order they appear. Callers that only need
  * members use `resolveGroup`; state tracking needs the group identities too.
  */
 export function resolveGroupRefs(text: string): CanonicalGroup[] {
-  return CANONICAL_GROUPS.map((candidate) => ({
-    candidate,
-    index: text.search(candidate.aliases),
-  }))
-    .filter((match) => match.index >= 0)
+  return CANONICAL_GROUPS.map((candidate) => {
+    const found = text.match(candidate.aliases);
+    return { candidate, found };
+  })
+    .filter(
+      (
+        match
+      ): match is { candidate: CanonicalGroup; found: RegExpMatchArray } =>
+        match.found !== null
+    )
     .filter((match) => {
-      const prefix = text.slice(Math.max(0, match.index - 32), match.index);
+      const index = match.found.index ?? 0;
+      const end = index + match.found[0].length;
+      const prefix = text.slice(Math.max(0, index - 32), index);
       if (/\bnot(?:\s+the)?\s*$/i.test(prefix)) return false;
+      if (match.candidate.id !== "australian-big-four") return true;
+      // The bare Australian-bank phrase is always a substring of the longer
+      // professional-services alias, so a qualifier immediately before or
+      // after this match means the professional-services group is the real
+      // referent, even though this candidate's own (shorter) pattern still
+      // matched.
+      const suffix = text.slice(end, end + 32);
       return !(
-        match.candidate.id === "australian-big-four" &&
-        /\b(?:consulting|consultancy|accounting|audit|professional services)\s*$/i.test(
+        new RegExp(`\\b(?:${PROFESSIONAL_SERVICES_QUALIFIER.source})\\s*$`, "i").test(
           prefix
+        ) ||
+        new RegExp(`^\\s*(?:${PROFESSIONAL_SERVICES_QUALIFIER.source})\\b`, "i").test(
+          suffix
         )
       );
     })
-    .sort((left, right) => left.index - right.index)
+    .sort((left, right) => (left.found.index ?? 0) - (right.found.index ?? 0))
     .map((match) => match.candidate);
 }
 

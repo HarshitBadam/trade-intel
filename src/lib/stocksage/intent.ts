@@ -96,7 +96,7 @@ export function routeMessage(args: {
       retrievalRequired: false,
       deepEligible: false,
       clarification:
-        "Do you mean the accounting and consulting Big Four, Deloitte, PwC, EY, and KPMG, or another group?",
+        "Do you mean the Australian Big Four banks (CBA, NAB, ANZ, WBC), or the professional services Big Four (Deloitte, PwC, EY, KPMG)?",
     };
   }
   if (CODE.test(text)) {

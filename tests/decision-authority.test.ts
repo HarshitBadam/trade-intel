@@ -1,9 +1,10 @@
+import "./no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { decideTurn } from "../src/lib/stocksage/turn-decision";
+import { decideTurn } from "../src/lib/stocksage/router";
 
 const ROOT = resolve(import.meta.dirname, "..", "src", "lib", "stocksage");
 
@@ -11,83 +12,107 @@ function source(file: string): string {
   return readFileSync(resolve(ROOT, file), "utf8");
 }
 
-/**
- * The single-authority claim is only true if executors cannot quietly reach
- * for a second classifier. These are structural checks, not behavioral ones,
- * because a behavioral test would pass right up until someone adds a branch.
- */
-test("the model executor never calls a routing or policy classifier", () => {
-  for (const file of ["chat-model.ts", "chat-model-synthesis.ts"]) {
+test("router and context are the only turn authorities", () => {
+  const router = source("router.ts");
+  assert.match(router, /export function decideTurn\(/);
+  assert.doesNotMatch(router, /process\.env|compatibility bridge/);
+  assert.match(router, /from "\.\/context"/);
+  assert.doesNotMatch(router, /resolveConversationState\(/);
+  assert.match(source("context.ts"), /export function resolveTurnContext\(/);
+  assert.equal(existsSync(resolve(ROOT, "turn-decision.ts")), false);
+});
+
+test("engine and answer cannot reclassify a frozen turn", () => {
+  for (const file of ["engine.ts", "answer.ts"]) {
     const text = source(file);
     for (const forbidden of [
-      "routeMessage",
-      "evaluateDomainPolicy",
-      "hardSafetyFloor",
-      "classifyHighStakes",
-      "detectCrisis",
+      "routeMessage(",
+      "evaluateDomainPolicy(",
+      "hardSafetyFloor(",
+      "classifyHighStakes(",
+      "detectCrisis(",
     ]) {
-      assert.ok(
-        !text.includes(forbidden),
-        `${file} must not call ${forbidden}; the frozen decision is the authority`
-      );
+      assert.doesNotMatch(text, new RegExp(forbidden.replace("(", "\\(")));
     }
   }
 });
 
-test("only the decision module and its legacy fallback classify a turn", () => {
-  const heuristics = source("chat-heuristics.ts");
-  // The heuristics path keeps a classifier for the reversible "off" mode. It
-  // has to stay quarantined inside functions named `legacy*`, so that reaching
-  // for it anywhere else is visible in review.
-  const declarations = [
-    ...heuristics.matchAll(/^(?:export )?function (\w+)/gm),
-  ];
-  assert.ok(
-    declarations.some(([, name]) => name === "legacyClassification"),
-    "the legacy classifier must stay clearly named"
-  );
-  for (const call of heuristics.matchAll(/routeMessage\(/g)) {
-    const enclosing = declarations
-      .filter((declaration) => declaration.index! < call.index!)
-      .at(-1);
-    assert.match(
-      enclosing?.[1] ?? "<module scope>",
-      /^legacy/,
-      `routeMessage in ${enclosing?.[1] ?? "module scope"} would be a second brain`
-    );
+test("router is the sole production caller of policy classification", () => {
+  const allowed = new Set(["policy.ts", "router.ts"]);
+  for (const file of readdirSync(ROOT)) {
+    if (!file.endsWith(".ts") || allowed.has(file)) continue;
+    const text = source(file);
+    assert.doesNotMatch(text, /hardSafetyFloor\(|evaluateDomainPolicy\(/, file);
   }
 });
 
-test("chat.ts publishes the authoritative decision rather than reclassifying", () => {
+test("chat is a stable wrapper around one engine", () => {
   const chat = source("chat.ts");
-  assert.ok(chat.includes("decideTurn("), "chat.ts asks for the decision");
-  assert.ok(
-    !chat.includes("routeMessage("),
-    "chat.ts must not route independently"
+  assert.match(chat, /return runUnifiedEngine\(request, dependencies\)/);
+  assert.doesNotMatch(
+    chat,
+    /process\.env|answerChatLegacy|answerWithModel|answerWithHeuristics/
   );
 });
 
-test("a decision is frozen, so an executor cannot edit it in flight", () => {
-  const { decision, context } = decideTurn({
-    message: "How is Apple doing today?",
+test("a decision is frozen and deterministic", () => {
+  const request = {
+    message: "Compare Macquarie and the Aussie Big Four on risk",
     history: [],
-  });
-  assert.ok(Object.isFrozen(decision));
-  assert.ok(Object.isFrozen(context));
+  };
+  const now = new Date("2026-07-27T20:00:00.000Z");
+  const first = decideTurn(request, { now });
+  const second = decideTurn(request, { now });
+  assert.ok(Object.isFrozen(first.decision));
+  assert.ok(Object.isFrozen(first.context));
+  assert.deepEqual(first, second);
   assert.throws(() => {
-    (decision as { retrievalAuthorized: boolean }).retrievalAuthorized = false;
+    (first.decision as { retrievalAuthorized: boolean }).retrievalAuthorized =
+      false;
   });
 });
 
-test("the same message yields the same decision every time", () => {
-  const now = new Date("2026-07-27T20:00:00.000Z");
-  const message = "Compare Macquarie and the Aussie Big Four on risk";
-  const first = decideTurn({ message, history: [] }, { now });
-  const second = decideTurn({ message, history: [] }, { now });
-  assert.deepEqual(first.decision, second.decision);
-  assert.deepEqual(
-    first.context.entities.map((entity) => entity.id),
-    second.context.entities.map((entity) => entity.id)
+test("regular synthesis caps candidates and Deep permits one repair", () => {
+  assert.match(source("answer.ts"), /maxCandidates:\s*2/);
+  const deep = source("deep/worker.ts");
+  assert.match(deep, /maxCandidates:\s*1/);
+  assert.match(deep, /modelAttempts:\s*"primary_only"/);
+  assert.equal([...deep.matchAll(/correction:/g)].length, 1);
+});
+
+test("synthesis contention preserves fallback and isolates light/full lanes", () => {
+  const synthesis = source("synthesis.ts");
+  assert.match(
+    synthesis,
+    /laneKey = `\$\{candidate\.vendor\}:\$\{candidate\.model\}:\$\{args\.lane \?\? "full"\}`/
   );
-  assert.deepEqual(first.context.intervals, second.context.intervals);
+  assert.match(synthesis, /LANE_WAIT_CEILING_MS/);
+  assert.match(synthesis, /if \(!release\) continue/);
+  assert.match(
+    synthesis,
+    /Breaker success records provider\/API availability/
+  );
+});
+
+test("Deep repair has separate admission and is globally one-shot", () => {
+  const synthesis = source("synthesis.ts");
+  const repair = synthesis.slice(
+    synthesis.indexOf("if (\n        args.correction"),
+    synthesis.indexOf(
+      'lastError = new Error("Synthesis output failed publication checks")'
+    )
+  );
+  assert.match(repair, /!repairAttempted/);
+  assert.match(repair, /isOpen\(candidate\.provider\)/);
+  assert.match(repair, /isCoolingDown\(candidate\.quotaProvider\)/);
+  assert.match(repair, /await rateLimit\(/);
+  assert.match(repair, /deadline - Date\.now\(\) > 1_000/);
+  assert.equal([...repair.matchAll(/repairAttempted = true/g)].length, 1);
+});
+
+test("default production graph makes zero Langflow calls", () => {
+  for (const file of readdirSync(ROOT)) {
+    if (!file.endsWith(".ts")) continue;
+    assert.doesNotMatch(source(file), /runLangflowFlow/);
+  }
 });

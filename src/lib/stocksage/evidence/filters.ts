@@ -1,12 +1,12 @@
-import type { EvidenceInput } from "./citations";
+import type { EvidenceInput } from "../citations";
 import type {
   EvidenceDiagnostics,
   EvidencePlan,
   EvidenceRejectionReason,
   EvidenceSource,
   FinanceEntity,
-} from "./types";
-import { createEvidenceSources } from "./citations";
+} from "../types";
+import { createEvidenceSources } from "../citations";
 
 function normalizeSearchText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -255,7 +255,12 @@ export function filterEvidenceWithDiagnostics(args: {
   inputs: EvidenceInput[];
   plan: EvidencePlan;
   entities: FinanceEntity[];
-}): { sources: EvidenceSource[]; diagnostics: EvidenceDiagnostics } {
+}): {
+  sources: EvidenceSource[];
+  /** Validated/deduplicated evidence before the display/cache source cap. */
+  acceptedSources: EvidenceSource[];
+  diagnostics: EvidenceDiagnostics;
+} {
   const rejected: EvidenceDiagnostics["rejected"] = {};
   const reject = (reason: EvidenceRejectionReason): [] => {
     rejected[reason] = (rejected[reason] ?? 0) + 1;
@@ -349,14 +354,19 @@ export function filterEvidenceWithDiagnostics(args: {
   );
   const balanced = balanceByEntity(ranked, args.plan.requiredEntityIds);
   const limit = Math.min(4, Math.max(2, args.plan.requiredEntityIds.length));
-  const sources = createEvidenceSources(balanced, limit);
-  const invalidOrDuplicate = Math.max(0, balanced.slice(0, limit).length - sources.length);
+  const acceptedSources = createEvidenceSources(balanced, balanced.length);
+  const sources = acceptedSources.slice(0, limit);
+  const invalidOrDuplicate = Math.max(
+    0,
+    balanced.length - acceptedSources.length
+  );
   if (invalidOrDuplicate > 0) rejected.invalid_source = invalidOrDuplicate;
   return {
     sources,
+    acceptedSources,
     diagnostics: {
       inputCount: args.inputs.length,
-      acceptedCount: sources.length,
+      acceptedCount: acceptedSources.length,
       cacheHitCount: 0,
       rejected,
     },

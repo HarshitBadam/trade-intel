@@ -11,8 +11,8 @@ import {
 } from "../src/lib/market-data/yahoo-asx";
 import { resolveConversationState } from "../src/lib/stocksage/entities";
 import { listingCapability } from "../src/lib/stocksage/listing-capability";
-import { planEvidence } from "../src/lib/stocksage/planning";
-import { retrieveMarketProxy } from "../src/lib/stocksage/retrieve";
+import { planEvidence } from "../src/lib/stocksage/evidence/planner";
+import { retrieveMarketProxy } from "../src/lib/stocksage/evidence/market";
 import { buildFallbackReply } from "../src/lib/stocksage/regular-fallback";
 import type { EvidenceQuery } from "../src/lib/stocksage/types";
 

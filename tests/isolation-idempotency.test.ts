@@ -10,7 +10,7 @@ import {
 import {
   resetDeepWorkMemory,
   runIdempotentDeepWork,
-} from "../src/lib/stocksage/deep-store";
+} from "../src/lib/stocksage/deep/store";
 
 test("analysis failures do not open the chat breaker", async () => {
   resetBreakerMemory();
@@ -51,7 +51,7 @@ test("repeated deep work reuses one task and result", async () => {
   assert.deepEqual(second, third);
 });
 
-test("retryable deep failures may be retried explicitly", async () => {
+test("retryable deep failures remain terminal for the same work identity", async () => {
   resetDeepWorkMemory();
   const workId = "a0630015-1271-4315-ae86-b55dd3126078";
   let executions = 0;
@@ -66,5 +66,5 @@ test("retryable deep failures may be retried explicitly", async () => {
   };
   await runIdempotentDeepWork(workId, task);
   await runIdempotentDeepWork(workId, task);
-  assert.equal(executions, 2);
+  assert.equal(executions, 1);
 });

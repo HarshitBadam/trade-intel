@@ -182,9 +182,17 @@ async function main(): Promise<void> {
   const debug = process.env.EVAL_DEBUG === "1";
   const deep = process.env.EVAL_DEEP === "1";
   const { answerChat } = await import("../src/lib/stocksage/chat");
-  const { runDeepResearch } = await import("../src/lib/stocksage/deep");
+  const { executeDeepResearch } = await import("../src/lib/stocksage/deep/worker");
+  const { parseDeepResearchSnapshot } = await import(
+    "../src/lib/stocksage/deep/snapshot"
+  );
+  const evaluateDeepSnapshot = async (token: unknown) => {
+    const snapshot = parseDeepResearchSnapshot(token);
+    if (!snapshot) throw new Error("evaluation received an invalid deep snapshot");
+    return executeDeepResearch(snapshot);
+  };
   const { isDeepResearchOfferAvailable } = await import(
-    "../src/lib/stocksage/deep-snapshot"
+    "../src/lib/stocksage/deep/snapshot"
   );
   type State = Parameters<typeof answerChat>[0]["state"];
   type Turn = { role: "user" | "ai"; text: string };
@@ -251,7 +259,7 @@ async function main(): Promise<void> {
         isDeepResearchOfferAvailable(reply.deepResearch)
       ) {
         const deepStartedAt = Date.now();
-        const research = await runDeepResearch(reply.deepResearch.token);
+        const research = await evaluateDeepSnapshot(reply.deepResearch.token);
         const deepElapsed = ((Date.now() - deepStartedAt) / 1000).toFixed(1);
         console.log('\n>>> USER clicks "Research deeper" on the available offer');
         console.log(
@@ -268,7 +276,7 @@ async function main(): Promise<void> {
     }
     if (deep && lastOfferToken) {
       const startedAt = Date.now();
-      const research = await runDeepResearch(lastOfferToken);
+      const research = await evaluateDeepSnapshot(lastOfferToken);
       const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
       console.log(
         `\n>>> USER clicks "Research deeper" on the last offer`
