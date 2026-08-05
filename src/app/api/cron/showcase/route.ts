@@ -27,8 +27,11 @@ export async function GET(request: Request): Promise<NextResponse> {
   // and results are always preserved for operational visibility.
   const ok = isShowcaseScheduleHealthy(report);
 
-  return NextResponse.json({
-    ok,
-    ...report,
-  });
+  return NextResponse.json(
+    {
+      ok,
+      ...report,
+    },
+    { status: ok ? 200 : 503 }
+  );
 }

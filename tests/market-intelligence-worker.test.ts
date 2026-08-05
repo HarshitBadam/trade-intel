@@ -184,6 +184,47 @@ test("unchanged analysis fingerprints skip Groq and refresh the manifest", async
   assert.equal(events.at(-1), "lock:release");
 });
 
+test("a fresh manifest reuse preserves the last real provider-check time", async () => {
+  const events: string[] = [];
+  const providerCheckedAt = new Date(
+    NOW - 30 * 60 * 1000
+  ).toISOString();
+  let publishedCheckedAt: string | undefined;
+  const deps = dependencies(events, {
+    readAnalysis: async () => ({
+      ticker: "AAPL",
+      generation: 4,
+      analysis_status: "complete",
+      analysis_fingerprint: "analysis-v1",
+      news_checked_at: providerCheckedAt,
+    }),
+    loadNews: async () => {
+      throw new Error("A fresh snapshot must not call the news provider");
+    },
+    prepareAnalysis: async () => {
+      throw new Error("An unchanged fingerprint must not call Groq");
+    },
+    publishAnalysis: async (doc) => {
+      events.push("manifest:publish");
+      publishedCheckedAt = doc.news_checked_at;
+      return true;
+    },
+  });
+
+  const result = await runTickerRefreshJob(
+    { ticker: "AAPL", workId: WORK_ID },
+    deps
+  );
+
+  assert.deepEqual(result, {
+    ok: true,
+    generation: 5,
+    outcome: "reused",
+  });
+  assert.equal(publishedCheckedAt, providerCheckedAt);
+  assert.equal(events.includes("news:load"), false);
+});
+
 test("zero stored articles publish a terminal no-news generation", async () => {
   const events: string[] = [];
   const deps = dependencies(events, {
