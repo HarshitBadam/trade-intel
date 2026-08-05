@@ -236,7 +236,13 @@ export async function runTickerRefreshJob(
       await dependencies.touchLoadedAt(ticker);
     }
 
-    const checkedAt = new Date(dependencies.now()).toISOString();
+    // `news_checked_at` records a successful provider check, not merely a
+    // worker run. Preserve it when this job reuses a still-fresh snapshot so
+    // frequent scheduler/manual invocations cannot keep stale news fresh
+    // indefinitely without contacting a provider.
+    const checkedAt = newsIsFresh
+      ? current!.news_checked_at!
+      : new Date(dependencies.now()).toISOString();
     const candidate = await dependencies.selectCandidates(ticker);
     if (candidate.articles.length === 0) {
       if (!(await reaffirmLock())) {
