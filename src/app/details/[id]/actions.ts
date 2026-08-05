@@ -7,9 +7,18 @@ import {
   generateMockWeek,
   generateMockFine,
 } from "@/data/fallbacks";
-import { hasAlpaca, hasFinnhub, hasPolygon } from "@/lib/config";
+import {
+  hasAlpaca,
+  hasFinnhub,
+  hasPolygon,
+  MARKET_INTELLIGENCE_USER_DAILY_LIMIT,
+} from "@/lib/config";
 import { guard } from "@/lib/guard";
-import { triggerPriorityAnalysis } from "./priority";
+import {
+  getTickerRefreshStatus,
+  requestTickerRefresh,
+} from "@/lib/market-intelligence/queue";
+import type { RefreshJob } from "@/lib/market-intelligence/job-store";
 import {
   buildStockData,
   getDetailsData,
@@ -17,7 +26,6 @@ import {
   getHeadlineData,
   getMoversData,
   getLiveQuotes as getLiveQuotesImpl,
-  getRelatedStocksData,
   getChartRangeData,
   getHomeTickerData,
   searchTickersCached,
@@ -35,7 +43,6 @@ import type {
   Headline,
   Movers,
   LiveQuote,
-  RelatedCard,
   SearchResponse,
   BarPoint,
 } from "@/lib/market-data/types";
@@ -64,7 +71,7 @@ export async function searchStocks(query: string): Promise<SearchResponse> {
   }
 }
 
-export async function fetchDetails(ticker: string): Promise<StockData> {
+export async function fetchDetails(ticker: string): Promise<StockData | null> {
   const symbol = sanitizeTicker(ticker);
   if (!symbol) {
     return buildStockData(
@@ -79,19 +86,56 @@ export async function fetchDetails(ticker: string): Promise<StockData> {
   }
 
   const access = await guard("details", { limit: 30, windowSec: 60 });
-  if (!access.ok) {
-    return buildStockData(
-      symbol,
-      null,
-      "unavailable",
-      undefined,
-      undefined,
-      undefined,
-      { mentions: 0, positiveSentiment: 0, negativeSentiment: 0, news: [], status: "unavailable" }
-    );
-  }
+  if (!access.ok) return null;
 
-  return getDetailsData(symbol, triggerPriorityAnalysis);
+  return getDetailsData(symbol);
+}
+
+export type RefreshActionResult =
+  | { ok: true; job: RefreshJob; joined: boolean }
+  | { ok: false; reason: "invalid" | "unavailable" | "rate_limited"; retryAfterSec?: number };
+
+export async function requestDetailsRefresh(
+  ticker: string
+): Promise<RefreshActionResult> {
+  const symbol = sanitizeTicker(ticker);
+  if (!symbol) return { ok: false, reason: "invalid" };
+  const burst = await guard("ticker-refresh", { limit: 4, windowSec: 60 });
+  if (!burst.ok) {
+    return {
+      ok: false,
+      reason: burst.reason === "rate_limited" ? "rate_limited" : "unavailable",
+      retryAfterSec: burst.retryAfterSec,
+    };
+  }
+  const daily = await guard("ticker-refresh-daily", {
+    limit: MARKET_INTELLIGENCE_USER_DAILY_LIMIT,
+    windowSec: 24 * 60 * 60,
+  });
+  if (!daily.ok) {
+    return {
+      ok: false,
+      reason: daily.reason === "rate_limited" ? "rate_limited" : "unavailable",
+      retryAfterSec: daily.retryAfterSec,
+    };
+  }
+  try {
+    const result = await requestTickerRefresh(symbol, "user_request");
+    return { ok: true, job: result, joined: result.joined };
+  } catch {
+    return { ok: false, reason: "unavailable", retryAfterSec: 60 };
+  }
+}
+
+export async function pollDetailsRefresh(
+  workId: string
+): Promise<RefreshJob | null> {
+  const access = await guard("ticker-refresh-poll", {
+    limit: 120,
+    windowSec: 60,
+  });
+  if (!access.ok) return null;
+  return getTickerRefreshStatus(workId);
 }
 
 export async function fetchQuote(ticker: string): Promise<Quote> {
@@ -123,18 +167,6 @@ export async function fetchMovers(): Promise<Movers> {
 
 export async function getLiveQuotes(tickers: string[]): Promise<LiveQuote[]> {
   return getLiveQuotesImpl(tickers);
-}
-
-export async function fetchRelatedStocks(
-  ticker: string
-): Promise<RelatedCard[]> {
-  const symbol = sanitizeTicker(ticker);
-  if (!symbol) return [];
-
-  const access = await guard("details", { limit: 30, windowSec: 60 });
-  if (!access.ok) return [];
-
-  return getRelatedStocksData(symbol);
 }
 
 export async function fetchChartRange(

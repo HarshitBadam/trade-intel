@@ -1,91 +1,100 @@
 # Data pipeline
 
-The write side of the app. A scheduled job fetches news, runs sentiment analysis, and writes both to Astra DB, so the [request path](architecture.md) only ever reads. Nothing here runs while a user waits.
+The details request is store-first. It reads cached prices and one published
+market-intelligence bundle; it never waits for news providers or an LLM.
 
-## Trigger
+## Triggers
 
-Everything runs behind one endpoint, `/api/cron/news`, protected by a bearer token (`CRON_SECRET`). QStash drives it and Vercel provides a daily backstop:
+The same ticker worker has two triggers:
 
-| Scheduler | Cadence | Defined in |
-|-----------|---------|------------|
-| Upstash QStash | Every 20 minutes | `scripts/setup-qstash.ts` |
-| Vercel cron | Once a day (backstop) | `vercel.json` |
+- `/api/cron/showcase` publishes the ten canonical showcase tickers hourly,
+  staggered by one minute.
+- An authenticated stale or cold details page reserves or joins one on-demand
+  job after first paint.
 
-`.github/workflows/news-cron.yml` remains available for manual diagnostics and
-fails unless the endpoint returns HTTP 200 with a valid run report.
+The daily `/api/cron/maintenance` route only prunes retained articles. The old
+universe cursor and `/api/cron/news` execution path are retired.
 
-> Freshness is measured in days, not minutes (see [Two clocks](#two-clocks) below), so the schedule can stay loose without changing anything a user sees.
-
-## One pass
+## Durable job path
 
 ```mermaid
-flowchart TB
-  START["GET /api/cron/news"]
-  CURSOR["advanceCursor()<br/>atomic slice of universe.json via Redis INCRBY"]
-  LOAD["loadTickerNews() per ticker<br/>Polygon news, spaced ~13s"]
-  UPSERT["upsertArticles() to Astra"]
-  MAYBE["maybeAnalyzeTicker()<br/>up to CRON_MAX_ANALYSES, spaced ~65s"]
-  ANALYZE["analyzeTicker(): read stored articles,<br/>LLM labels + verdict, write back"]
-  PRUNE["pruneOldArticles(90) once a day"]
-  REVAL["revalidateTag('news')"]
-  REPORT["JSON report: cursor, loaded, analyzed, breaker"]
-
-  START --> CURSOR --> LOAD --> UPSERT --> MAYBE --> ANALYZE --> PRUNE --> REVAL --> REPORT
+flowchart LR
+  Trigger["Showcase or user trigger"] --> Reserve["Redis active ticker + work ID"]
+  Reserve --> QStash["QStash signed delivery"]
+  QStash --> Worker["Ticker refresh worker"]
+  Worker --> Candidate["Fetch and fingerprint candidate articles"]
+  Candidate --> Analysis["Reuse verdict or run direct Groq"]
+  Analysis --> Publish["CAS-publish exact article manifest"]
+  Publish --> Cache["Invalidate ticker cache and mark done"]
 ```
 
-The cursor is a Redis counter, so each run picks up a fresh slice of the ticker universe and the whole list rotates over time. A partial run does not restart from the top; the next run continues from the cursor. Weekends halve the batch size, since little news breaks on a Saturday. A soft deadline of about 250s stops the run before the serverless timeout.
+Redis provides one active work ID per ticker, durable job state, and a
+renewable owner-token lease. Duplicate visits join the existing work ID.
+QStash uses that ID for delivery deduplication and makes three total attempts.
+A signed failure callback records terminal state and a retry cooldown.
 
-## Fetching news
+## Sequential publication
 
-`fetchPolygonNewsWithInsights()` pulls the last 90 days of articles for a ticker from Polygon's news endpoint. Polygon attaches its own per-article sentiment for free, so those labels go in as an interim read (`label_source: "polygon"`) the moment the article is stored. The sentiment gauge is populated before any LLM has run.
+The worker:
 
-Each article gets a stable id derived from its URL, so re-fetching the same story updates the row instead of duplicating it. If the Polygon breaker is open, the run skips the remaining news loads for that pass.
+1. Normalizes the ticker and acquires its lease.
+2. Checks `news_checked_at`; it contacts Polygon, with Alpaca fallback, only
+   when the one-hour news-check window has expired.
+3. Upserts articles by stable URL-derived ID and selects the newest 25 eligible
+   articles from the retained 90-day corpus.
+4. Computes a deterministic content fingerprint. Prompt, model, and response
+   schema versions form the analysis fingerprint.
+5. Reuses the existing verdict when that full fingerprint is unchanged;
+   otherwise it runs and validates direct Groq analysis.
+6. Applies validated article labels.
+7. Publishes the analysis document last using an exact generation
+   compare-and-set.
 
-## Analyzing sentiment
+The analysis document contains `published_article_ids`. Details reads only
+those exact rows, in manifest order. Articles staged before the final write
+cannot appear beside a verdict from another generation.
 
-After news loads, the same run analyzes a few tickers. `shouldAnalyzeTicker()` decides who is due: a ticker qualifies if it has articles and has either never been analyzed, was analyzed more than three days ago, or has loaded newer articles since its last analysis.
+An obsolete worker fails its generation comparison and cannot overwrite newer
+work. Every exit path conditionally releases only the lease it owns.
 
-`analyzeTicker()` reads up to 200 stored articles, trims to the most recent 25, sends them to the LLM, and validates the JSON response against a Zod schema. On a clean pass it does two things:
+## Freshness and retention
 
-1. Writes per-article labels back to the articles, marked `label_source: "ai"` so a later news re-fetch cannot downgrade them to the interim Polygon labels.
-2. Writes a per-ticker verdict document (overall sentiment, score, summary, key drivers, risks) and stamps `analyzed_at`.
+Freshness, analysis age, and retention are separate:
 
-> `analyzed_at` is set only on full success, and freshness is judged from that stamp and nothing else. Judging staleness from article publish dates (the earlier approach) made week-old news look permanently stale and re-trigger analysis forever.
+- `news_checked_at` no more than one hour old plus a matching fingerprint is
+  fresh.
+- From one hour to under 48 hours, the last published bundle remains visible
+  as a previous snapshot while a refresh runs.
+- At 48 hours, the bundle is not presented as current.
+- `analyzed_at` may be older when a recent provider check confirms that the
+  article fingerprint is unchanged.
+- Articles remain stored for 90 days so StockSage can answer temporal queries.
 
-A per-ticker single-flight lock (a 10-minute Redis claim) stops two runs, or a run and a page-triggered priority pass, from analyzing the same ticker at once.
+A successful empty provider result publishes `no_news`. After exhausted model
+failures, a ticker with newly loaded articles may publish an explicit
+news-only bundle with analysis marked unavailable. Provider failure never
+creates sample news in production.
 
-## Two clocks
+## Scheduling and operations
 
-Refresh and retention are deliberately separate.
-
-- **Refresh:** re-analyze when `analyzed_at` is older than three days.
-- **Retention:** keep 90 days of articles, pruned by publish date once a day.
-
-The 90-day window is what the sentiment chart draws, and it doubles as the outage cushion. If the pipeline is down for a day or two, tickers show an honest "analyzed N days ago" instead of going blank.
-
-## The LLM lane
-
-Batch analysis remains Langflow-first with a direct-Groq fallback and defaults to `openai/gpt-oss-20b`. Its Groq and Langflow breakers are isolated from interactive chat. Regular chat uses selective typed evidence plans, shared admission control, and bounded multi-provider failover. Research deeper runs in-app with broader evidence queries, signed immutable snapshots, and citation validation; direct synthesis runs first, Langflow is a bounded fallback, and validated sources still produce a deterministic report if synthesis is unavailable. Batch-flow detail is in [langflow/README.md](../langflow/README.md).
-
-## Running it by hand
-
-All three scripts need `NODE_OPTIONS="--conditions=react-server"`, which `tsx` picks up from the scripts themselves.
+`scripts/setup-qstash.ts` reconciles the hourly showcase and daily maintenance
+schedules and removes the retired universe and Langflow keep-warm schedules.
 
 ```bash
-# one full ingestion pass against your .env.local
-npx tsx scripts/run-cron.ts --batch 8 --analyses 3
-
-# load news for a single ticker and read it back
-npx tsx scripts/load-news.ts NVDA
-
-# analyze one ticker (add --force to ignore the freshness check)
-npx tsx scripts/analyze-ticker.ts NVDA --force
+npm run ops:qstash
+npm run ops:showcase
 ```
 
-## Knobs
+The first command changes external schedules and requires QStash credentials.
+The second invokes the showcase endpoint for a manual authenticated diagnostic.
 
-| Variable | Default | Effect |
-|----------|--------:|--------|
-| `CRON_BATCH_SIZE` | 8 | Tickers loaded per run |
-| `CRON_MAX_ANALYSES` | 3 | LLM analyses per run |
-| `CRON_SECRET` | none | Bearer token the route requires |
+Relevant controls:
+
+- `CRON_SECRET` authenticates showcase and maintenance routes.
+- `MARKET_INTELLIGENCE_ON_DEMAND_DAILY_BUDGET` defaults to 300 new user jobs.
+- `MARKET_INTELLIGENCE_USER_DAILY_LIMIT` defaults to 20 requests per user.
+- QStash token/signing keys, `APP_URL`, and Upstash Redis are mandatory for the
+  production refresh queue.
+
+Langflow is retained only for explicit manual evaluation. It is not an
+automatic market-intelligence dependency.

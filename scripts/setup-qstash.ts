@@ -38,9 +38,8 @@ async function main(): Promise<void> {
 
   const qstashUrl = required("QSTASH_URL").replace(/\/$/, "");
   const qstashToken = required("QSTASH_TOKEN");
-  const cronUrl = required("CRON_URL");
+  const appUrl = required("APP_URL").replace(/\/$/, "");
   const cronSecret = required("CRON_SECRET");
-  const langflowHealthUrl = `${required("LANGFLOW_BASE_URL").replace(/\/$/, "")}/health`;
 
   const client = new Client({
     baseUrl: qstashUrl,
@@ -48,10 +47,19 @@ async function main(): Promise<void> {
     enableTelemetry: false,
   });
 
-  const news = await client.schedules.create({
-    scheduleId: "tradeintel-news-cron",
-    destination: cronUrl,
-    cron: "*/20 * * * *",
+  for (const scheduleId of [
+    "tradeintel-news-cron",
+    "tradeintel-keep-warm",
+    "tradeintel-showcase-cron",
+    "tradeintel-maintenance-cron",
+  ]) {
+    await client.schedules.delete(scheduleId).catch(() => undefined);
+  }
+
+  const showcase = await client.schedules.create({
+    scheduleId: "tradeintel-showcase-cron",
+    destination: `${appUrl}/api/cron/showcase`,
+    cron: "0 * * * *",
     method: "GET",
     headers: {
       Authorization: `Bearer ${cronSecret}`,
@@ -61,32 +69,37 @@ async function main(): Promise<void> {
     retryDelay: "min(30, pow(2, retried))",
     timeout: "280s",
     flowControl: {
-      key: "tradeintel-news-cron",
+      key: "tradeintel-showcase-cron",
       parallelism: 1,
     },
     redact: { header: ["Authorization"] },
-    label: "tradeintel-news",
+    label: "tradeintel-showcase",
   });
 
-  const keepWarm = await client.schedules.create({
-    scheduleId: "tradeintel-keep-warm",
-    destination: langflowHealthUrl,
-    cron: "3 * * * *",
+  const maintenance = await client.schedules.create({
+    scheduleId: "tradeintel-maintenance-cron",
+    destination: `${appUrl}/api/cron/maintenance`,
+    cron: "15 13 * * *",
     method: "GET",
-    retries: 2,
+    headers: {
+      Authorization: `Bearer ${cronSecret}`,
+      "X-TradeIntel-Scheduler": "qstash",
+    },
+    retries: 1,
     retryDelay: "min(60, pow(2, retried) * 10)",
     timeout: "60s",
     flowControl: {
-      key: "tradeintel-keep-warm",
+      key: "tradeintel-maintenance-cron",
       parallelism: 1,
     },
-    label: "tradeintel-keep-warm",
+    redact: { header: ["Authorization"] },
+    label: "tradeintel-maintenance",
   });
 
   const schedules = await client.schedules.list();
   const managed = schedules
     .filter((schedule) =>
-      [news.scheduleId, keepWarm.scheduleId].includes(schedule.scheduleId)
+      [showcase.scheduleId, maintenance.scheduleId].includes(schedule.scheduleId)
     )
     .map((schedule) => ({
       scheduleId: schedule.scheduleId,

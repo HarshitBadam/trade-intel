@@ -3,12 +3,8 @@ import "server-only";
 import { z } from "zod";
 import {
   GROQ_ANALYSIS_MODEL,
-  hasLangflowAnalyze,
-  LANGFLOW_ANALYZE_FLOW_ID,
 } from "@/lib/config";
 import { groqChatJSON } from "@/lib/groq";
-import { runLangflowFlow } from "@/lib/langflow";
-import { parseFencedJson } from "@/lib/llm-json";
 import { ANALYSIS_INSTRUCTIONS } from "@/lib/stocksage/analysis-prompt";
 import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
 import type { StoredArticle } from "./types";
@@ -125,25 +121,9 @@ export function clampScore(n: number): number {
 }
 
 export async function runAnalysisLLM(user: string): Promise<unknown> {
-  if (
-    hasLangflowAnalyze &&
-    LANGFLOW_ANALYZE_FLOW_ID &&
-    !(await isOpen("langflow-analysis"))
-  ) {
-    try {
-      const text = await runLangflowFlow({
-        flowId: LANGFLOW_ANALYZE_FLOW_ID,
-        input: user,
-      });
-      const parsed = parseFencedJson(text);
-      await recordSuccess("langflow-analysis");
-      return parsed;
-    } catch (error) {
-      await recordFailure("langflow-analysis");
-      console.error("[analysis] Langflow lane failed, falling back to direct Groq:", error);
-    }
+  if (await isOpen("groq-analysis")) {
+    throw new Error("groq analysis is temporarily unavailable");
   }
-
   try {
     const raw = await groqChatJSON({
       model: GROQ_ANALYSIS_MODEL,

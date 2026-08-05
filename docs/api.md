@@ -7,9 +7,14 @@ The app has almost no public HTTP surface. Pages are React Server Components, an
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET, POST | `/api/auth/[...nextauth]` | OAuth handshake | Auth.js sign-in and callbacks |
-| GET | `/api/cron/news` | `Bearer <CRON_SECRET>` | Runs one ingestion pass, returns a JSON report. See [data-pipeline.md](data-pipeline.md) |
+| GET | `/api/cron/showcase` | `Bearer <CRON_SECRET>` | Publishes the ten paced showcase refresh jobs |
+| GET | `/api/cron/maintenance` | `Bearer <CRON_SECRET>` | Prunes retained articles older than 90 days |
+| POST | `/api/market-intelligence/worker` | QStash signature | Runs one idempotent ticker refresh |
+| POST | `/api/market-intelligence/worker/failure` | QStash signature | Finalizes terminal delivery failure |
 
-A request to `/api/cron/news` without the right bearer token gets a 401.
+Cron routes reject an incorrect bearer token. Worker routes are reachable
+through middleware but reject any request whose QStash signature does not
+verify.
 
 ## Server actions
 
@@ -29,12 +34,13 @@ These are called directly from client components. Each one that touches a provid
 | Action | Limit | Returns |
 |--------|-------|---------|
 | `searchStocks(query)` | 60 / min (Finnhub path only) | `{ stocks, searchUnavailable? }` |
-| `fetchDetails(ticker)` | 30 / min | `StockData` |
+| `fetchDetails(ticker)` | 30 / min | Store-only `StockData` snapshot |
+| `requestDetailsRefresh(ticker)` | 4 / min plus daily admission | Reserve or join one durable refresh job |
+| `pollDetailsRefresh(workId)` | 120 / min | Durable queued/running/done/failed state |
 | `fetchQuote(ticker)` | 30 / min | latest `Quote` |
 | `fetchTopHeadline(ticker)` | 30 / min | lead `Headline` |
 | `fetchMovers()` | 30 / min | gainers, losers, sentiment shifts |
 | `getLiveQuotes(tickers)` | none | `LiveQuote[]` for a small set |
-| `fetchRelatedStocks(ticker)` | 30 / min | `RelatedCard[]` peer list |
 | `fetchChartRange(ticker, kind)` | 30 / min | `BarPoint[]` for a range |
 | `fetchHomeTicker(ticker)` | 30 / min | `{ quote, headline }` for a home chip switch |
 
@@ -46,12 +52,14 @@ Types live in `src/lib/market-data/types.ts` and the page components. The two th
 
 ```ts
 type NewsStatus =
-  | "fresh"        // analyzed within the last 3 days
-  | "stale"        // analyzed, but older than that
-  | "live"         // articles present, not yet analyzed
-  | "analyzing"    // a priority analysis is running
-  | "unavailable"  // nothing stored and no source reached it
-  | "sample";      // mock data (no keys configured)
+  | "fresh"
+  | "stale"
+  | "degraded"
+  | "hard_expired"
+  | "no_news"
+  | "analysis_unavailable"
+  | "unavailable"
+  | "sample";
 
 type PriceStatus = "live" | "sample" | "unavailable";
 ```

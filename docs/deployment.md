@@ -1,32 +1,50 @@
 # Deployment
 
-A standard Next.js deploy plus two QStash schedules.
+A standard Next.js deploy plus durable QStash market-intelligence work.
 
 ## Hosting
 
-The app runs on Vercel. Connect the repo and it builds on push, or build it yourself with `npm run build` and `npm start`. Set the environment variables from [configuration.md](configuration.md) in the project settings; live mode wants the market, store, and AI groups, plus auth (see the safety rule in that doc). Serverless functions are capped at 60s (`maxDuration` in `src/app/layout.tsx`), and the cron endpoint runs close to that.
+The app runs on Vercel. Connect the repo and it builds on push, or build it
+yourself with `npm run build` and `npm start`. Set the environment variables
+from [configuration.md](configuration.md) in the project settings. Live mode
+requires auth; the details page and its enqueue actions are not anonymous
+provider-spend endpoints.
 
 ## Background jobs
 
-QStash owns the recurring schedules:
+QStash owns two recurring schedules:
 
 | Schedule | Cadence | What it does |
 |----------|---------|--------------|
-| `tradeintel-news-cron` | Every 20 minutes | Calls `/api/cron/news` with a bearer token to ingest news and run analysis |
-| `tradeintel-keep-warm` | Every 60 minutes | Pings the Langflow host's `/health` so it does not fall asleep |
+| `tradeintel-showcase-cron` | Hourly | Calls `/api/cron/showcase`, which publishes ten paced ticker refresh jobs |
+| `tradeintel-maintenance-cron` | Daily | Calls `/api/cron/maintenance` to prune articles older than 90 days |
 
-Fill the QStash, cron, and Langflow values in `.env.local`, then create or
+Fill the QStash, Redis, cron, and app-origin values in `.env.local`, then create or
 reconcile both schedules:
 
 ```bash
 npm run ops:qstash
 ```
 
-The setup is idempotent and keeps the news lane single-flight. The GitHub
-Actions workflows remain as manually dispatched diagnostics, with strict HTTP
-and response validation. `vercel.json` also registers a once-a-day cron on the
-news endpoint as a backstop.
+The setup deletes the retired universe-news and Langflow keep-warm schedules
+before reconciling the showcase and maintenance schedules. Showcase jobs are
+staggered by one minute to avoid a provider/LLM burst. `vercel.json` also
+registers the maintenance endpoint as a daily backstop.
+
+User visits publish the same signed worker job used by the showcase scheduler.
+Redis stores one active work ID per ticker, job status, and an owner-safe lease.
+The worker endpoint bypasses session middleware only so QStash can reach it; it
+still fails closed unless the QStash signature verifies.
+
+QStash performs three total delivery attempts. Its signed failure callback
+marks the job terminal, preserves the last usable bundle, and applies a short
+retry cooldown. There is no synchronous provider or model fallback in a page
+request. Deployment checks, incident handling, and rollback steps are in the
+[market-intelligence runbook](market-intelligence-runbook.md).
 
 ## The Langflow host
 
-StockSage's optional batch-analysis flow runs on a separate Langflow instance (a Hugging Face Space in this setup). Regular chat and Research deeper do not depend on that host; deeper research runs through the app's typed evidence and Groq failover lanes when retrieval, Groq, and a snapshot-signing secret are configured. Work is synchronous, with Redis-backed result reuse and locking when Upstash is available. Import and secret-setup steps for batch orchestration are in [langflow/README.md](../langflow/README.md).
+Langflow remains an optional manual/evaluation adapter. Details-page market
+analysis uses direct Groq and does not call Langflow or maintain a keep-warm
+schedule. Import and secret-setup steps for evaluation are in
+[langflow/README.md](../langflow/README.md).

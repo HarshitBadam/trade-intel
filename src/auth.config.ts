@@ -15,7 +15,12 @@ if (hasApple) {
   providers.push(Apple);
 }
 
-const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/cron"];
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/api/auth",
+  "/api/cron",
+  "/api/market-intelligence/worker",
+];
 
 export const authConfig = {
   providers,

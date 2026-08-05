@@ -2,10 +2,8 @@ import "server-only";
 
 import { hasAstra } from "@/lib/config";
 import { isOpen, recordSuccess } from "@/lib/breaker";
-import {
-  readTickerArticles,
-  type StoredArticle,
-} from "@/lib/market-data";
+import type { StoredArticle } from "@/lib/market-data";
+import { readTickerArticlesForEvidence } from "@/lib/market-intelligence/repository";
 import type { EvidenceInput } from "./citations";
 import type { EvidenceQuery, FinanceEntity } from "./types";
 
@@ -96,7 +94,10 @@ export async function retrieveAstra(
     query.tickers.map(async (ticker) => {
       try {
         return {
-          articles: await bounded(readTickerArticles(ticker, perTicker + 2), []),
+          articles: await bounded(
+            readTickerArticlesForEvidence(ticker, perTicker + 2),
+            []
+          ),
           failed: false,
         };
       } catch (error) {

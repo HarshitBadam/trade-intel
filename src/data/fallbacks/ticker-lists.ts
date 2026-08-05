@@ -1,15 +1,6 @@
-export const FALLBACK_TICKERS = [
-  { ticker: "AAPL", name: "Apple Inc." },
-  { ticker: "MSFT", name: "Microsoft Corporation" },
-  { ticker: "NVDA", name: "NVIDIA Corporation" },
-  { ticker: "TSLA", name: "Tesla Inc." },
-  { ticker: "AMZN", name: "Amazon.com Inc." },
-  { ticker: "GOOGL", name: "Alphabet Inc." },
-  { ticker: "META", name: "Meta Platforms Inc." },
-  { ticker: "NFLX", name: "Netflix Inc." },
-  { ticker: "AMD", name: "Advanced Micro Devices Inc." },
-  { ticker: "IBM", name: "International Business Machines" },
-];
+import { SHOWCASE_TICKERS } from "@/lib/market-intelligence/showcase";
+
+export const FALLBACK_TICKERS = SHOWCASE_TICKERS;
 
 export const CRON_WARMUP_TICKERS = [
   // Mega-cap tech

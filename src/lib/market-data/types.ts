@@ -193,6 +193,34 @@ export type AnalysisKeyDriver = {
 export type AnalysisDoc = {
   _id?: string;
   ticker: string;
+  pipeline_version?: string;
+  content_fingerprint?: string;
+  analysis_fingerprint?: string;
+  news_checked_at?: string;
+  last_success_at?: string;
+  refresh_requested_at?: string;
+  refresh_source?: "showcase_cron" | "user_request" | "manual";
+  generation?: number;
+  last_error_code?: string;
+  published_article_ids?: string[];
+  published_article_labels?: {
+    article_id: string;
+    sentiment: string;
+    importance: string;
+    key_observations: string;
+  }[];
+  analysis_status?: "complete" | "unavailable" | "no_news";
+  /**
+   * Written by the worker immediately before it upserts newly fetched
+   * article rows, and cleared by every successful `publishAnalysisDoc` CAS
+   * write. While set, a refresh is in flight (or died mid-flight) and any
+   * rows newer than this timestamp are staged/unpublished: readers that
+   * have no manifest or watermark of their own yet must treat this as an
+   * active "fail closed" (or, for readers with a committed-history filter,
+   * an upper bound) rather than assume the collection only ever contains
+   * genuine legacy data.
+   */
+  refresh_staging_at?: string;
   analyzed_at?: string;
   model?: string;
   article_count?: number;

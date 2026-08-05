@@ -1,4 +1,6 @@
-export const mockStockData = [
+import { SHOWCASE_TICKERS } from "@/lib/market-intelligence/showcase";
+
+const seededStockData = [
   {
     id: 1,
     ticker: "AAPL",
@@ -86,3 +88,25 @@ export const mockStockData = [
     ]
   }
 ];
+
+export const mockStockData = SHOWCASE_TICKERS.map((showcase, index) => {
+  const seeded = seededStockData.find((stock) => stock.ticker === showcase.ticker);
+  return (
+    seeded ?? {
+      id: index + 1,
+      ticker: showcase.ticker,
+      companyName: showcase.name,
+      stockPrice: 0,
+      priceChange: 0,
+      percentChange: 0,
+      popularityRate: 0,
+      mentions: 0,
+      searchVolume: 0,
+      sentimentPercentage: 0,
+      positiveSentimentPercentage: 0,
+      negativeSentimentPercentage: 0,
+      chartData: [],
+      news: [],
+    }
+  );
+});

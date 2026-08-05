@@ -162,3 +162,13 @@ export const hasDeepQueue = Boolean(
 export const hasUpstash = Boolean(
   process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
 );
+
+export const hasRefreshQueue = hasDeepQueue && hasUpstash;
+export const MARKET_INTELLIGENCE_ON_DEMAND_DAILY_BUDGET = Math.max(
+  1,
+  Number(process.env.MARKET_INTELLIGENCE_ON_DEMAND_DAILY_BUDGET ?? 300)
+);
+export const MARKET_INTELLIGENCE_USER_DAILY_LIMIT = Math.max(
+  1,
+  Number(process.env.MARKET_INTELLIGENCE_USER_DAILY_LIMIT ?? 20)
+);
