@@ -4,8 +4,8 @@ import { hasAstra } from "@/lib/config";
 import { isOpen, recordSuccess } from "@/lib/breaker";
 import type { StoredArticle } from "@/lib/market-data";
 import { readTickerArticlesForEvidence } from "@/lib/market-intelligence/repository";
-import type { EvidenceInput } from "./citations";
-import type { EvidenceQuery, FinanceEntity } from "./types";
+import type { EvidenceInput } from "../citations";
+import type { EvidenceQuery, FinanceEntity } from "../types";
 
 const RETRIEVAL_TIMEOUT_MS = 10_000;
 const ASTRA_DEFAULT_RECENCY_DAYS = 60;

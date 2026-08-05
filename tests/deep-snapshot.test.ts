@@ -1,9 +1,20 @@
 import "./no-live-keys";
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import test from "node:test";
-import { validateDeepResearchResult } from "../src/lib/stocksage/deep-validation";
-import type { DeepResearchSnapshot } from "../src/lib/stocksage/deep-snapshot";
+import { validateDeepResearchResult } from "../src/lib/stocksage/deep/validation";
+import type { DeepResearchSnapshot } from "../src/lib/stocksage/deep/snapshot";
 import type { EvidenceSource } from "../src/lib/stocksage/types";
+
+const SNAPSHOT_SECRET = "test-only-snapshot-secret-with-sufficient-length";
+
+function signedToken(snapshot: unknown): string {
+  const payload = Buffer.from(JSON.stringify(snapshot)).toString("base64url");
+  const signature = createHmac("sha256", SNAPSHOT_SECRET)
+    .update(payload)
+    .digest("base64url");
+  return `${payload}.${signature}`;
+}
 
 function source(
   id: string,
@@ -26,13 +37,13 @@ function source(
 
 test("deep snapshot is signed, bounded, immutable, and tamper resistant", async () => {
   process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET =
-    "test-only-snapshot-secret-with-sufficient-length";
+    SNAPSHOT_SECRET;
   process.env.GROQ_API_KEY = "test-groq-key";
   process.env.TAVILY_API_KEY = "test-tavily-key";
   const {
     createDeepResearchOffer,
     parseDeepResearchSnapshot,
-  } = await import("../src/lib/stocksage/deep-snapshot");
+  } = await import("../src/lib/stocksage/deep/snapshot");
   const created = createDeepResearchOffer({
     question: "What happened to Apple today?",
     reply: {
@@ -57,6 +68,26 @@ test("deep snapshot is signed, bounded, immutable, and tamper resistant", async 
       criteria: ["performance"],
       horizon: "today",
       jurisdiction: "United States",
+      groups: [
+        {
+          id: "group:mega-cap",
+          label: "Mega Cap",
+          memberIds: ["ticker:AAPL"],
+          namedAtRevision: 3,
+        },
+      ],
+      intervals: [
+        {
+          version: 1,
+          label: "today",
+          kind: "session",
+          calendar: "US",
+          startSession: "2026-08-05",
+          endSession: "2026-08-05",
+          source: "explicit",
+          raw: "today",
+        },
+      ],
     },
     sources: [
       {
@@ -81,10 +112,68 @@ test("deep snapshot is signed, bounded, immutable, and tamper resistant", async 
   assert.equal(parsed?.regularAnswer, "Apple moved on validated market data.");
   assert.deepEqual(parsed?.evidenceIds, ["S1"]);
   assert.deepEqual(parsed?.criteria, ["performance"]);
+  assert.equal(parsed?.version, 2);
+  assert.equal(parsed?.version === 2 ? parsed.route : null, "current_finance");
+  assert.equal(parsed?.version === 2 ? parsed.entities[0].query : null, "Apple AAPL");
+  assert.equal(parsed?.version === 2 ? parsed.calendar : null, "US");
+  assert.equal(parsed?.version === 2 ? parsed.intervals.length : 0, 1);
+  assert.equal(parsed?.version === 2 ? parsed.groups[0].id : null, "group:mega-cap");
+  assert.equal(parsed?.stateRevision, 3);
   assert.equal(created.offer?.available, true);
   const token = created.offer?.token ?? "";
   const tampered = `${token.slice(0, -1)}${token.endsWith("a") ? "b" : "a"}`;
   assert.equal(parseDeepResearchSnapshot(tampered), null);
+});
+
+test("v1 snapshots remain accepted until expiry and retries issue new v2 work", async () => {
+  process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET = SNAPSHOT_SECRET;
+  const {
+    parseDeepResearchSnapshot,
+    reissueDeepResearchSnapshot,
+  } = await import("../src/lib/stocksage/deep/snapshot");
+  const base = {
+    version: 1 as const,
+    responseId: "1a7e28fa-b98a-4902-8226-17a7244f8750",
+    workId: "6dbfcad2-95c4-452f-a10f-2aa0e69c44ba",
+    question: "Compare the banks",
+    regularAnswer: "Regular answer",
+    evidenceIds: [],
+    citationUrls: [],
+    entities: [
+      {
+        id: "ticker:MQG",
+        name: "Macquarie Group",
+        ticker: "MQG",
+        market: "au" as const,
+      },
+    ],
+    criteria: ["risk"],
+    jurisdiction: "Australia",
+    asOf: new Date().toISOString(),
+    stateVersion: 1 as const,
+    stateRevision: 4,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  };
+  const parsed = parseDeepResearchSnapshot(signedToken(base));
+  assert.equal(parsed?.version, 1);
+  const retried = reissueDeepResearchSnapshot(parsed!);
+  assert.equal(retried.snapshot.version, 2);
+  assert.notEqual(retried.snapshot.workId, base.workId);
+  assert.notEqual(retried.snapshot.attemptId, base.workId);
+  assert.equal(retried.snapshot.parentWorkId, base.workId);
+  assert.equal(retried.snapshot.attempt, 2);
+  assert.equal(parseDeepResearchSnapshot(retried.token)?.workId, retried.snapshot.workId);
+
+  assert.equal(
+    parseDeepResearchSnapshot(
+      signedToken({
+        ...base,
+        expiresAt: new Date(Date.now() - 1_000).toISOString(),
+      })
+    ),
+    null
+  );
 });
 
 test("deep pre-flight keeps a quote-only offer available for broader retrieval", async () => {
@@ -93,7 +182,7 @@ test("deep pre-flight keeps a quote-only offer available for broader retrieval",
   process.env.GROQ_API_KEY = "test-groq-key";
   process.env.TAVILY_API_KEY = "test-tavily-key";
   const { createDeepResearchOffer } = await import(
-    "../src/lib/stocksage/deep-snapshot"
+    "../src/lib/stocksage/deep/snapshot"
   );
   const created = createDeepResearchOffer({
     question: "What is new with Rivian?",
@@ -127,7 +216,7 @@ test("deep availability distinguishes broad reports from focused questions", asy
     assessDeepResearchAvailability,
     createDeepResearchOffer,
     isDeepResearchOfferAvailable,
-  } = await import("../src/lib/stocksage/deep-snapshot");
+  } = await import("../src/lib/stocksage/deep/snapshot");
   const skHynix = source(
     "S1",
     "https://example.com/sk-hynix-hbm?source=feed",
@@ -205,7 +294,7 @@ test("deep availability distinguishes broad reports from focused questions", asy
 
 test("deep availability requests missing report criteria during deeper retrieval", async () => {
   const { assessDeepResearchAvailability } = await import(
-    "../src/lib/stocksage/deep-snapshot"
+    "../src/lib/stocksage/deep/snapshot"
   );
   const result = assessDeepResearchAvailability({
     question: "Research Nvidia's catalysts and risks.",
@@ -278,7 +367,7 @@ test("deep result requires every entity and verifiable citations", () => {
 
 test("deep comparison preflight retrieves evidence missing for an entity", async () => {
   const { assessDeepResearchAvailability } = await import(
-    "../src/lib/stocksage/deep-snapshot"
+    "../src/lib/stocksage/deep/snapshot"
   );
   const result = assessDeepResearchAvailability({
     question: "Compare Tesla with the Nasdaq Composite this year.",

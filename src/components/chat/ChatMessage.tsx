@@ -2,8 +2,17 @@ import { RotateCcw, Telescope } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type {
   ChatDataStatus,
+  ChatPresentationMode,
+  ClarificationChoice,
   DeepResearchOffer,
 } from "@/lib/stocksage/types";
+import {
+  canSubmitClarification,
+  effectivePresentationMode,
+  nextDeepAction,
+  presentationAccentClass,
+  presentationBadge,
+} from "./presentation";
 
 export type DeepMessageState = {
   status: "idle" | "pending" | "success" | "failure";
@@ -11,6 +20,8 @@ export type DeepMessageState = {
   text?: string;
   citationUrls?: string[];
   retryable?: boolean;
+  /** Cosmetic only: distinguishes an honest give-up from a definite provider error. */
+  timedOut?: boolean;
 };
 
 export type ChatMessageModel = {
@@ -23,6 +34,11 @@ export type ChatMessageModel = {
   error?: boolean;
   retryable?: boolean;
   dataStatus?: ChatDataStatus;
+  presentationMode?: ChatPresentationMode;
+  presentationReason?: string;
+  clarificationChoices?: ClarificationChoice[];
+  /** UI-only: which choice the user already picked, so buttons cannot double-submit. */
+  clarificationSelectedId?: string;
 };
 
 function CitationChip({
@@ -107,27 +123,44 @@ export function ChatMessage({
   message,
   onResearch,
   onRetry,
+  onClarify,
 }: {
   message: ChatMessageModel;
   onResearch: (messageId: string) => void;
   onRetry: (messageId: string) => void;
+  onClarify: (messageId: string, choice: ClarificationChoice) => void;
 }) {
   const deep = message.deepState;
+  const deepAction = nextDeepAction(deep?.status);
   const canResearch =
     message.sender === "ai" &&
     message.deepResearch &&
     message.deepResearch.available &&
-    (!deep || deep.status === "idle" || (deep.status === "failure" && deep.retryable));
+    deepAction !== "blocked";
   const showResearch =
     message.sender === "ai" &&
     message.deepResearch &&
-    (!deep || deep.status === "idle" || (deep.status === "failure" && deep.retryable));
+    deepAction !== "blocked";
+  const containerMode = effectivePresentationMode(
+    message.presentationMode,
+    deep?.status
+  );
+  const accentClass = presentationAccentClass(containerMode);
+  const badge = presentationBadge(containerMode);
+  const canClarify = canSubmitClarification({
+    presentationMode: message.presentationMode,
+    choiceCount: message.clarificationChoices?.length ?? 0,
+    selectedChoiceId: message.clarificationSelectedId,
+  });
   return (
     <div
       className={`flex max-w-full ${
         message.sender === "user" ? "justify-end" : "justify-start"
       }`}
       role={message.error ? "alert" : undefined}
+      data-presentation-mode={
+        message.sender === "ai" ? containerMode ?? undefined : undefined
+      }
     >
       <div
         className={`w-fit rounded-lg p-3 text-foreground ${
@@ -136,22 +169,61 @@ export function ChatMessage({
             : message.error
               ? "max-w-3xl border border-border bg-muted/50"
               : "max-w-3xl"
-        }`}
+        } ${accentClass ? `border-l-2 ${accentClass}` : ""}`}
       >
         {message.sender === "ai" ? (
           <div className="space-y-2 text-sm leading-relaxed [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_h2]:mt-3 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_p]:my-1.5 [&_em]:italic [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5">
+            {badge ? (
+              <div
+                className={`inline-flex rounded-full px-2 py-0.5 text-[0.7rem] font-medium ${badge.toneClass}`}
+                role="status"
+              >
+                {badge.label}
+              </div>
+            ) : (
+              // Legacy fallback for replies without a presentation mode
+              // (e.g. the pre-unified engine), which only ever carry
+              // `dataStatus`.
+              !message.presentationMode &&
+              message.dataStatus &&
+              message.dataStatus !== "full" && (
+                <div
+                  className="inline-flex rounded-full bg-muted/70 px-2 py-0.5 text-[0.7rem] font-medium text-muted-foreground"
+                  role="status"
+                >
+                  dated evidence
+                </div>
+              )
+            )}
             <MarkdownAnswer
               text={message.text}
               citationUrls={message.citationUrls}
             />
-            {message.dataStatus && message.dataStatus !== "full" && (
-              <div
-                className="inline-flex rounded-full bg-muted/70 px-2 py-0.5 text-[0.7rem] font-medium text-muted-foreground"
-                role="status"
-              >
-                dated evidence
-              </div>
-            )}
+            {message.clarificationChoices &&
+              message.clarificationChoices.length > 0 && (
+                <div
+                  className="flex flex-wrap gap-2 pt-1"
+                  role="group"
+                  aria-label="Clarification choices"
+                >
+                  {message.clarificationChoices.map((choice) => {
+                    const selected =
+                      message.clarificationSelectedId === choice.id;
+                    return (
+                      <button
+                        key={choice.id}
+                        type="button"
+                        onClick={() => onClarify(message.id, choice)}
+                        disabled={!canClarify}
+                        aria-pressed={selected}
+                        className="inline-flex items-center rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-foreground/40 aria-pressed:bg-muted"
+                      >
+                        {choice.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             {message.retryable && (
               <button
                 type="button"

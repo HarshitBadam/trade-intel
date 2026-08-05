@@ -1,14 +1,10 @@
 import "server-only";
 
-import {
-  expandValidCitations,
-  validCitationUrls,
-} from "./citations";
-import { roundFiguresForDisplay } from "./rounding";
 import { comparisonLead, buildDeterministicRankingReply } from "./regular-comparison";
 import { humanAsOf, humanPublishedAt } from "./regular-dates";
 import { hasSmuggledOffTopicTask } from "./regular-guards";
-import type { RegularContext } from "./retrieve";
+import { finalizePublicationText } from "./publication";
+import type { RegularContext } from "./evidence/retrieve";
 import type {
   ChatReply,
   ChatRequest,
@@ -327,9 +323,10 @@ export function buildFallbackReply(
     );
   }
   const text = lines.join("\n");
+  const finalized = finalizePublicationText(text, context.sources);
   return {
-    text: roundFiguresForDisplay(expandValidCitations(text, context.sources)),
-    citationUrls: validCitationUrls(text, context.sources),
+    text: finalized.text,
+    citationUrls: finalized.citationUrls,
     retryable: true,
   };
 }

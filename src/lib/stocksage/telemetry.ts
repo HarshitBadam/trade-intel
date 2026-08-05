@@ -26,6 +26,11 @@ export type StockSageEvent = {
   providerCount?: number;
   providerCalls?: ProviderCalls;
   sourceCount?: number;
+  coverageGaps?: Record<string, string[]>;
+  suppressedProviders?: Record<string, number>;
+  cacheRevisions?: Record<string, string>;
+  refreshDisposition?: Record<string, number>;
+  yields?: Record<string, number>;
   dataStatus?: string;
   entities?: string[];
   budgetMs?: number;
@@ -35,8 +40,6 @@ export type StockSageEvent = {
   publicationFailure?: boolean;
   retryVisible?: boolean;
   deepEligible?: boolean;
-  shadowMatch?: boolean;
-  shadowField?: string;
   detail?: string;
 };
 

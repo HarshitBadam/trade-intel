@@ -11,8 +11,8 @@ import {
   ASX_NATIVE_TICKERS,
   MARKET_PROXY_SYMBOLS,
   STOOQ_SYMBOLS,
-} from "./entity-catalog";
-import type { EvidenceQuery } from "./types";
+} from "../entity-catalog";
+import type { EvidenceQuery } from "../types";
 
 export type MarketQuoteFetcher = (symbols: string[]) => Promise<ChatQuote[]>;
 export type StooqQuoteFetcher = (

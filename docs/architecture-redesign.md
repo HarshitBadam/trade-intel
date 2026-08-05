@@ -1,6 +1,6 @@
 # TradeIntel architecture redesign
 
-**Status:** Proposed  
+**Status:** Historical design record; implemented architecture is documented in `architecture.md`
 **Date:** 4 August 2026  
 **Scope:** `/details/[id]`, ticker intelligence, StockSage, scheduled work, caching, and Langflow
 
@@ -614,6 +614,11 @@ Change:
 # 2. New StockSage module
 
 ## 2a. Current module
+
+> **Historical pre-unification snapshot.** This subsection records the legacy
+> architecture that existed before the rollout cleanup. File names, flags,
+> dual executors, shadow behavior, and inline paths below are intentionally
+> obsolete and are not descriptions of the current runtime.
 
 StockSage currently has approximately 55 TypeScript files and 11,700 lines
 under `src/lib/stocksage`.

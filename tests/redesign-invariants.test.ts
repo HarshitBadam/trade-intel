@@ -2,14 +2,15 @@ import "./no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { answerChat } from "../src/lib/stocksage/chat";
-import { answerDegraded } from "../src/lib/stocksage/chat-heuristics";
+import { decideTurn } from "../src/lib/stocksage/router";
+import { answerDegraded } from "../src/lib/stocksage/degraded-answer";
 import {
   creativeRequestOnly,
   hasSmuggledOffTopicTask,
   missingCriteria,
   performsSmuggledTask,
 } from "../src/lib/stocksage/regular-guards";
-import type { RetrievalProviders } from "../src/lib/stocksage/retrieve";
+import type { RetrievalProviders } from "../src/lib/stocksage/evidence/retrieve";
 import type {
   ChatRequest,
   ConversationState,
@@ -152,7 +153,8 @@ test("safety floor never wipes active conversation state", async () => {
 test("degraded reply preserves state and is retryable", () => {
   const reply = answerDegraded(
     request("which one is safest?", { state: comparisonState }),
-    Date.now()
+    Date.now(),
+    decideTurn(request("which one is safest?", { state: comparisonState }))
   );
   assert.equal(reply.retryable, true);
   assert.match(reply.text, /company, metric, and time period/i);
@@ -171,7 +173,8 @@ test("degraded reply preserves state and is retryable", () => {
 test("degraded farewell closes without a question or invitation", () => {
   const reply = answerDegraded(
     request("thanks, peace out", { state: comparisonState }),
-    Date.now()
+    Date.now(),
+    decideTurn(request("thanks, peace out", { state: comparisonState }))
   );
   assert.doesNotMatch(reply.text, /\?/);
   assert.doesNotMatch(reply.text, /over capacity/i);
@@ -189,7 +192,8 @@ test("degraded social recovery never returns capacity copy", () => {
   ]) {
     const reply = answerDegraded(
       request(message, { state: comparisonState }),
-      Date.now()
+      Date.now(),
+      decideTurn(request(message, { state: comparisonState }))
     );
     assert.doesNotMatch(reply.text, /over capacity|ask me again/i, message);
     assert.deepEqual(

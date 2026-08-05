@@ -25,18 +25,7 @@ const rawAstra = Boolean(
 );
 
 export const LANGFLOW_BASE_URL = process.env.LANGFLOW_BASE_URL;
-export const LANGFLOW_FLOW_ID = process.env.LANGFLOW_FLOW_ID;
 export const LANGFLOW_API_KEY = process.env.LANGFLOW_API_KEY;
-const rawLangflow = Boolean(
-  LANGFLOW_BASE_URL && LANGFLOW_FLOW_ID && LANGFLOW_API_KEY
-);
-
-export const LANGFLOW_CHAT_PROMPT_ID =
-  process.env.LANGFLOW_CHAT_PROMPT_ID ?? "StockSageRagPrompt-FwmYE";
-
-export const LANGFLOW_CHAT_LLM_ID =
-  process.env.LANGFLOW_CHAT_LLM_ID ?? "GroqModel-chat1";
-
 export const LANGFLOW_ANALYZE_FLOW_ID = process.env.LANGFLOW_ANALYZE_FLOW_ID;
 const rawLangflowAnalyze = Boolean(
   LANGFLOW_BASE_URL && LANGFLOW_API_KEY && LANGFLOW_ANALYZE_FLOW_ID
@@ -97,9 +86,8 @@ export const hasGroq = rawGroq && liveAllowed;
 export const hasSafetyClassifier = hasGroq && !safetyClassifierOff;
 export const hasCerebras = rawCerebras && liveAllowed;
 export const hasGemini = rawGemini && liveAllowed;
-export const hasAnySynthesisLlm = hasGroq || hasCerebras || hasGemini;
-export const hasLangflow = rawLangflow && liveAllowed;
-export const hasLangflowAnalyze = rawLangflowAnalyze && liveAllowed;
+// StockSage synthesis resolves only the direct Groq primary/fallback pair.
+export const hasAnySynthesisLlm = hasGroq;
 export const hasTavily = rawTavily && liveAllowed;
 export const STOCKSAGE_DEEP_SNAPSHOT_SECRET =
   process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET ??
@@ -118,7 +106,7 @@ if (
     rawGroq ||
     rawCerebras ||
     rawGemini ||
-    rawLangflow ||
+    rawLangflowAnalyze ||
     rawTavily) &&
   !enforceAuth
 ) {
@@ -148,22 +136,22 @@ export const QSTASH_TOKEN = process.env.QSTASH_TOKEN;
 export const QSTASH_CURRENT_SIGNING_KEY = process.env.QSTASH_CURRENT_SIGNING_KEY;
 export const QSTASH_NEXT_SIGNING_KEY = process.env.QSTASH_NEXT_SIGNING_KEY;
 export const APP_URL = process.env.APP_URL ?? process.env.NEXTAUTH_URL;
-/**
- * Asynchronous Deep Research needs somewhere to publish to, somewhere to call
- * back, and a way to prove the callback came from QStash. Without all three
- * the enqueue path stays off and Deep Research runs inline as before.
- */
-export const hasDeepQueue = Boolean(
+export const hasUpstash = Boolean(
+  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+);
+const hasQStashQueue = Boolean(
   QSTASH_TOKEN &&
     APP_URL &&
     (QSTASH_CURRENT_SIGNING_KEY || QSTASH_NEXT_SIGNING_KEY)
 );
-
-export const hasUpstash = Boolean(
-  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-);
-
-export const hasRefreshQueue = hasDeepQueue && hasUpstash;
+/**
+ * Asynchronous Deep Research needs somewhere to publish to, somewhere to call
+ * back, a way to prove the callback came from QStash, and durable state shared
+ * by every serverless instance. Without all four the enqueue path stays
+ * unavailable; Deep Research never runs inline.
+ */
+export const hasDeepQueue = hasQStashQueue && hasUpstash;
+export const hasRefreshQueue = hasQStashQueue && hasUpstash;
 export const MARKET_INTELLIGENCE_ON_DEMAND_DAILY_BUDGET = Math.max(
   1,
   Number(process.env.MARKET_INTELLIGENCE_ON_DEMAND_DAILY_BUDGET ?? 300)

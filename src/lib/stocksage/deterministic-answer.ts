@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { createDeepResearchOffer } from "./deep-snapshot";
+import { createDeepResearchOffer } from "./deep/snapshot";
 import { buildFallbackReply, buildDeterministicRankingReply } from "./regular-fallback";
 import { roundFiguresForDisplay } from "./rounding";
 import { logStockSage, type StockSageEvent } from "./telemetry";
-import type { RegularContext } from "./retrieve";
+import type { RegularContext } from "./evidence/retrieve";
 import type { StateResolution } from "./entities";
 import type { ChatReply, ChatRequest } from "./types";
 export function deterministicModelAnswer(args: {

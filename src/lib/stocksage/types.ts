@@ -28,6 +28,34 @@ export type ChatRequest = {
 // Data health: full, limited verified data, or unavailable.
 export type ChatDataStatus = "full" | "limited" | "unavailable";
 
+/**
+ * How the widget should render a reply, using the architecture's stable
+ * presentation buckets rather than generic instant/answer labels. Additive
+ * and backward-compatible: every existing consumer that ignores these
+ * fields keeps working exactly as before. Only the unified engine
+ * (`engine.ts`) currently populates them; call sites that skip it (e.g. raw
+ * `immediateResponse` for crisis/refusal text) leave them undefined.
+ * `deep_pending`/`deep_failed` are client-only states the widget derives from
+ * local Deep Research progress (see `effectivePresentationMode` in
+ * `components/chat/presentation.ts`); the server never sets them.
+ */
+export type ChatPresentationMode =
+  | "social"
+  | "clarification"
+  | "stable_finance"
+  | "current_finance"
+  | "comparison"
+  | "limited_evidence"
+  | "no_evidence"
+  | "deep_pending"
+  | "deep_failed";
+
+/** One structured choice the widget can render for a clarification turn. */
+export type ClarificationChoice = {
+  id: string;
+  label: string;
+};
+
 export type ChatReply = {
   text: string;
   live: boolean;
@@ -39,6 +67,10 @@ export type ChatReply = {
   deepResearch?: DeepResearchOffer;
   state?: ConversationState;
   dataStatus?: ChatDataStatus;
+  /** Optional, backward-compatible presentation hints for the widget. */
+  presentationMode?: ChatPresentationMode;
+  presentationReason?: string;
+  clarificationChoices?: ClarificationChoice[];
 };
 
 // ASX quotes use native Yahoo data; Stooq/ADRs remain labeled fallbacks.
@@ -167,6 +199,8 @@ export type EvidenceQuery = {
 
 export type EvidencePlan = {
   version: 1;
+  /** Additive for compatibility with persisted/test v1 plans; planner always sets it. */
+  depth?: "regular" | "deep";
   route: ChatRoute;
   asOf: string;
   queries: EvidenceQuery[];
@@ -282,6 +316,15 @@ export type DeepResearchReply = {
   text?: string;
   citationUrls?: string[];
   retryable?: boolean;
+  /**
+   * Set only when `status: "failure"` represents a transient admission
+   * denial (rate limit) or an auth gate, not a terminal job outcome. The
+   * widget uses this to decide whether to retry the same work automatically
+   * versus surface a definite stop. Absent for every real job failure.
+   */
+  errorCode?: "unauthorized" | "rate_limited";
+  /** Present only alongside `errorCode: "rate_limited"`: how long to wait before retrying. */
+  retryAfterMs?: number;
 };
 
 export const MAX_MESSAGE_CHARS = 1200;

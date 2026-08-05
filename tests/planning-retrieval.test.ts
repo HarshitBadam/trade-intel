@@ -2,12 +2,12 @@ import "./no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveConversationState } from "../src/lib/stocksage/entities";
-import { planEvidence } from "../src/lib/stocksage/planning";
+import { planEvidence } from "../src/lib/stocksage/evidence/planner";
+import { astraInput } from "../src/lib/stocksage/evidence/astra";
 import {
-  astraInput,
   executeEvidencePlan,
   type RetrievalProviders,
-} from "../src/lib/stocksage/retrieve";
+} from "../src/lib/stocksage/evidence/retrieve";
 import {
   expandValidCitations,
   validCitationUrls,
@@ -15,13 +15,13 @@ import {
 import {
   buildDeterministicRankingReply,
   buildFallbackReply,
-} from "../src/lib/stocksage/regular";
-import { filterEvidenceWithDiagnostics } from "../src/lib/stocksage/evidence";
+} from "../src/lib/stocksage/regular-fallback";
+import { filterEvidenceWithDiagnostics } from "../src/lib/stocksage/evidence/filters";
 import {
   readCachedEvidence,
   resetEvidenceCacheMemory,
   writeCachedEvidence,
-} from "../src/lib/stocksage/evidence-cache";
+} from "../src/lib/stocksage/evidence/cache";
 import { buildGroundedDeterministicReply } from "../src/lib/stocksage/grounded-answer";
 import type {
   FinanceEntity,
@@ -140,8 +140,8 @@ test("today question uses bounded planned current providers", async () => {
     entities: resolution.entities,
     providers: providers(counts),
   });
-  assert.deepEqual(counts, { quotes: 1, astra: 1, tavily: 1 });
-  assert.equal(context.sources.length, 2);
+  assert.deepEqual(counts, { quotes: 1, astra: 1, tavily: 0 });
+  assert.equal(context.sources.length, 1);
 });
 
 test("risk and catalyst research keeps relevant Astra evidence", async () => {
@@ -308,6 +308,57 @@ test("private companies keep the news pipeline while skipping market quotes", ()
     false
   );
   assert.equal(plan.queries.some((query) => query.provider === "tavily"), true);
+});
+
+test("professional-services Big Four comparison skips quotes and covers every member", () => {
+  const resolution = resolveConversationState(
+    "Compare the professional services Big 4 on revenue growth",
+    undefined,
+    []
+  );
+  const plan = planEvidence({
+    route: "comparison",
+    message: "Compare the professional services Big 4 on revenue growth",
+    entities: resolution.entities,
+    state: resolution.state,
+  });
+  assert.equal(plan.queries.some((query) => query.provider === "quotes"), false);
+  assert.equal(
+    plan.queries.some((query) => query.provider === "market_proxy"),
+    false
+  );
+  const tavily = plan.queries.filter((query) => query.provider === "tavily");
+  assert.deepEqual(
+    [...new Set(tavily.flatMap((query) => query.entityIds))].sort(),
+    resolution.entities.map((entity) => entity.id).sort()
+  );
+  for (const query of tavily) assert.deepEqual(query.criteria, plan.criteria);
+});
+
+test("qualifier-after professional-services Big Four comparison skips quotes and covers every member", () => {
+  const message = "Compare the Big 4 consulting firms on revenue growth";
+  const resolution = resolveConversationState(message, undefined, []);
+  assert.deepEqual(
+    resolution.entities.map((entity) => entity.name).sort(),
+    ["Deloitte", "EY", "KPMG", "PwC"]
+  );
+  const plan = planEvidence({
+    route: "comparison",
+    message,
+    entities: resolution.entities,
+    state: resolution.state,
+  });
+  assert.equal(plan.queries.some((query) => query.provider === "quotes"), false);
+  assert.equal(
+    plan.queries.some((query) => query.provider === "market_proxy"),
+    false
+  );
+  const tavily = plan.queries.filter((query) => query.provider === "tavily");
+  assert.deepEqual(
+    [...new Set(tavily.flatMap((query) => query.entityIds))].sort(),
+    resolution.entities.map((entity) => entity.id).sort()
+  );
+  for (const query of tavily) assert.deepEqual(query.criteria, plan.criteria);
 });
 
 test("Big Four comparison plans equal criteria for all entities", () => {

@@ -8,8 +8,8 @@ import {
   LATENCY_BUDGET_MS,
   withDeadline,
 } from "../src/lib/stocksage/budget";
-import { decideTurn } from "../src/lib/stocksage/turn-decision";
-import type { RetrievalProviders } from "../src/lib/stocksage/retrieve";
+import { decideTurn } from "../src/lib/stocksage/router";
+import type { RetrievalProviders } from "../src/lib/stocksage/evidence/retrieve";
 
 /**
  * Latency is proved by control flow, not by average timing: a provider that

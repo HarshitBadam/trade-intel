@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { RetrievalProviders } from "../src/lib/stocksage/retrieve";
+import type { RetrievalProviders } from "../src/lib/stocksage/evidence/retrieve";
 
 async function main() {
   delete process.env.GROQ_API_KEY;

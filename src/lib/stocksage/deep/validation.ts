@@ -1,4 +1,4 @@
-import type { DeepResearchSnapshot } from "./deep-snapshot";
+import type { DeepResearchSnapshot } from "./snapshot";
 
 const GENERIC_NAME_PARTS = new Set([
   "class",

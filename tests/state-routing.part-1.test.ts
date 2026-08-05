@@ -252,7 +252,9 @@ test("clarifies ambiguous Big Four and resolves consulting group", () => {
     state: ambiguous.state,
   });
   assert.equal(ambiguousRoute.route, "clarify");
-  assert.match(ambiguousRoute.clarification ?? "", /Deloitte, PwC, EY, and KPMG/);
+  // The clarification must name both plausible meanings, not just one.
+  assert.match(ambiguousRoute.clarification ?? "", /Australian Big Four banks/);
+  assert.match(ambiguousRoute.clarification ?? "", /Deloitte, PwC, EY, KPMG/);
 
   const consulting = resolveConversationState(
     "I mean the consulting Big 4, not the Aussie banks",
@@ -263,6 +265,56 @@ test("clarifies ambiguous Big Four and resolves consulting group", () => {
     consulting.entities.map((entity) => entity.name),
     ["Deloitte", "PwC", "EY", "KPMG"]
   );
+});
+
+test("unambiguous professional-services phrasing never triggers a Big Four clarification", () => {
+  for (const message of [
+    "Compare the professional services Big 4 on revenue growth",
+    "How do the accounting Big 4 compare on headcount?",
+    "What's the outlook for the consulting Big 4?",
+  ]) {
+    const resolution = resolveConversationState(message, undefined, []);
+    assert.deepEqual(
+      resolution.entities.map((entity) => entity.name).sort(),
+      ["Deloitte", "EY", "KPMG", "PwC"],
+      message
+    );
+    assert.ok(
+      resolution.entities.every((entity) => entity.private === true),
+      `${message} every professional-services member is private`
+    );
+    const route = routeMessage({
+      message,
+      entities: resolution.entities,
+      state: resolution.state,
+    });
+    assert.equal(route.route, "comparison", message);
+    assert.notEqual(route.route, "clarify", message);
+  }
+});
+
+test("qualifier-after professional-services phrasing never resolves the Australian banks", () => {
+  for (const message of [
+    "Compare the Big 4 consulting firms on revenue growth",
+    "How do the Big Four accounting firms compare on headcount?",
+    "What is the outlook for the Big 4 audit firms?",
+    "Tell me about the Big Four professional services firms",
+  ]) {
+    const resolution = resolveConversationState(message, undefined, []);
+    assert.deepEqual(
+      resolution.entities.map((entity) => entity.name).sort(),
+      ["Deloitte", "EY", "KPMG", "PwC"],
+      message
+    );
+    assert.equal(resolution.clarification, undefined, message);
+    const route = routeMessage({
+      message,
+      entities: resolution.entities,
+      state: resolution.state,
+    });
+    assert.equal(route.route, "comparison", message);
+    assert.notEqual(route.route, "clarify", message);
+  }
 });
 
 test("replaces Fortune 500 with Fortune 100 in comparison follow-up", () => {

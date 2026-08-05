@@ -2,8 +2,7 @@ import "./no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { answerChat } from "../src/lib/stocksage/chat";
-import { answerWithModel } from "../src/lib/stocksage/chat-model";
-import type { RetrievalProviders } from "../src/lib/stocksage/retrieve";
+import type { RetrievalProviders } from "../src/lib/stocksage/evidence/retrieve";
 import type { ChatRequest } from "../src/lib/stocksage/types";
 
 function setup() {
@@ -115,7 +114,7 @@ test("Coinbase and Robinhood comparison uses bounded evidence", async () => {
     reply.state?.entities.map((entity) => entity.ticker),
     ["COIN", "HOOD"]
   );
-  assert.deepEqual(calls, { quotes: 1, astra: 1, tavily: 2 });
+  assert.deepEqual(calls, { quotes: 1, astra: 2, tavily: 2 });
 });
 
 test("listed sportsbook request asks for company without betting help", async () => {

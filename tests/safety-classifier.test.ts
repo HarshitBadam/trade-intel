@@ -14,7 +14,8 @@ import {
   type SafetyClassifier,
   type SafetyVerdict,
 } from "../src/lib/stocksage/safety-classifier";
-import type { RetrievalProviders } from "../src/lib/stocksage/retrieve";
+import { onStockSageEvent } from "../src/lib/stocksage/telemetry";
+import type { RetrievalProviders } from "../src/lib/stocksage/evidence/retrieve";
 import type { ChatRequest } from "../src/lib/stocksage/types";
 
 function setup(guard?: (message: string) => Promise<SafetyVerdict>) {
@@ -296,4 +297,52 @@ test("a hung classifier resolves to allow at the deadline", async () => {
   );
   assert.deepEqual(verdict, { action: "allow" });
   assert.ok(Date.now() - startedAt >= 1_400);
+});
+
+test("a hung classifier's timeout fail-open is logged with an explicit classifier_timeout reason", async () => {
+  const events: { event: string; reasonCode?: string }[] = [];
+  const unsubscribe = onStockSageEvent((event) => events.push(event));
+  try {
+    await beginInputSafetyCheck(
+      "anything",
+      () => new Promise<SafetyVerdict>(() => {})
+    );
+  } finally {
+    unsubscribe();
+  }
+  const timeoutEvents = events.filter(
+    (event) => event.reasonCode === "classifier_timeout"
+  );
+  assert.equal(timeoutEvents.length, 1);
+});
+
+test("a classifier that resolves before the deadline never logs a timeout", async () => {
+  const events: { event: string; reasonCode?: string }[] = [];
+  const unsubscribe = onStockSageEvent((event) => events.push(event));
+  try {
+    await beginInputSafetyCheck("anything", async () => ({ action: "allow" }));
+  } finally {
+    unsubscribe();
+  }
+  assert.equal(
+    events.filter((event) => event.reasonCode === "classifier_timeout").length,
+    0
+  );
+});
+
+test("a classifier promise that rejects after losing the race never surfaces as an unhandled rejection", async () => {
+  let rejectLate: (() => void) | undefined;
+  const lateRejecting = new Promise<SafetyVerdict>((_resolve, reject) => {
+    rejectLate = () => reject(new Error("classifier exploded after the deadline"));
+  });
+  const verdict = await beginInputSafetyCheck(
+    "anything",
+    () => lateRejecting
+  );
+  assert.deepEqual(verdict, { action: "allow" });
+  // Reject only after the caller has already moved on; this must not
+  // escape as an unhandled rejection because beginInputSafetyCheck attaches
+  // its own .catch to the classifier promise before racing it.
+  rejectLate?.();
+  await new Promise((resolve) => setTimeout(resolve, 10));
 });

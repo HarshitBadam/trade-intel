@@ -1,12 +1,8 @@
 import "server-only";
 
 import {
-  CEREBRAS_CHAT_MODEL,
-  GEMINI_CHAT_MODEL,
-  GROQ_ANALYSIS_MODEL,
   GROQ_CHAT_MODEL,
   GROQ_FALLBACK_MODEL,
-  GROQ_OSS_MODEL,
   hasAnySynthesisLlm,
 } from "@/lib/config";
 import {
@@ -41,9 +37,12 @@ type SynthesisArgs = {
   accept?: (text: string) => boolean;
   correction?: string | ((draft: string) => string);
   maxCandidates?: number;
+  /** Deep Research uses exactly its configured primary, plus one repair. */
+  modelAttempts?: "primary_only" | "primary_then_fallback";
 };
 
 const laneTails = new Map<string, Promise<void>>();
+const LANE_WAIT_CEILING_MS = 250;
 
 async function acquireLane(
   lane: string,
@@ -87,6 +86,13 @@ type Candidate = {
   maxPromptChars?: number;
 };
 
+/**
+ * The unified engine resolves exactly one Groq primary and one configured
+ * Groq fallback at startup — never a longer per-vendor failover chain. Both
+ * regular chat and Deep Research share this same two-candidate pool;
+ * `maxCandidates` (capped at 2 by every caller) is what actually bounds a
+ * single request to at most one primary plus one fallback attempt.
+ */
 function candidatesFor(args: SynthesisArgs): Candidate[] {
   const deep = args.event === "deep_synthesis";
   const groqPrimary: Candidate = {
@@ -96,21 +102,6 @@ function candidatesFor(args: SynthesisArgs): Candidate[] {
     quotaProvider: "groq-chat",
     budgetPerMinute: 12,
   };
-  const cerebras: Candidate = {
-    vendor: "cerebras",
-    model: CEREBRAS_CHAT_MODEL,
-    provider: deep ? "cerebras-deep" : "cerebras-chat",
-    quotaProvider: "cerebras-chat",
-    budgetPerMinute: 10,
-    maxPromptChars: 20_000,
-  };
-  const gemini: Candidate = {
-    vendor: "gemini",
-    model: GEMINI_CHAT_MODEL,
-    provider: deep ? "gemini-deep" : "gemini-chat",
-    quotaProvider: "gemini-chat",
-    budgetPerMinute: 8,
-  };
   const groqFallback: Candidate = {
     vendor: "groq",
     model: GROQ_FALLBACK_MODEL,
@@ -118,26 +109,10 @@ function candidatesFor(args: SynthesisArgs): Candidate[] {
     quotaProvider: "groq-fallback",
     budgetPerMinute: 4,
   };
-  // Groq rate limits are per model.
-  const groqOss: Candidate = {
-    vendor: "groq",
-    model: GROQ_OSS_MODEL,
-    provider: deep ? "groq-deep-oss" : "groq-oss",
-    quotaProvider: "groq-oss",
-    budgetPerMinute: 10,
-  };
-  const groqSmall: Candidate = {
-    vendor: "groq",
-    model: GROQ_ANALYSIS_MODEL,
-    provider: deep ? "groq-deep-small" : "groq-chat-small",
-    quotaProvider: "groq-analysis",
-    budgetPerMinute: 20,
-  };
-  const ordered =
-    args.lane === "light"
-      ? [groqPrimary, gemini, cerebras, groqOss, groqSmall, groqFallback]
-      : [groqPrimary, cerebras, gemini, groqOss, groqFallback, groqSmall];
-  return ordered.filter(
+  const ordered = [groqPrimary, groqFallback];
+  const selected =
+    args.modelAttempts === "primary_only" ? ordered.slice(0, 1) : ordered;
+  return selected.filter(
     (candidate, index, list) =>
       hasVendor(candidate.vendor) &&
       list.findIndex(
@@ -164,6 +139,7 @@ export async function synthesizeWithFallback(
   const deadline = Date.now() + (args.totalTimeoutMs ?? 30_000);
   const inputChars = promptChars(args);
   let attemptedCandidates = 0;
+  let repairAttempted = false;
 
   for (const candidate of candidatesFor(args)) {
     if (
@@ -172,9 +148,17 @@ export async function synthesizeWithFallback(
     ) {
       continue;
     }
-    const laneKey = `${candidate.vendor}:${candidate.model}`;
-    const release = await acquireLane(laneKey, deadline - Date.now());
-    if (!release) break;
+    const laneKey = `${candidate.vendor}:${candidate.model}:${args.lane ?? "full"}`;
+    const release = await acquireLane(
+      laneKey,
+      Math.min(
+        LANE_WAIT_CEILING_MS,
+        Math.max(0, deadline - Date.now() - 1_000)
+      )
+    );
+    // A saturated primary lane is candidate-local unavailability. The
+    // configured fallback has its own lane and must still get a chance.
+    if (!release) continue;
     try {
       const remainingMs = deadline - Date.now();
       if (remainingMs < 1_000) continue;
@@ -214,26 +198,56 @@ export async function synthesizeWithFallback(
         user: args.user,
         timeoutMs: Math.min(args.timeoutMs ?? 20_000, remainingMs),
       });
+      // Breaker success records provider/API availability. A draft rejected by
+      // publication checks is valid transport and must not trip the circuit.
       await recordSuccess(candidate.provider);
       if (!args.accept || args.accept(text)) return text;
 
-      if (args.correction && deadline - Date.now() > 2_000) {
-        const correction =
-          typeof args.correction === "function"
-            ? args.correction(text)
-            : args.correction;
-        const revised = await llmChatText({
-          ...base,
-          messages: [
-            ...(args.history ?? []),
-            { role: "user", content: args.user },
-            { role: "assistant", content: text },
-            { role: "user", content: correction },
-          ],
-          user: undefined,
-          timeoutMs: Math.min(args.timeoutMs ?? 20_000, deadline - Date.now()),
-        });
-        if (args.accept(revised)) return revised;
+      if (
+        args.correction &&
+        !repairAttempted &&
+        deadline - Date.now() > 2_000
+      ) {
+        const repairProviderOpen = await isOpen(candidate.provider);
+        const repairQuotaOpen =
+          candidate.quotaProvider === candidate.provider
+            ? repairProviderOpen
+            : await isOpen(candidate.quotaProvider);
+        const repairAdmission =
+          !repairProviderOpen &&
+          !repairQuotaOpen &&
+          !(await isCoolingDown(candidate.quotaProvider)) &&
+          (await rateLimit(
+            `stocksage-model-${laneKey.replace(/[^a-z0-9]+/gi, "-")}`,
+            "shared-synthesis-budget",
+            candidate.budgetPerMinute,
+            60
+          )).success;
+        if (repairAdmission && deadline - Date.now() > 1_000) {
+          // A repair is a separate admitted transport call, but it is still
+          // globally limited to one invocation for this synthesis request.
+          repairAttempted = true;
+          const correction =
+            typeof args.correction === "function"
+              ? args.correction(text)
+              : args.correction;
+          const revised = await llmChatText({
+            ...base,
+            messages: [
+              ...(args.history ?? []),
+              { role: "user", content: args.user },
+              { role: "assistant", content: text },
+              { role: "user", content: correction },
+            ],
+            user: undefined,
+            timeoutMs: Math.min(
+              args.timeoutMs ?? 20_000,
+              deadline - Date.now()
+            ),
+          });
+          await recordSuccess(candidate.provider);
+          if (args.accept(revised)) return revised;
+        }
       }
       lastError = new Error("Synthesis output failed publication checks");
       console.error(

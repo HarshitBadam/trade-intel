@@ -4,14 +4,15 @@ import { guard } from "@/lib/guard";
 import { answerChat } from "@/lib/stocksage/chat";
 import {
   enqueueDeepResearch,
-  pollDeepResearch,
+  getDeepResearchStatus,
+  retryDeepResearch,
   type DeepResearchJob,
-} from "@/lib/stocksage/deep-queue";
+} from "@/lib/stocksage/deep/queue";
 import { logStockSage } from "@/lib/stocksage/telemetry";
 import { parseChatRequest } from "@/lib/stocksage/types";
 import type { ChatReply } from "@/lib/stocksage/types";
 
-export type { DeepResearchJob } from "@/lib/stocksage/deep-queue";
+export type { DeepResearchJob } from "@/lib/stocksage/deep/queue";
 export type {
   ChatReply,
   ChatRequest,
@@ -62,20 +63,30 @@ export async function getSummary(request: unknown): Promise<ChatReply> {
   return reply;
 }
 
+/**
+ * A `guard()` denial is an admission-control outcome, not a job outcome: no
+ * work was created or advanced. `errorCode` lets the widget tell "try again
+ * shortly, same work" (rate limit) apart from "stop, sign in" (unauthorized)
+ * instead of treating every denial as an equally terminal failure.
+ */
 function deniedJob(access: {
   reason?: string;
   retryAfterSec?: number;
 }): DeepResearchJob {
+  const unauthorized = access.reason === "unauthorized";
   return {
     status: "failure",
     reply: {
       workId: "unavailable",
       status: "failure",
-      text:
-        access.reason === "unauthorized"
-          ? "Please sign in to use Research deeper."
-          : `Research requests are limited right now. Try again in ${access.retryAfterSec}s.`,
-      retryable: access.reason !== "unauthorized",
+      text: unauthorized
+        ? "Please sign in to use Research deeper."
+        : `Research requests are limited right now. Try again in ${access.retryAfterSec}s.`,
+      retryable: !unauthorized,
+      errorCode: unauthorized ? "unauthorized" : "rate_limited",
+      ...(unauthorized
+        ? {}
+        : { retryAfterMs: Math.max(1, access.retryAfterSec ?? 1) * 1000 }),
     },
   };
 }
@@ -116,5 +127,14 @@ export async function checkDeepResearch(
   // starts no work, and a blocked poll would strand a job the user paid for.
   const access = await guard("deep-poll", { limit: 120, windowSec: 60 });
   if (!access.ok) return deniedJob(access);
-  return pollDeepResearch(workId);
+  return getDeepResearchStatus(workId);
+}
+
+/** Widget entry point for a retry click: reissues a fresh signed work/attempt identity. */
+export async function retryResearchDeeper(
+  token: unknown
+): Promise<DeepResearchJob> {
+  const access = await guard("deep-research", { limit: 4, windowSec: 60 });
+  if (!access.ok) return deniedJob(access);
+  return retryDeepResearch(token);
 }
