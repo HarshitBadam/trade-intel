@@ -245,6 +245,25 @@ export async function readTickerArticles(
   return rows.sort((left, right) => timestamp(right) - timestamp(left)).slice(0, limit);
 }
 
+export async function readTickerArticlesByIds(
+  ticker: string,
+  ids: readonly string[]
+): Promise<StoredArticle[]> {
+  if (ids.length === 0) return [];
+  const symbol = ticker.trim().toUpperCase();
+  const uniqueIds = [...new Set(ids)].slice(0, 100);
+  const rows = await newsCollection()
+    .find({
+      _id: { $in: uniqueIds },
+      "metadata.ticker": { $in: [symbol, symbol.toLowerCase()] },
+    })
+    .toArray();
+  const byId = new Map(rows.map((row) => [row._id, row]));
+  return uniqueIds
+    .map((id) => byId.get(id))
+    .filter((row): row is StoredArticle => Boolean(row));
+}
+
 export async function countTickerArticles(ticker: string): Promise<number> {
   return newsCollection().countDocuments(
     { "metadata.ticker": ticker.trim().toUpperCase() },
@@ -269,6 +288,68 @@ export async function writeAnalysisDoc(doc: AnalysisDoc): Promise<void> {
   );
 }
 
+/**
+ * Pure shape of the manifest CAS update: every successful publish clears
+ * `refresh_staging_at` unconditionally, regardless of what the caller's
+ * `doc` happens to carry (it is stripped out of `$set` and always
+ * `$unset`). Reaching a real publish means the in-flight refresh produced a
+ * durable manifest (or explicit no_news/news-only bundle), so the staging
+ * marker's job of telling no-manifest readers "a refresh is in flight, fail
+ * closed" is done. Exported standalone so this invariant is testable
+ * without a live Astra connection.
+ */
+export function buildManifestPublishUpdate(doc: AnalysisDoc): {
+  fields: Record<string, unknown>;
+  unset: Record<string, "">;
+} {
+  const { _id: _ignored, refresh_staging_at: _stagingIgnored, ...fields } = doc;
+  return { fields, unset: { refresh_staging_at: "" } };
+}
+
+/**
+ * Publishes the single authoritative manifest only if the analysis generation
+ * still matches what the worker originally read. Article rows may be staged
+ * earlier, but readers cannot see them until their ids appear in this document.
+ */
+export async function publishAnalysisDoc(
+  doc: AnalysisDoc,
+  expectedGeneration: number | null
+): Promise<boolean> {
+  const { collection, id, onInsert } = await analysisRef(doc._id ?? doc.ticker);
+  const { fields, unset } = buildManifestPublishUpdate(doc);
+  const generationFilter =
+    expectedGeneration === null
+      ? { generation: { $exists: false } }
+      : { generation: expectedGeneration };
+  const result = await collection.updateOne(
+    { _id: id, ...generationFilter },
+    {
+      $set: { ...fields, ...onInsert },
+      $unset: unset,
+    },
+    { upsert: expectedGeneration === null }
+  );
+  return result.modifiedCount > 0 || result.upsertedCount > 0;
+}
+
+// Written immediately before the worker upserts newly fetched article rows,
+// so the window between "rows exist in storage" and "a manifest/watermark
+// vouches for them" is never silently mistaken for genuine legacy data by a
+// no-manifest reader. `$set`-only and ungated by generation, mirroring
+// `touchNewsLoadedAt`: this is a heads-up marker, not part of the CAS'd
+// manifest itself.
+export async function markRefreshStaging(
+  ticker: string,
+  when: string = new Date().toISOString()
+): Promise<void> {
+  const { collection, id, onInsert } = await analysisRef(ticker);
+  await collection.updateOne(
+    { _id: id },
+    { $set: { ...onInsert, refresh_staging_at: when } },
+    { upsert: true }
+  );
+}
+
 // Stamped by the news loader after a successful article load. Deliberately NOT
 // `analyzed_at`: staleness of the verdict is judged from `analyzed_at` alone,
 // which only the analysis pass may write.
@@ -280,6 +361,18 @@ export async function touchNewsLoadedAt(
   await collection.updateOne(
     { _id: id },
     { $set: { ...onInsert, news_loaded_at: when } },
+    { upsert: true }
+  );
+}
+
+export async function recordAnalysisError(
+  ticker: string,
+  errorCode: string
+): Promise<void> {
+  const { collection, id, onInsert } = await analysisRef(ticker);
+  await collection.updateOne(
+    { _id: id },
+    { $set: { ...onInsert, last_error_code: errorCode } },
     { upsert: true }
   );
 }

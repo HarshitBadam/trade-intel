@@ -6,6 +6,7 @@ import { NewsCard } from "./NewsCard";
 import { Bar } from "./Bar";
 import { NewsModal, type NewsArticle } from "./NewsModal";
 import { VerdictModal, type NewsVerdict } from "./VerdictModal";
+import type { RefreshState } from "@/lib/market-intelligence/types";
 
 export type News = {
   _id: string;
@@ -31,6 +32,10 @@ export type NewsStatus =
   | "live"
   | "sample"
   | "stale"
+  | "degraded"
+  | "hard_expired"
+  | "no_news"
+  | "analysis_unavailable"
   | "unavailable";
 
 interface RecentInfluentialProps {
@@ -39,8 +44,15 @@ interface RecentInfluentialProps {
   updatedAt?: string;
   verdict?: NewsVerdict;
   ticker?: string;
+  refreshState?: RefreshState;
+  retryAfterSec?: number;
   positiveSentimentPercentage: number;
   negativeSentimentPercentage: number;
+}
+
+function formatCooldown(seconds: number): string {
+  if (seconds < 90) return `${Math.max(1, Math.round(seconds))}s`;
+  return `${Math.round(seconds / 60)}m`;
 }
 
 function timeAgo(iso?: string): string {
@@ -75,7 +87,27 @@ function StatusBadge({
       text: "text-green-700 dark:text-green-400",
     },
     stale: {
-      label: `Outdated analysis${updatedAt ? `, ${timeAgo(updatedAt)}` : ""}`,
+      label: `Previous snapshot${updatedAt ? `, checked ${timeAgo(updatedAt)}` : ""}`,
+      dot: "bg-amber-500",
+      text: "text-amber-700 dark:text-amber-400",
+    },
+    degraded: {
+      label: `Showing last checked information${updatedAt ? `, ${timeAgo(updatedAt)}` : ""}`,
+      dot: "bg-amber-500",
+      text: "text-amber-700 dark:text-amber-400",
+    },
+    hard_expired: {
+      label: "Preparing current coverage",
+      dot: "bg-yellow-500",
+      text: "text-yellow-700 dark:text-yellow-400",
+    },
+    no_news: {
+      label: "No recent coverage found",
+      dot: "bg-gray-400",
+      text: "text-gray-500 dark:text-gray-400",
+    },
+    analysis_unavailable: {
+      label: "Current headlines; AI analysis unavailable",
       dot: "bg-amber-500",
       text: "text-amber-700 dark:text-amber-400",
     },
@@ -148,6 +180,8 @@ export function RecentInfluential({
   updatedAt,
   verdict,
   ticker,
+  refreshState = "idle",
+  retryAfterSec,
   positiveSentimentPercentage, 
   negativeSentimentPercentage 
 }: RecentInfluentialProps) {
@@ -193,9 +227,23 @@ export function RecentInfluential({
       <div className="pb-8">
         <div className="flex items-center justify-between mb-6 gap-3">
           <h2 className="text-xl font-bold">Sentiment Score Gauge</h2>
-          {status === "analyzing" && (
+          {(status === "analyzing" ||
+            refreshState === "queued" ||
+            refreshState === "running") && (
             <span className="text-xs font-medium text-muted-foreground">
               Updating
+            </span>
+          )}
+          {refreshState === "backgrounded" && (
+            <span className="text-xs font-medium text-muted-foreground">
+              Finishing in background
+            </span>
+          )}
+          {refreshState === "failed" && (
+            <span className="text-xs font-medium text-muted-foreground">
+              {retryAfterSec
+                ? `Refresh paused, retry in ${formatCooldown(retryAfterSec)}`
+                : "Refresh unavailable right now"}
             </span>
           )}
         </div>
@@ -227,7 +275,12 @@ export function RecentInfluential({
         <Bar segments={sentimentBreakdown} height="h-8" />
       </div>
 
-      {(news.length > 0 || status === "analyzing" || status === "unavailable") && (
+      {(news.length > 0 ||
+        status === "analyzing" ||
+        status === "hard_expired" ||
+        status === "no_news" ||
+        status === "unavailable" ||
+        refreshState === "backgrounded") && (
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex items-center justify-between mb-6 gap-3">
             <h2 className="text-xl font-bold">Recent Influential</h2>
@@ -241,13 +294,35 @@ export function RecentInfluential({
           <div className="flex-1 min-h-0 overflow-y-auto max-h-[26rem] lg:max-h-none">
             <div className="flex relative">
               <div className="flex-1 flex flex-col divide-y divide-border/70 overflow-x-hidden">
-                {status === "analyzing" && news.length === 0 && (
+                {(status === "analyzing" ||
+                  refreshState === "queued" ||
+                  refreshState === "running") &&
+                  news.length === 0 && (
                   <NewsCardSkeleton />
                 )}
-                {status === "unavailable" && news.length === 0 && (
+                {refreshState === "backgrounded" && news.length === 0 && (
+                  <p className="py-4 text-sm text-muted-foreground">
+                    Still finishing up in the background. Check back shortly
+                    for the latest coverage.
+                  </p>
+                )}
+                {status === "unavailable" &&
+                  refreshState !== "queued" &&
+                  refreshState !== "running" &&
+                  news.length === 0 && (
                   <p className="py-4 text-sm text-muted-foreground">
                     Live headlines are temporarily unavailable. This usually
                     resolves within a minute, we&apos;ll keep checking.
+                  </p>
+                )}
+                {status === "hard_expired" &&
+                  refreshState === "idle" &&
+                  news.length === 0 && (
+                  <NewsCardSkeleton />
+                )}
+                {status === "no_news" && news.length === 0 && (
+                  <p className="py-4 text-sm text-muted-foreground">
+                    No recent provider coverage was found for this ticker.
                   </p>
                 )}
                 {news.map((news) => (

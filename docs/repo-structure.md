@@ -6,18 +6,18 @@ The source tree, annotated. Config and generated files are omitted.
 .
 ├── .github/workflows/
 │   ├── ci.yml                   # typecheck, lint, tests, and production build
-│   ├── news-cron.yml            # manually runs /api/cron/news
-│   └── keep-warm.yml            # manually pings the Langflow host
+│   ├── news-cron.yml            # legacy/manual cron diagnostic
+│   └── keep-warm.yml            # legacy/manual Langflow diagnostic
 ├── langflow/
 │   ├── README.md                # the Deep Research and analysis flows
 │   ├── stocksage-chat.json      # RAG chat flow (Astra + Tavily + Groq 70B)
 │   └── stocksage-analysis.json  # stateless article-to-labels flow (Groq 8B)
 ├── scripts/
 │   ├── build-universe.mjs       # rebuilds universe.json from Alpaca's asset list
-│   ├── run-cron.ts              # runs one ingestion pass locally
+│   ├── run-showcase-cron.ts     # invokes the showcase scheduler manually
 │   ├── load-news.ts             # loads news for a single ticker
 │   ├── analyze-ticker.ts        # analyzes a single ticker
-│   ├── setup-qstash.ts          # configures recurring ingestion schedules
+│   ├── setup-qstash.ts          # reconciles showcase + maintenance schedules
 │   ├── stocksage-smoke.ts       # runs the StockSage smoke scenarios
 │   ├── stocksage-eval.ts        # runs the broader StockSage evaluation set
 │   └── sync-system-prompt.mjs   # bakes the app prompts into the Langflow JSONs
@@ -45,12 +45,14 @@ The source tree, annotated. Config and generated files are omitted.
     │   ├── login/page.tsx       # sign-in screen
     │   ├── api/
     │   │   ├── auth/[...nextauth]/route.ts  # Auth.js route handlers
-    │   │   └── cron/news/route.ts           # the ingestion cron endpoint
+    │   │   ├── cron/showcase/route.ts       # publishes paced showcase jobs
+    │   │   ├── cron/maintenance/route.ts    # article-retention maintenance
+    │   │   └── market-intelligence/worker/  # signed work + failure routes
     │   └── details/[id]/
     │       ├── page.tsx         # detail route, assembles StockData server-side
-    │       ├── DetailsView.tsx  # detail client UI (flip card, news panel, peers)
-    │       ├── actions.ts       # detail server actions (quotes, charts, related)
-    │       ├── priority.ts      # cold-ticker priority analysis trigger
+    │       ├── DetailsView.tsx  # detail UI, durable refresh status polling
+    │       ├── RelatedStocksSection.tsx # eager independent streamed peers
+    │       ├── actions.ts       # detail reads, refresh enqueue/status, charts
     │       └── loading.tsx      # skeleton while the page streams
     ├── components/
     │   ├── layout/              # Nav, HeaderGate, SearchBar, breadcrumb, theme toggle, user menu
@@ -107,6 +109,7 @@ The source tree, annotated. Config and generated files are omitted.
     │   │   ├── prompt.ts        # loads the Deep Research system prompt
     │   │   ├── analysis-prompt.ts   # the deep-analysis instructions
     │   │   └── system-prompt.json   # Deep Research system prompt
+    │   ├── market-intelligence/ # bundle contracts, queue, worker, scheduler
     │   └── market-data/
     │       ├── index.ts         # public re-exports
     │       ├── api.ts           # high-level read API (movers, quotes, home bundles)
@@ -121,7 +124,7 @@ The source tree, annotated. Config and generated files are omitted.
     │       ├── polygon.ts       # authenticated fetch + status check
     │       ├── news-loaders.ts  # write path: Polygon/Alpaca news ingest
     │       ├── news-store.ts    # Astra reads/writes for articles and verdicts
-    │       ├── analysis.ts      # analysis orchestration (Langflow-first)
+    │       ├── analysis.ts      # validated direct-Groq analysis preparation
     │       ├── analysis-helpers.ts  # prompt build, Zod schema, runAnalysisLLM
     │       ├── universe.ts      # local search over universe.json
     │       ├── limiter.ts       # per-provider sliding rate limiter
@@ -141,5 +144,6 @@ The source tree, annotated. Config and generated files are omitted.
 ## Where to start reading
 
 - Read path: `src/app/details/[id]/page.tsx`, then `src/lib/market-data/queries.ts`.
-- Write path: `src/app/api/cron/news/route.ts`, then `src/lib/market-data/news-loaders.ts` and `analysis.ts`.
+- Write path: `src/lib/market-intelligence/worker.ts`, then
+  `src/lib/market-data/news-loaders.ts` and `analysis.ts`.
 - Chat: `src/app/actions.ts`, then `src/lib/stocksage/chat.ts`.

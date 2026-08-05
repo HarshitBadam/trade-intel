@@ -4,9 +4,15 @@ The design follows one rule: the request path only reads, and background jobs do
 
 ## Why it's built this way
 
-The free tiers are the constraint. Polygon news is 5 requests a minute. The Langflow host sleeps when idle and occasionally returns 503 for hours until someone restarts it. An early version called these providers on every page load, so a burst of clicks would exhaust the news budget and leave the UI stuck on "analyzing" or "unavailable".
+The free tiers are the constraint. Polygon news is rate-limited, QStash has a
+daily message allowance, and optional Langflow hosting is not reliable enough
+to sit on the production path. Calling these providers on page loads would
+couple user latency and availability to those limits.
 
-Moving that work into a scheduled job fixes it. The cron owns the scarce providers and fills a database. Pages read the database plus Alpaca, which is fast (200 req/min) and reliable. When an upstream provider goes down, the cron retries on its next run and pages keep serving whatever is already stored.
+Durable per-ticker jobs own scarce provider work. The hourly showcase scheduler
+and authenticated long-tail visits publish the same deduplicated worker. Pages
+read Astra plus cached price providers. When an upstream fails, the last
+published bundle remains intact and the job retries outside the request.
 
 ## System overview
 
@@ -21,12 +27,13 @@ flowchart TB
   subgraph next["Next.js (Vercel)"]
     RSC["Server Components + actions"]
     CACHE["unstable_cache layer"]
-    CRON["/api/cron/news"]
+    SCHEDULER["Showcase scheduler"]
+    QUEUE["QStash signed worker"]
   end
 
   subgraph store["Store of record"]
     ASTRA[(Astra DB<br/>news + verdicts)]
-    REDIS[(Upstash Redis<br/>limits + breaker)]
+    REDIS[(Upstash Redis<br/>jobs + leases + limits)]
   end
 
   subgraph providers["External providers"]
@@ -35,7 +42,7 @@ flowchart TB
     POLYGON["Polygon (news)"]
     GROQ["Groq (LLM)"]
     TAVILY["Tavily (web search)"]
-    LANGFLOW["Langflow host"]
+    LANGFLOW["Langflow evaluation adapter"]
   end
 
   HOME --> RSC
@@ -49,13 +56,19 @@ flowchart TB
   CHAT --> GROQ
   CHAT --> TAVILY
 
-  CRON --> POLYGON
-  CRON --> GROQ
-  CRON --> LANGFLOW
-  CRON --> ASTRA
+  DETAIL --> QUEUE
+  SCHEDULER --> QUEUE
+  QUEUE --> REDIS
+  QUEUE --> POLYGON
+  QUEUE --> GROQ
+  QUEUE --> ASTRA
 ```
 
-Pages read Astra, Alpaca, and Finnhub. Polygon and the batch LLM lane sit behind the cron. Chat first screens the turn for crisis language, then applies a deterministic domain policy, resolves typed conversation state, and builds a bounded evidence plan. Social, out-of-scope, code, and stable-finance turns skip retrieval; current and comparison routes call only planned quote, Astra, or Tavily providers. Eligible regular answers can launch idempotent deeper research through the same typed retrieval layer with broader queries and independent synthesis failover.
+Pages read Astra, Alpaca, and Finnhub. Polygon and direct Groq market analysis
+sit behind the durable worker. Langflow is not in the default dependency graph.
+Chat first screens the turn for crisis language, then applies a deterministic
+domain policy, resolves typed conversation state, and builds a bounded evidence
+plan.
 
 ## Serving a page
 
@@ -84,7 +97,10 @@ sequenceDiagram
   P-->>B: rendered page
 ```
 
-> If Astra has nothing for a ticker (a long-tail name the cron has not reached), the detail page kicks off a one-off priority analysis in the background, shows an "analyzing" badge, and polls until it lands (rate limited and single-flighted). It is the one spot where the request path triggers live analysis.
+If the published bundle is stale or missing, the browser reserves or joins a
+durable job after first paint. It polls only job status with backoff. On
+completion it fetches once and replaces the whole article/sentiment/verdict
+generation. The page request itself performs no news ingestion or model work.
 
 ## Provider split
 
@@ -92,11 +108,11 @@ sequenceDiagram
 |----------|------|---------------|
 | Alpaca | Prices, candles, snapshots, movers | Read path |
 | Finnhub | Company profile, peers, symbol search fallback | Read path |
-| Polygon | Bulk news and per-article interim sentiment | Cron only |
+| Polygon | News and per-article interim sentiment | Market-intelligence worker |
 | Astra DB | Stored articles and per-ticker verdicts | Both |
-| Groq | Batch analysis, isolated primary and fallback chat models, and the GPT-OSS Safeguard input rail | Cron and chat |
+| Groq | Market analysis, isolated chat models, and the GPT-OSS Safeguard input rail | Worker and chat |
 | Tavily | Planned, filtered web evidence for current/comparison routes | Chat |
-| Langflow | Optional batch orchestration | Cron |
+| Langflow | Optional manual/evaluation adapter | Offline/manual only |
 
 Prices resolve in order: Alpaca SIP history with a live IEX tail, then Polygon aggregates as a backup, then nothing. In live mode the UI shows an "unavailable" state rather than inventing a price.
 

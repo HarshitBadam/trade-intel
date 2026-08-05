@@ -8,11 +8,8 @@ import {
   countTickerArticles,
   readAnalysisDoc,
   readTickerArticles,
-  touchNewsLoadedAt,
-  upsertArticles,
   writeAnalysisDoc,
 } from "./news-store";
-import { fetchAlpacaNews, loadTickerNews } from "./news-loaders";
 import { dedupeNews, windowNews } from "./transforms";
 import type { AnalysisDoc, AnalysisKeyDriver, StoredArticle } from "./types";
 import {
@@ -88,6 +85,97 @@ export async function shouldAnalyzeTicker(
   return { run: false, reason: "fresh" };
 }
 
+export type PreparedTickerAnalysis = {
+  labels: {
+    _id: string;
+    sentiment: string;
+    importance: string;
+    key_observations: string;
+  }[];
+  verdict: Pick<
+    AnalysisDoc,
+    | "overall_sentiment"
+    | "sentiment_score"
+    | "confidence"
+    | "summary"
+    | "key_drivers"
+    | "risks"
+    | "model"
+    | "article_count"
+    | "source_window_days"
+  >;
+};
+
+/** Runs and validates analysis without mutating storage. */
+export async function prepareTickerAnalysis(
+  ticker: string,
+  articles: readonly StoredArticle[]
+): Promise<PreparedTickerAnalysis> {
+  const symbol = ticker.trim().toUpperCase();
+  const promptArticles = articles.map(toPromptArticle);
+  const sentIds = new Set(promptArticles.map((article) => article.article_id));
+  const raw = await runAnalysisLLM(buildUserPrompt(symbol, promptArticles));
+  const parsed = ResponseSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(
+      `analysis response failed schema validation for ${symbol}: ${parsed.error.message}`
+    );
+  }
+  const data = parsed.data;
+  const labels: PreparedTickerAnalysis["labels"] = [];
+  const seen = new Set<string>();
+  for (const row of data.articles) {
+    const sentiment = normSentiment3(row.sentiment);
+    if (!sentIds.has(row.article_id) || sentiment === null || seen.has(row.article_id)) {
+      continue;
+    }
+    seen.add(row.article_id);
+    labels.push({
+      _id: row.article_id,
+      sentiment,
+      importance: normLevel(row.importance),
+      key_observations: (row.key_observations ?? "").trim(),
+    });
+  }
+  if (data.articles.length > 0 && labels.length / data.articles.length < 0.3) {
+    throw new Error(
+      `analysis returned mostly-unusable article labels for ${symbol} ` +
+        `(${labels.length}/${data.articles.length} usable)`
+    );
+  }
+
+  const overall = normOverall(data.verdict.overall_sentiment);
+  if (overall === null || !data.verdict.summary.trim()) {
+    throw new Error(`analysis returned an unusable verdict for ${symbol}`);
+  }
+  const keyDrivers: AnalysisKeyDriver[] = data.verdict.key_drivers
+    .map((driver) => ({
+      text: driver.text.trim(),
+      sentiment: normSentiment3(driver.sentiment) ?? "Neutral",
+      article_ids: driver.article_ids.filter((id) => sentIds.has(id)),
+    }))
+    .filter((driver) => driver.text.length > 0)
+    .slice(0, 5);
+
+  return {
+    labels,
+    verdict: {
+      model: GROQ_ANALYSIS_MODEL,
+      article_count: articles.length,
+      overall_sentiment: overall,
+      sentiment_score: clampScore(data.verdict.sentiment_score),
+      confidence: normLevel(data.verdict.confidence),
+      summary: data.verdict.summary.trim(),
+      key_drivers: keyDrivers,
+      risks: data.verdict.risks
+        .map((risk) => risk.trim())
+        .filter(Boolean)
+        .slice(0, 3),
+      source_window_days: SOURCE_WINDOW_DAYS,
+    },
+  };
+}
+
 export async function analyzeTicker(
   ticker: string,
   opts?: { force?: boolean }
@@ -104,93 +192,20 @@ export async function analyzeTicker(
     return { ticker: symbol, analyzed: 0, relabeled: 0, skipped: "no-articles" };
   }
 
-  const promptArticles = windowed.map(toPromptArticle);
-  const sentIds = new Set(promptArticles.map((a) => a.article_id));
-  const user = buildUserPrompt(symbol, promptArticles);
-
-  // runAnalysisLLM owns the per-provider breaker records. A network error /
-  // rate-limit throw is a provider failure that trips the relevant breaker,
-  // whereas a schema/validation failure below is a content problem, neither
-  // touches analyzed_at, preserving the "analyzed_at only on success" contract.
-  const raw = await runAnalysisLLM(user);
-
-  const parsed = ResponseSchema.safeParse(raw);
-  if (!parsed.success) {
-    throw new Error(
-      `analysis response failed schema validation for ${symbol}: ${parsed.error.message}`
-    );
-  }
-  const data = parsed.data;
-
-  const returned = data.articles;
-  const validLabels: {
-    _id: string;
-    sentiment: string;
-    importance: string;
-    key_observations: string;
-  }[] = [];
-  const seen = new Set<string>();
-  for (const row of returned) {
-    const sentiment = normSentiment3(row.sentiment);
-    if (!sentIds.has(row.article_id) || sentiment === null) continue;
-    if (seen.has(row.article_id)) continue;
-    seen.add(row.article_id);
-    validLabels.push({
-      _id: row.article_id,
-      sentiment,
-      importance: normLevel(row.importance),
-      key_observations: (row.key_observations ?? "").trim(),
-    });
-  }
-  if (returned.length > 0 && validLabels.length / returned.length < 0.3) {
-    throw new Error(
-      `analysis returned mostly-unusable article labels for ${symbol} ` +
-        `(${validLabels.length}/${returned.length} usable)`
-    );
-  }
-
-  const overall = normOverall(data.verdict.overall_sentiment);
-  if (overall === null || !data.verdict.summary.trim()) {
-    throw new Error(`analysis returned an unusable verdict for ${symbol}`);
-  }
-  const keyDrivers: AnalysisKeyDriver[] = data.verdict.key_drivers
-    .map((d) => ({
-      text: d.text.trim(),
-      sentiment: normSentiment3(d.sentiment) ?? "Neutral",
-      article_ids: d.article_ids.filter((id) => sentIds.has(id)),
-    }))
-    .filter((d) => d.text.length > 0)
-    .slice(0, 5);
-  const risks = data.verdict.risks
-    .map((r) => r.trim())
-    .filter((r) => r.length > 0)
-    .slice(0, 3);
-
-  // Success: relabel rows in place, THEN write the verdict with analyzed_at.
-  // analyzed_at is written ONLY on a fully successful run (the "analyzed_at
-  // only on success" contract): a dead or malformed LLM leaves the last
-  // known-good verdict intact.
-  const relabeled = await applyArticleLabels(validLabels);
+  const prepared = await prepareTickerAnalysis(symbol, windowed);
+  const relabeled = await applyArticleLabels(prepared.labels);
   const analyzedAt = new Date().toISOString();
   await writeAnalysisDoc({
     ticker: symbol,
     analyzed_at: analyzedAt,
-    model: GROQ_ANALYSIS_MODEL,
-    article_count: windowed.length,
-    overall_sentiment: overall,
-    sentiment_score: clampScore(data.verdict.sentiment_score),
-    confidence: normLevel(data.verdict.confidence),
-    summary: data.verdict.summary.trim(),
-    key_drivers: keyDrivers,
-    risks,
-    source_window_days: SOURCE_WINDOW_DAYS,
+    ...prepared.verdict,
   });
 
   return {
     ticker: symbol,
     analyzed: windowed.length,
     relabeled,
-    verdict: overall,
+    verdict: prepared.verdict.overall_sentiment,
   };
 }
 
@@ -222,52 +237,5 @@ export async function maybeAnalyzeTicker(
   } catch (error) {
     console.error(`[analysis] analyze failed for ${symbol}:`, error);
     return { status: "error", reason: (error as Error).message };
-  }
-}
-
-// Interactive entry for a GENUINELY-COLD ticker: fires only when the store has
-// nothing useful (zero articles AND no analysis doc). Loads news (one Polygon
-// call), then analyzes. All behind the same single-flight claim.
-export async function requestPriorityAnalysis(
-  ticker: string
-): Promise<{ status: "started" | "skipped"; reason: string }> {
-  const symbol = ticker.trim().toUpperCase();
-  if (!hasGroq) return { status: "skipped", reason: "groq-unavailable" };
-
-  const [count, doc] = await Promise.all([
-    countTickerArticles(symbol),
-    readAnalysisDoc(symbol),
-  ]);
-  if (count > 0 || doc) {
-    return { status: "skipped", reason: "already-has-data" };
-  }
-
-  if (!(await claimAnalysisSlot(symbol))) {
-    return { status: "skipped", reason: "in-flight" };
-  }
-
-  try {
-    let landed = 0;
-    try {
-      const loaded = await loadTickerNews(symbol);
-      landed = loaded.fetched;
-    } catch (polygonError) {
-      console.error(
-        `[analysis] priority Polygon load failed for ${symbol}, trying Alpaca:`,
-        polygonError
-      );
-      const articles = await fetchAlpacaNews(symbol);
-      await upsertArticles(symbol, articles);
-      await touchNewsLoadedAt(symbol);
-      landed = articles.length;
-    }
-
-    if (landed === 0) return { status: "skipped", reason: "no-news-found" };
-
-    await analyzeTicker(symbol);
-    return { status: "started", reason: "analyzed" };
-  } catch (error) {
-    console.error(`[analysis] priority analysis failed for ${symbol}:`, error);
-    return { status: "skipped", reason: (error as Error).message };
   }
 }

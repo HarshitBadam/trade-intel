@@ -1,6 +1,9 @@
 import "server-only";
 
-import type { StockData } from "@/app/details/[id]/page";
+import type {
+  StockData,
+  TickerIntelligenceBundle,
+} from "@/lib/market-intelligence/types";
 import {
   generateMockStockData,
   generateMockIntraday,
@@ -9,7 +12,20 @@ import {
   generateMockNews,
   generateMockPopularity,
 } from "@/data/fallbacks";
-import { hasAstra, hasAlpaca, hasFinnhub, hasPolygon } from "@/lib/config";
+import {
+  GROQ_ANALYSIS_MODEL,
+  hasAstra,
+  hasAlpaca,
+  hasFinnhub,
+  hasPolygon,
+} from "@/lib/config";
+import { classifyMarketIntelligence } from "@/lib/market-intelligence/freshness";
+import { createAnalysisFingerprint } from "@/lib/market-intelligence/fingerprints";
+import {
+  ANALYSIS_PROMPT_VERSION,
+  applyPublishedArticleLabels,
+  legacyFallbackAllowed,
+} from "@/lib/market-intelligence/repository";
 import type { News } from "@/components/news/RecentInfluential";
 import type { NewsVerdict } from "@/components/news/VerdictModal";
 import type {
@@ -31,13 +47,9 @@ import {
   windowNews,
 } from "./transforms";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 const hasPrices = hasAlpaca || hasPolygon;
 const hasAnyLive = hasAlpaca || hasPolygon || hasFinnhub || hasAstra;
-const hasNewsSource = hasAstra || hasAlpaca;
-import { ANALYSIS_TTL_DAYS } from "./analysis";
-import { fetchAlpacaNews } from "./news-loaders";
+const hasNewsSource = hasAstra;
 import {
   getCandlesCached,
   getIntradayCached,
@@ -47,8 +59,20 @@ import {
   getMarketMapYearAgoCached,
   getTickerDetailCached,
   readStoredArticlesCached,
+  readStoredArticlesByIdsCached,
   readAnalysisDocCached,
 } from "./cache";
+
+function expectedAnalysisFingerprint(
+  doc: AnalysisDoc | null
+): string | undefined {
+  if (!doc?.content_fingerprint) return undefined;
+  return createAnalysisFingerprint({
+    contentFingerprint: doc.content_fingerprint,
+    promptVersion: ANALYSIS_PROMPT_VERSION,
+    model: GROQ_ANALYSIS_MODEL,
+  });
+}
 
 export type PriorityTrigger = (ticker: string) => Promise<boolean>;
 
@@ -113,9 +137,24 @@ export async function getFine(ticker: string): Promise<BarPoint[]> {
   return [];
 }
 
-async function fetchStoredArticles(ticker: string): Promise<StoredArticle[]> {
+async function fetchStoredArticles(
+  ticker: string,
+  analysisDoc: AnalysisDoc | null
+): Promise<StoredArticle[]> {
   if (!hasAstra) return [];
   try {
+    if (analysisDoc?.published_article_ids) {
+      const rows = await readStoredArticlesByIdsCached(
+        ticker,
+        analysisDoc.published_article_ids
+      );
+      return applyPublishedArticleLabels(rows, analysisDoc);
+    }
+    // No manifest yet: the legacy unscoped read is only legal while no
+    // refresh is staging unpublished rows for this never-before-published
+    // ticker (see `legacyFallbackAllowed`). Fail closed rather than risk a
+    // staged row leaking into the details page.
+    if (!legacyFallbackAllowed(analysisDoc)) return [];
     return await readStoredArticlesCached(ticker);
   } catch (error) {
     console.error("Astra stored-article read failed:", error);
@@ -133,18 +172,10 @@ async function fetchAnalysisDoc(ticker: string): Promise<AnalysisDoc | null> {
   }
 }
 
-async function fetchColdAlpacaNews(ticker: string): Promise<News[]> {
-  try {
-    return await fetchAlpacaNews(ticker);
-  } catch (error) {
-    console.error("Alpaca cold news fetch failed:", error);
-    return [];
-  }
-}
-
 // Legacy and partial docs may lack verdict fields; drivers omit article IDs because
 // the details UI renders them as plain text.
 function toVerdict(doc: AnalysisDoc | null): NewsVerdict | undefined {
+  if (doc?.analysis_status && doc.analysis_status !== "complete") return undefined;
   if (!doc?.overall_sentiment || !doc.summary?.trim()) return undefined;
   return {
     overallSentiment: doc.overall_sentiment,
@@ -164,30 +195,57 @@ function toVerdict(doc: AnalysisDoc | null): NewsVerdict | undefined {
   };
 }
 
-// Staleness is judged from analyzed_at ONLY, never from article dates.
 export function buildNewsSummary(
   articles: News[],
   analysisDoc: AnalysisDoc | null,
   priorityStarted: boolean,
   now: number = Date.now()
 ): NewsSummary {
+  if (analysisDoc?.analysis_status === "no_news") {
+    const state = classifyMarketIntelligence({
+      hasUsableContent: true,
+      newsCheckedAt: analysisDoc.news_checked_at,
+      lastErrorCode: analysisDoc.last_error_code,
+      now,
+    });
+    return summarizeNews(
+      [],
+      state === "hard_expired"
+        ? "hard_expired"
+        : state === "degraded"
+          ? "degraded"
+          : "no_news",
+      analysisDoc.news_checked_at
+    );
+  }
   if (articles.length > 0) {
     const analyzedAt = analysisDoc?.analyzed_at;
     const updatedAt =
       analyzedAt ?? analysisDoc?.news_loaded_at ?? latestNewsTimestamp(articles);
     const recent = windowNews(articles, POPULARITY_WINDOW_DAYS, now);
     const verdict = toVerdict(analysisDoc);
-    if (analyzedAt) {
-      const analyzedMs = Date.parse(analyzedAt);
-      const fresh =
-        !Number.isNaN(analyzedMs) &&
-        now - analyzedMs <= ANALYSIS_TTL_DAYS * DAY_MS;
-      return {
-        ...summarizeNews(recent, fresh ? "fresh" : "stale", updatedAt),
-        verdict,
-      };
+    const state = classifyMarketIntelligence({
+      hasUsableContent: true,
+      newsCheckedAt: analysisDoc?.news_checked_at,
+      analysisFingerprint: analysisDoc?.analysis_fingerprint,
+      expectedAnalysisFingerprint: expectedAnalysisFingerprint(analysisDoc),
+      lastErrorCode: analysisDoc?.last_error_code,
+      now,
+    });
+    if (state === "hard_expired") {
+      return summarizeNews([], "hard_expired", updatedAt);
     }
-    return { ...summarizeNews(recent, "live", updatedAt), verdict };
+    const status =
+      analysisDoc?.analysis_status === "unavailable"
+        ? "analysis_unavailable"
+        : state === "degraded"
+          ? "degraded"
+          : state === "fresh"
+            ? "fresh"
+            : analyzedAt
+              ? "stale"
+              : "live";
+    return { ...summarizeNews(recent, status, updatedAt), verdict };
   }
   return summarizeNews([], priorityStarted ? "analyzing" : "unavailable");
 }
@@ -226,7 +284,8 @@ export function buildStockData(
   weekData: { date: string; value: number }[] | undefined,
   fineData: { date: string; value: number }[] | undefined,
   news: NewsSummary,
-  popularity?: PopularityData
+  popularity?: PopularityData,
+  intelligence?: TickerIntelligenceBundle
 ): StockData {
   const pop: PopularityData = popularity ?? {
     ...generateMockPopularity(symbol),
@@ -255,12 +314,24 @@ export function buildStockData(
     newsStatus: news.status,
     newsUpdatedAt: news.updatedAt,
     newsVerdict: news.verdict,
+    intelligence: intelligence ?? {
+      ticker: symbol,
+      generation: 0,
+      state:
+        news.status === "fresh"
+          ? "fresh"
+          : news.status === "sample"
+            ? "fresh"
+            : "missing",
+      refreshState: "idle",
+      publishedArticleIds: news.news.map((article) => article._id),
+      newsCheckedAt: news.updatedAt,
+    },
   };
 }
 
 export async function getDetailsData(
-  ticker: string,
-  triggerPriority?: PriorityTrigger
+  ticker: string
 ): Promise<StockData> {
   const symbol = sanitizeTicker(ticker);
   if (!symbol) {
@@ -275,11 +346,11 @@ export async function getDetailsData(
     );
   }
 
-  const [stock_data, storedArticles, analysisDoc] = await Promise.all([
+  const [stock_data, analysisDoc] = await Promise.all([
     getStockCandles(symbol),
-    fetchStoredArticles(symbol),
     fetchAnalysisDoc(symbol),
   ]);
+  const storedArticles = await fetchStoredArticles(symbol, analysisDoc);
 
   const priceStatus: StockData["priceStatus"] = !hasPrices
     ? "sample"
@@ -297,17 +368,29 @@ export async function getDetailsData(
   if (!hasNewsSource) {
     news = summarizeNews(generateMockNews(symbol), "sample");
     popularityArticles = [];
-  } else if (storedArticles.length > 0) {
+  } else if (storedArticles.length > 0 || analysisDoc?.analysis_status === "no_news") {
     news = buildNewsSummary(storedArticles, analysisDoc, false);
-    popularityArticles = storedArticles;
+    popularityArticles =
+      news.status === "hard_expired" ? [] : storedArticles;
   } else {
-    const alpaca = hasAlpaca ? await fetchColdAlpacaNews(symbol) : [];
-    const priorityStarted = triggerPriority ? await triggerPriority(symbol) : false;
-    news = buildNewsSummary(alpaca, null, priorityStarted);
-    popularityArticles = alpaca;
+    news = buildNewsSummary([], analysisDoc, false);
+    popularityArticles = [];
   }
 
   const popularity = buildPopularityData(symbol, popularityArticles, latestVolume);
+
+  const classifiedState = classifyMarketIntelligence({
+    hasUsableContent:
+      storedArticles.length > 0 || analysisDoc?.analysis_status === "no_news",
+    newsCheckedAt: analysisDoc?.news_checked_at,
+    analysisFingerprint: analysisDoc?.analysis_fingerprint,
+    expectedAnalysisFingerprint: expectedAnalysisFingerprint(analysisDoc),
+    lastErrorCode: analysisDoc?.last_error_code,
+  });
+  const intelligenceState =
+    analysisDoc?.analysis_status === "no_news" && classifiedState === "fresh"
+      ? "no_news"
+      : classifiedState;
 
   return buildStockData(
     symbol,
@@ -317,7 +400,21 @@ export async function getDetailsData(
     undefined,
     undefined,
     news,
-    popularity
+    popularity,
+    {
+      ticker: symbol,
+      generation: analysisDoc?.generation ?? 0,
+      state: intelligenceState,
+      refreshState: "idle",
+      publishedArticleIds:
+        analysisDoc?.published_article_ids ?? storedArticles.map(({ _id }) => _id),
+      contentFingerprint: analysisDoc?.content_fingerprint,
+      analysisFingerprint: analysisDoc?.analysis_fingerprint,
+      newsCheckedAt: analysisDoc?.news_checked_at,
+      analyzedAt: analysisDoc?.analyzed_at,
+      lastSuccessAt: analysisDoc?.last_success_at,
+      analysisStatus: analysisDoc?.analysis_status,
+    }
   );
 }
 

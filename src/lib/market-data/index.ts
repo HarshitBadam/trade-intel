@@ -79,7 +79,6 @@ export {
   shouldAnalyzeTicker,
   analyzeTicker,
   maybeAnalyzeTicker,
-  requestPriorityAnalysis,
 } from "./analysis";
 export type {
   AnalyzeSummary,

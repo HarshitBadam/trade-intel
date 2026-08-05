@@ -15,7 +15,7 @@ import {
 import {
   getGroupedDailyCached,
   getMarketMapCached,
-  getNewsCached,
+  getHeadlineArticlesCached,
 } from "./cache";
 import {
   getFine,
@@ -83,7 +83,7 @@ export async function getHeadlineData(ticker: string): Promise<Headline> {
 
   if (hasAstra) {
     try {
-      const news = await getNewsCached(symbol);
+      const news = await getHeadlineArticlesCached(symbol);
       if (news.length > 0)
         return newsToHeadline(symbol, pickTopArticle(news), "live");
     } catch (error) {

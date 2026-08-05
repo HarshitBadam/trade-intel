@@ -3,16 +3,23 @@
 import { StockGraph } from "@/components/charts/StockGraph";
 import { RecentInfluential } from "@/components/news/RecentInfluential";
 import { SearchBar } from "@/components/layout/SearchBar";
-import TopGainer, { TopGainerSkeleton } from "@/components/stocks/TopGainer";
 import { FlipCard } from "@/components/shared/FlipCard";
 import { PopularityGraph } from "@/components/charts/PopularityGraph";
 import { FloatingWidget } from "@/components/chat/FloatingWidget";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import type { News, NewsStatus } from "@/components/news/RecentInfluential";
-import { fetchDetails, fetchRelatedStocks, fetchChartRange } from "./actions";
-import type { RelatedCard, BarPoint } from "@/lib/market-data/types";
+import {
+  fetchDetails,
+  fetchChartRange,
+  pollDetailsRefresh,
+  requestDetailsRefresh,
+} from "./actions";
+import type { BarPoint } from "@/lib/market-data/types";
 import type { StockData } from "./page";
+import {
+  computeRetryAfterSec,
+  deriveActiveRefreshState,
+  POLL_DELAYS_MS,
+} from "@/lib/market-intelligence/types";
 
 function ChartCardSkeleton() {
   return (
@@ -64,48 +71,6 @@ function SentimentPanelSkeleton() {
   );
 }
 
-function mergeDetails(prev: StockData, fresh: StockData): StockData {
-  return {
-    ...fresh,
-    ...(fresh.priceStatus === "unavailable" && prev.priceStatus === "live"
-      ? {
-          stockPrice: prev.stockPrice,
-          priceChange: prev.priceChange,
-          percentChange: prev.percentChange,
-          chartData: prev.chartData,
-          priceStatus: prev.priceStatus,
-        }
-      : {}),
-    ...(fresh.newsStatus === "unavailable" && prev.news.length > 0
-      ? {
-          news: prev.news,
-          newsStatus: prev.newsStatus,
-          newsUpdatedAt: prev.newsUpdatedAt,
-          newsVerdict: prev.newsVerdict,
-          mentions: prev.mentions,
-          sentimentPercentage: prev.sentimentPercentage,
-          positiveSentimentPercentage: prev.positiveSentimentPercentage,
-          negativeSentimentPercentage: prev.negativeSentimentPercentage,
-          popularityRate: prev.popularityRate,
-          popularitySeries: prev.popularitySeries,
-          popularityStatus: prev.popularityStatus,
-          searchVolume: prev.searchVolume,
-        }
-      : {}),
-    ...(!fresh.newsVerdict && prev.newsVerdict
-      ? { newsVerdict: prev.newsVerdict }
-      : {}),
-  };
-}
-
-const TERMINAL_NEWS: ReadonlySet<NewsStatus> = new Set<NewsStatus>([
-  "fresh",
-  "stale",
-  "live",
-  "unavailable",
-  "sample",
-]);
-
 export default function DetailsView({
   initial,
   ticker,
@@ -113,50 +78,119 @@ export default function DetailsView({
   initial: StockData;
   ticker: string;
 }) {
-  const router = useRouter();
-
   const [stockData, setStockData] = useState<StockData>(initial);
-  const [news, setNews] = useState<News[]>(initial.news);
-  const stockDataRef = useRef(stockData);
-  useEffect(() => {
-    stockDataRef.current = stockData;
-  }, [stockData]);
+  const news = stockData.news;
 
   useEffect(() => {
-    if (initial.newsStatus !== "analyzing") return;
+    if (
+      initial.newsStatus === "sample" ||
+      initial.intelligence.state === "fresh" ||
+      initial.intelligence.state === "no_news"
+    ) {
+      return;
+    }
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const POLL_MS = 8_000;
-    const MAX_ATTEMPTS = 5;
-    let attempts = 0;
+    const delays = POLL_DELAYS_MS;
 
-    const poll = () => {
-      fetchDetails(ticker)
-        .then((data) => {
-          if (cancelled || !data) return;
-          const merged = mergeDetails(stockDataRef.current, data);
-          setStockData(merged);
-          setNews(merged.news);
-          attempts += 1;
-          if (!TERMINAL_NEWS.has(data.newsStatus) && attempts < MAX_ATTEMPTS) {
-            timer = setTimeout(poll, POLL_MS);
+    const run = async () => {
+      const requested = await requestDetailsRefresh(ticker);
+      if (cancelled) return;
+      if (!requested.ok) {
+        setStockData((current) => ({
+          ...current,
+          intelligence: {
+            ...current.intelligence,
+            refreshState: "failed",
+            retryAfterSec: requested.retryAfterSec,
+          },
+        }));
+        return;
+      }
+      const { workId } = requested.job;
+      if (requested.job.state === "failed") {
+        setStockData((current) => ({
+          ...current,
+          intelligence: {
+            ...current.intelligence,
+            refreshState: "failed",
+            retryAfterSec: computeRetryAfterSec(requested.job.retryAfter),
+          },
+        }));
+        return;
+      }
+      setStockData((current) => ({
+        ...current,
+        intelligence: {
+          ...current.intelligence,
+          refreshState: deriveActiveRefreshState(requested.job.state),
+          retryAfterSec: undefined,
+        },
+      }));
+
+      const poll = async (attempt: number): Promise<void> => {
+        if (cancelled) return;
+        if (attempt >= delays.length) {
+          // Active polling stops here (~2 minutes), but the durable job on
+          // the server may still be queued/running. "backgrounded" is an
+          // honest terminal state: never collapse known outstanding work
+          // into "idle".
+          setStockData((current) => ({
+            ...current,
+            intelligence: {
+              ...current.intelligence,
+              refreshState: "backgrounded",
+            },
+          }));
+          return;
+        }
+        timer = setTimeout(async () => {
+          const job = await pollDetailsRefresh(workId).catch(() => null);
+          if (cancelled) return;
+          if (job?.state === "done") {
+            const refreshed = await fetchDetails(ticker).catch(() => null);
+            if (!refreshed || cancelled) return;
+            setStockData((current) =>
+              refreshed.intelligence.generation >= current.intelligence.generation
+                ? refreshed
+                : current
+            );
+            return;
           }
-        })
-        .catch(() => {
-          if (!cancelled && attempts < MAX_ATTEMPTS) {
-            attempts += 1;
-            timer = setTimeout(poll, POLL_MS);
+          if (job?.state === "failed") {
+            setStockData((current) => ({
+              ...current,
+              newsStatus:
+                current.news.length > 0 ? "degraded" : current.newsStatus,
+              intelligence: {
+                ...current.intelligence,
+                refreshState: "failed",
+                retryAfterSec: computeRetryAfterSec(job.retryAfter),
+              },
+            }));
+            return;
           }
-        });
+          setStockData((current) => ({
+            ...current,
+            intelligence: {
+              ...current.intelligence,
+              refreshState: deriveActiveRefreshState(job?.state),
+              retryAfterSec: undefined,
+            },
+          }));
+          await poll(attempt + 1);
+        }, delays[attempt]);
+      };
+      await poll(0);
     };
 
-    timer = setTimeout(poll, POLL_MS);
+    void run();
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [initial.newsStatus, ticker]);
+  }, [initial, ticker]);
 
   const [intradayData, setIntradayData] = useState<BarPoint[] | undefined>(
     initial.intradayData,
@@ -200,51 +234,6 @@ export default function DetailsView({
     },
     [ticker],
   );
-
-  const [related, setRelated] = useState<RelatedCard[] | null>(null);
-  const relatedRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setRelated(null);
-    const el = relatedRef.current;
-    if (!el) return;
-
-    let cancelled = false;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    const MAX_ATTEMPTS = 3;
-
-    const load = (attempt = 0) => {
-      fetchRelatedStocks(ticker)
-        .then((r) => {
-          if (!cancelled) setRelated(r);
-        })
-        .catch(() => {
-          if (cancelled) return;
-          if (attempt < MAX_ATTEMPTS) {
-            retry = setTimeout(() => load(attempt + 1), 1000 * 2 ** attempt);
-          } else {
-            setRelated([]);
-          }
-        });
-    };
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !cancelled) {
-          observer.disconnect();
-          load();
-        }
-      },
-      { rootMargin: "200px" },
-    );
-    observer.observe(el);
-
-    return () => {
-      cancelled = true;
-      if (retry) clearTimeout(retry);
-      observer.disconnect();
-    };
-  }, [ticker]);
 
   return (
     <div className="min-h-screen">
@@ -308,6 +297,8 @@ export default function DetailsView({
                   updatedAt={stockData.newsUpdatedAt}
                   verdict={stockData.newsVerdict}
                   ticker={stockData.id}
+                  refreshState={stockData.intelligence.refreshState}
+                  retryAfterSec={stockData.intelligence.retryAfterSec}
                   positiveSentimentPercentage={
                     stockData.positiveSentimentPercentage || 0
                   }
@@ -323,40 +314,6 @@ export default function DetailsView({
 
           <FloatingWidget />
 
-          <div ref={relatedRef} className="lg:col-span-12">
-            {related === null ? (
-              <div className="px-8 pb-12">
-                <h2 className="text-xl font-semibold mb-4 text-start">
-                  Related Stocks
-                </h2>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <TopGainerSkeleton key={i} />
-                  ))}
-                </div>
-              </div>
-            ) : related.length > 0 ? (
-              <div className="px-8 pb-12">
-                <h2 className="text-xl font-semibold mb-4 text-start">
-                  Related Stocks
-                </h2>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {related.map(({ title, data }) => (
-                    <div
-                      key={data.ticker}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/details/${data.ticker}`)}
-                      onMouseEnter={() =>
-                        router.prefetch(`/details/${data.ticker}`)
-                      }
-                    >
-                      <TopGainer title={title} data={data} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@
   "regions": ["syd1"],
   "crons": [
     {
-      "path": "/api/cron/news",
+      "path": "/api/cron/maintenance",
       "schedule": "0 13 * * *"
     }
   ]
