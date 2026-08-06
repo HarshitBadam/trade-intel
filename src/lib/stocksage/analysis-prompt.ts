@@ -1,5 +1,3 @@
-// Keep curly braces out: Langflow parses them as template variables.
-
 export const ANALYSIS_INSTRUCTION_LINES: string[] = [
   "You are a precise equities news analyst. You are given a stock ticker and a",
   "list of already-collected news articles about it. Analyze ONLY the provided",

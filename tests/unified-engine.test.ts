@@ -333,17 +333,10 @@ test("synthesis.ts resolves exactly one Groq primary and one configured Groq fal
   const synthesis = source("synthesis.ts");
   assert.ok(synthesis.includes("GROQ_CHAT_MODEL"));
   assert.ok(synthesis.includes("GROQ_FALLBACK_MODEL"));
-  for (const removed of [
-    "CEREBRAS_CHAT_MODEL",
-    "GEMINI_CHAT_MODEL",
-    "GROQ_OSS_MODEL",
-    "GROQ_ANALYSIS_MODEL",
-  ]) {
-    assert.ok(
-      !synthesis.includes(removed),
-      `synthesis.ts must resolve only the Groq primary/fallback pair, not ${removed}`
-    );
-  }
+  assert.ok(
+    !synthesis.includes("GROQ_ANALYSIS_MODEL"),
+    "synthesis.ts must not use the market-analysis model as a chat fallback"
+  );
   assert.match(
     synthesis,
     /const ordered = \[groqPrimary, groqFallback\];/,

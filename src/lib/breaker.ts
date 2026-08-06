@@ -3,23 +3,12 @@ import "server-only";
 import { hasUpstash } from "./config";
 
 export type Provider =
-  | "polygon"
   | "groq-chat"
   | "groq-fallback"
-  | "groq-chat-small"
-  | "groq-oss"
   | "groq-deep"
   | "groq-deep-fallback"
-  | "groq-deep-small"
-  | "groq-deep-oss"
   | "groq-analysis"
   | "groq-guard"
-  | "cerebras-chat"
-  | "cerebras-deep"
-  | "gemini-chat"
-  | "gemini-deep"
-  | "langflow-deep"
-  | "langflow-analysis"
   | "tavily"
   | "astra"
   | "quotes"
@@ -206,20 +195,6 @@ export async function isCoolingDown(provider: Provider): Promise<boolean> {
   if (until > Date.now()) return true;
   cooldownMemory.delete(provider);
   return false;
-}
-
-export async function breakerSnapshot(
-  providers: Provider[]
-): Promise<Record<string, "open" | "closed">> {
-  const out: Record<string, "open" | "closed"> = {};
-  for (const provider of providers) {
-    out[provider] = (await isOpen(provider)) ? "open" : "closed";
-  }
-  return out;
-}
-
-export function breakerBackend(): "upstash" | "memory" {
-  return hasUpstash ? "upstash" : "memory";
 }
 
 export function resetBreakerMemory(): void {

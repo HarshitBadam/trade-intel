@@ -23,7 +23,7 @@ QStash schedules.
 - Locks release on every terminal path; CAS rejection appears only for an
   intentionally obsolete worker.
 - Showcase `news_checked_at` values remain approximately hourly.
-- Details requests make no Polygon, Alpaca-news, Groq, or Langflow calls.
+- Details requests make no Polygon, Alpaca-news, or Groq calls.
 
 Structured logs use the `[market-intelligence]` prefix and never contain
 credentials or article bodies.
@@ -49,9 +49,8 @@ Keep existing content visible. Confirm Redis/QStash status, signing keys, and
 
 ### Provider or Groq outage
 
-Inspect breaker and worker error codes. Do not enable automatic Langflow
-fallback. Preserve the published generation and let bounded QStash retries
-finish. Resume with a new work ID after cooldown.
+Inspect breaker and worker error codes. Preserve the published generation and
+let bounded QStash retries finish. Resume with a new work ID after cooldown.
 
 ### Stuck active job
 

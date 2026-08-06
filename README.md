@@ -8,7 +8,7 @@ TradeIntel home screen with the price chart, sentiment gauge, and top market mov
 >
 > **Note:** a research project, not financial advice.
 
-A background pipeline works through thousands of tickers routinely. For each one it pulls recent news, scores an interim sentiment, then runs an LLM pass for a per-article read and an overall verdict, writing all of it to a store. Pages stay fast by reading that finished result plus a live price feed, never waiting on the pipeline itself. [How it works →](docs/architecture.md)
+An hourly showcase schedule and authenticated on-demand requests publish durable per-ticker jobs through QStash. Each worker fetches recent news, runs direct Groq analysis when the stored fingerprint changes, and atomically publishes the result to Astra DB. Pages stay fast by reading that finished bundle plus cached market data, never waiting on providers or an LLM. [How it works →](docs/architecture.md)
 
 ## Getting started
 
@@ -34,7 +34,7 @@ No API keys required. An empty `.env.local` runs the whole app on mock data; cop
 | [Configuration](docs/configuration.md)   | Environment variables and run modes                |
 | [Deployment](docs/deployment.md)         | Hosting, cron jobs, queues, and provider setup     |
 | [Repo structure](docs/repo-structure.md) | The source tree, annotated                         |
-| [Optional Langflow flow](langflow/README.md) | Manual analysis evaluation only                |
+| [Langflow evolution](langflow/README.md) | Historical flow artifacts and migration context    |
 
 
 ---

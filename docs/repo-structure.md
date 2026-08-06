@@ -5,11 +5,10 @@ The source tree, annotated. Config and generated files are omitted.
 ```
 .
 ├── .github/workflows/
-│   ├── ci.yml                   # typecheck, lint, tests, and production build
-│   └── news-cron.yml            # legacy/manual cron diagnostic
+│   └── ci.yml                   # typecheck, lint, tests, and production build
 ├── langflow/
-│   ├── README.md                # manual evaluation instructions
-│   └── stocksage-analysis.json  # optional analysis comparison flow
+│   ├── README.md                # historical-artifact notice
+│   └── stocksage-analysis.json  # preserved historical flow export
 ├── scripts/
 │   ├── build-universe.mjs       # rebuilds universe.json from Alpaca's asset list
 │   ├── run-showcase-cron.ts     # invokes the showcase scheduler manually
@@ -17,8 +16,7 @@ The source tree, annotated. Config and generated files are omitted.
 │   ├── analyze-ticker.ts        # analyzes a single ticker
 │   ├── setup-qstash.ts          # reconciles showcase + maintenance schedules
 │   ├── stocksage-smoke.ts       # runs the StockSage smoke scenarios
-│   ├── stocksage-eval.ts        # runs the broader StockSage evaluation set
-│   └── sync-system-prompt.mjs   # syncs analysis instructions to the retained flow
+│   └── stocksage-eval.ts        # runs the broader StockSage evaluation set
 ├── docs/
 │   ├── screenshots.md
 │   ├── stack.md
@@ -69,7 +67,6 @@ The source tree, annotated. Config and generated files are omitted.
     │   ├── breaker.ts           # isolated provider and workload breakers
     │   ├── rate-limit.ts        # Upstash sliding-window limiter
     │   ├── guard.ts             # per-action, per-identity rate guard
-    │   ├── langflow.ts          # runLangflowFlow transport
     │   ├── groq.ts              # groqChatJSON / groqChatText transport
     │   ├── llm-json.ts          # fenced-JSON parsing for LLM output
     │   ├── auth-actions.ts      # sign-in / sign-out server actions
@@ -123,7 +120,6 @@ The source tree, annotated. Config and generated files are omitted.
     │       ├── analysis.ts      # validated direct-Groq analysis preparation
     │       ├── analysis-helpers.ts  # prompt build, Zod schema, runAnalysisLLM
     │       ├── universe.ts      # local search over universe.json
-    │       ├── langflow-analysis-provider.ts # manual/evaluation-only Langflow adapter
     │       ├── limiter.ts       # per-provider sliding rate limiter
     │       ├── queries.ts / transforms*.ts  # normalization, sentiment math, activity series
     │       └── types.ts         # shared market-data types

@@ -5,7 +5,6 @@ async function main() {
   delete process.env.GROQ_API_KEY;
   delete process.env.TAVILY_API_KEY;
   delete process.env.ASTRA_DB_APPLICATION_TOKEN;
-  delete process.env.LANGFLOW_API_KEY;
   const { answerChat } = await import("../src/lib/stocksage/chat");
   const calls = { quotes: 0, astra: 0, tavily: 0 };
   const providers: RetrievalProviders = {

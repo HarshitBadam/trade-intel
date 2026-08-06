@@ -33,7 +33,7 @@ const MISCONDUCT =
 const FACILITATION =
   /\b(?:help me|show me|give me|how (?:do|can|should)|steps?|plan|coordinate|execute|use|exploit|evade|bypass|steal|launder|pump|spoof|manipulate)\b/i;
 const LOCAL_SECRET_ACCESS =
-  /\b(?:read|open|access|show|list|print|reveal|find|cat|dump|paste|leak|expose|grab|fetch|extract|copy|run cat|echo)\b.{0,80}\b(?:\.env(?:\.local)?|env file|environment variables?|local files?|api keys?|tokens?|secrets?|credentials?|(?:tavily|groq|polygon|alpaca|finnhub|astra|upstash|langflow) key)\b/i;
+  /\b(?:read|open|access|show|list|print|reveal|find|cat|dump|paste|leak|expose|grab|fetch|extract|copy|run cat|echo)\b.{0,80}\b(?:\.env(?:\.local)?|env file|environment variables?|local files?|api keys?|tokens?|secrets?|credentials?|(?:tavily|groq|polygon|alpaca|finnhub|astra|upstash) key)\b/i;
 const FINANCIAL_ACTION =
   /\b(?:place|execute|submit|make)\b.{0,60}\b(?:buy|sell|trade|order)\b|\b(?:buy|sell)\b.{0,60}\b(?:shares?|stocks?)\b.{0,30}\b(?:for me|on my behalf)\b|\b(?:transfer|send|move)\b.{0,60}\b(?:money|funds?|\$\s*\d)/i;
 const CRYPTO =

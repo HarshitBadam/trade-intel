@@ -4,9 +4,8 @@ The design follows one rule: the request path only reads, and background jobs do
 
 ## Why it's built this way
 
-The free tiers are the constraint. Polygon news is rate-limited, QStash has a
-daily message allowance, and optional Langflow hosting is not reliable enough
-to sit on the production path. Calling these providers on page loads would
+The free tiers are the constraint. Polygon news is rate-limited and QStash has
+a daily message allowance. Calling providers or models on page loads would
 couple user latency and availability to those limits.
 
 Durable per-ticker jobs own scarce provider work. The hourly showcase scheduler
@@ -42,7 +41,6 @@ flowchart TB
     POLYGON["Polygon (news)"]
     GROQ["Groq (LLM)"]
     TAVILY["Tavily (web search)"]
-    LANGFLOW["Langflow evaluation adapter"]
   end
 
   HOME --> RSC
@@ -65,7 +63,7 @@ flowchart TB
 ```
 
 Pages read Astra, Alpaca, and Finnhub. Polygon and direct Groq market analysis
-sit behind the durable worker. Langflow is not in the default dependency graph.
+sit behind the durable worker.
 Chat first screens the turn for crisis language, then applies a deterministic
 domain policy, resolves typed conversation state, and builds a bounded evidence
 plan.
@@ -112,7 +110,6 @@ generation. The page request itself performs no news ingestion or model work.
 | Astra DB | Stored articles and per-ticker verdicts | Both |
 | Groq | Market analysis, isolated chat models, and the GPT-OSS Safeguard input rail | Worker and chat |
 | Tavily | Planned, filtered web evidence for current/comparison routes | Chat |
-| Langflow | Optional manual/evaluation adapter | Offline/manual only |
 
 Prices resolve in order: Alpaca SIP history with a live IEX tail, then Polygon aggregates as a backup, then nothing. In live mode the UI shows an "unavailable" state rather than inventing a price.
 
@@ -183,7 +180,7 @@ The rail fails open at every step. No key, open breaker, exhausted budget, HTTP 
 
 Two mechanisms keep a flaky provider from becoming a broken page.
 
-**Circuit breaker** (`src/lib/breaker.ts`) isolates Polygon, retrieval providers, and each Groq model lane. Three persistent failures inside ten minutes opens only that circuit; transient Groq 429s follow the server retry window and fail over without opening a ten-minute breaker. State lives in Redis so it is shared across serverless instances, with an in-process map as the local fallback. A shared synthesis admission limit prevents parallel chat requests from stampeding a model token bucket.
+**Circuit breaker** (`src/lib/breaker.ts`) isolates retrieval providers and each Groq model lane. Three persistent failures inside ten minutes opens only that circuit; transient Groq 429s follow the server retry window and fail over without opening a ten-minute breaker. State lives in Redis so it is shared across serverless instances, with an in-process map as the local fallback. A shared synthesis admission limit prevents parallel chat requests from stampeding a model token bucket.
 
 **Sliding rate limiter** (`src/lib/market-data/limiter.ts`) smooths outgoing bursts to each provider (Alpaca 180/min, Finnhub 50/min). It never rejects, it delays. Callers just `await acquire()`.
 
