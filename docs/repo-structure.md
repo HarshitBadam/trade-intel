@@ -7,8 +7,10 @@ The source tree, annotated. Config and generated files are omitted.
 ├── .github/workflows/
 │   └── ci.yml                   # typecheck, lint, tests, and production build
 ├── langflow/
-│   ├── README.md                # historical-artifact notice
-│   └── stocksage-analysis.json  # preserved historical flow export
+│   ├── README.md                # Langflow evolution and migration record
+│   ├── stocksage-ingestion.json # representative historical ingestion flow
+│   ├── stocksage-chat.json      # representative historical chat flow
+│   └── stocksage-analysis.json  # representative historical analysis flow
 ├── scripts/
 │   ├── build-universe.mjs       # rebuilds universe.json from Alpaca's asset list
 │   ├── run-showcase-cron.ts     # invokes the showcase scheduler manually
