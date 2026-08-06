@@ -109,10 +109,3 @@ test("Deep repair has separate admission and is globally one-shot", () => {
   assert.match(repair, /deadline - Date\.now\(\) > 1_000/);
   assert.equal([...repair.matchAll(/repairAttempted = true/g)].length, 1);
 });
-
-test("default production graph makes zero Langflow calls", () => {
-  for (const file of readdirSync(ROOT)) {
-    if (!file.endsWith(".ts")) continue;
-    assert.doesNotMatch(source(file), /runLangflowFlow/);
-  }
-});

@@ -14,7 +14,7 @@ Everything is configured through environment variables. `.env.example` documents
 | Auth | `AUTH_SECRET`, `AUTH_URL`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Google sign-in. Optional locally. |
 | Market data | `ALPACA_*`, `FINNHUB_API_KEY`, `POLYGON_API_KEY` | Prices, metadata, news. |
 | Store | `ASTRA_DB_*` | Analyzed news and verdicts. |
-| AI and retrieval | `GROQ_*`, `TAVILY_API_KEY`, `STOCKSAGE_DEEP_SNAPSHOT_SECRET`; optional manual `LANGFLOW_BASE_URL`, `LANGFLOW_API_KEY`, `LANGFLOW_ANALYZE_FLOW_ID` | Regular/deeper synthesis calls Groq directly; retrieval is cache-first and fills only uncovered cells. Langflow is manual analysis evaluation only. The snapshot secret falls back to `AUTH_SECRET` or `NEXTAUTH_SECRET`. |
+| AI and retrieval | `GROQ_*`, `TAVILY_API_KEY`, `STOCKSAGE_DEEP_SNAPSHOT_SECRET` | Regular/deeper synthesis calls Groq directly; retrieval is cache-first and fills only uncovered cells. The snapshot secret falls back to `AUTH_SECRET` or `NEXTAUTH_SECRET`. |
 | Chat safety | `GROQ_SAFETY_MODEL`, `STOCKSAGE_SAFETY_CLASSIFIER` | The custom-policy safeguard input rail. Both optional. |
 | Ops | `UPSTASH_REDIS_*`, `QSTASH_*`, `APP_URL`, `CRON_SECRET`, `MARKET_INTELLIGENCE_*` | Rate limiting, durable refresh jobs, signed workers, showcase/maintenance schedules, and on-demand budgets. |
 

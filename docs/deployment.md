@@ -26,10 +26,10 @@ reconcile both schedules:
 npm run ops:qstash
 ```
 
-The setup deletes the retired universe-news and Langflow keep-warm schedules
-before reconciling the showcase and maintenance schedules. Showcase jobs are
-staggered by one minute to avoid a provider/LLM burst. `vercel.json` also
-registers the maintenance endpoint as a daily backstop.
+The setup deletes the retired universe-news and keep-warm schedules before
+reconciling the showcase and maintenance schedules. Showcase jobs are staggered
+by one minute to avoid a provider/LLM burst. `vercel.json` also registers the
+maintenance endpoint as a daily backstop.
 
 User visits publish the same signed worker job used by the showcase scheduler.
 Redis stores one active work ID per ticker, job status, and an owner-safe lease.
@@ -46,10 +46,3 @@ StockSage Deep Research is also queue-only. The server action accepts a signed
 snapshot, publishes `/api/stocksage/deep`, and polls the durable job record.
 Missing queue configuration or publish failure returns an honest unavailable
 result and never executes research inside the request.
-
-## The Langflow host
-
-Langflow remains an optional manual/evaluation adapter. Details-page market
-analysis uses direct Groq and does not call Langflow or maintain a keep-warm
-schedule. Import and secret-setup steps for evaluation are in
-[langflow/README.md](../langflow/README.md).

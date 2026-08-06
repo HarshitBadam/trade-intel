@@ -1,16 +1,9 @@
 import "server-only";
 
-import {
-  CEREBRAS_API_KEY,
-  GEMINI_API_KEY,
-  GROQ_API_KEY,
-  hasCerebras,
-  hasGemini,
-  hasGroq,
-} from "@/lib/config";
+import { GROQ_API_KEY, hasGroq } from "@/lib/config";
 import { parseFencedJson } from "@/lib/llm-json";
 
-export type LlmVendor = "groq" | "cerebras" | "gemini";
+export type LlmVendor = "groq";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -23,20 +16,10 @@ const ENDPOINTS: Record<LlmVendor, { url: string; key: () => string | undefined 
     url: "https://api.groq.com/openai/v1/chat/completions",
     key: () => GROQ_API_KEY,
   },
-  cerebras: {
-    url: "https://api.cerebras.ai/v1/chat/completions",
-    key: () => CEREBRAS_API_KEY,
-  },
-  gemini: {
-    url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-    key: () => GEMINI_API_KEY,
-  },
 };
 
-export function hasVendor(vendor: LlmVendor): boolean {
-  if (vendor === "groq") return hasGroq;
-  if (vendor === "cerebras") return hasCerebras;
-  return hasGemini;
+export function hasVendor(_vendor: LlmVendor): boolean {
+  return hasGroq;
 }
 
 export type LlmMessage = {
@@ -126,20 +109,13 @@ function retryAfterMs(response: Response): number {
   );
 }
 
-// gpt-oss models emit chain-of-thought unless told not to; other vendors
-// reject those parameters, so they are added per vendor+model.
+// Groq-hosted gpt-oss and Qwen models need explicit reasoning controls.
 function reasoningParams(args: LlmChatArgs): Record<string, unknown> {
-  if (args.vendor === "groq" && /\bqwen\b/.test(args.model)) {
+  if (/\bqwen\b/.test(args.model)) {
     return { reasoning_effort: "none", include_reasoning: false };
   }
   if (!/\bgpt-oss\b/.test(args.model)) return {};
-  if (args.vendor === "groq") {
-    return { reasoning_effort: "low", include_reasoning: false };
-  }
-  if (args.vendor === "cerebras") {
-    return { reasoning_effort: "low" };
-  }
-  return {};
+  return { reasoning_effort: "low", include_reasoning: false };
 }
 
 async function postChatCompletion(

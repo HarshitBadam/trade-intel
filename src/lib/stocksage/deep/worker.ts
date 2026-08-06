@@ -289,7 +289,7 @@ Use only citation IDs from RETRIEVED SOURCES, such as [S1]. Never write a raw UR
       });
     } catch {
       // Provider and publication-check failures converge on the same
-      // deterministic evidence report. Deep never calls Langflow.
+      // deterministic evidence report.
       text = deterministicDeepReport(entities, context.sources, plan.asOf);
     }
     stage = "citation_validation";

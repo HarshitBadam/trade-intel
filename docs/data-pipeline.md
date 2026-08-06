@@ -78,7 +78,7 @@ creates sample news in production.
 ## Scheduling and operations
 
 `scripts/setup-qstash.ts` reconciles the hourly showcase and daily maintenance
-schedules and removes the retired universe and Langflow keep-warm schedules.
+schedules and removes the retired universe-news and keep-warm schedules.
 
 ```bash
 npm run ops:qstash
@@ -95,6 +95,3 @@ Relevant controls:
 - `MARKET_INTELLIGENCE_USER_DAILY_LIMIT` defaults to 20 requests per user.
 - QStash token/signing keys, `APP_URL`, and Upstash Redis are mandatory for the
   production refresh queue.
-
-Langflow is retained only for explicit manual evaluation. It is not an
-automatic market-intelligence dependency.

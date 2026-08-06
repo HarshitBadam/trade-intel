@@ -82,8 +82,6 @@ type Candidate = {
   provider: Provider;
   quotaProvider: Provider;
   budgetPerMinute: number;
-  // Cerebras free tier has an ~8K-token context cap.
-  maxPromptChars?: number;
 };
 
 /**
@@ -122,14 +120,6 @@ function candidatesFor(args: SynthesisArgs): Candidate[] {
   );
 }
 
-function promptChars(args: SynthesisArgs): number {
-  return (
-    args.system.length +
-    args.user.length +
-    (args.history ?? []).reduce((sum, turn) => sum + turn.content.length, 0)
-  );
-}
-
 export async function synthesizeWithFallback(
   args: SynthesisArgs
 ): Promise<string> {
@@ -137,17 +127,10 @@ export async function synthesizeWithFallback(
 
   let lastError: unknown;
   const deadline = Date.now() + (args.totalTimeoutMs ?? 30_000);
-  const inputChars = promptChars(args);
   let attemptedCandidates = 0;
   let repairAttempted = false;
 
   for (const candidate of candidatesFor(args)) {
-    if (
-      candidate.maxPromptChars !== undefined &&
-      inputChars > candidate.maxPromptChars
-    ) {
-      continue;
-    }
     const laneKey = `${candidate.vendor}:${candidate.model}:${args.lane ?? "full"}`;
     const release = await acquireLane(
       laneKey,

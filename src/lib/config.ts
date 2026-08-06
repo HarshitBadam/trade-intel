@@ -24,13 +24,6 @@ const rawAstra = Boolean(
   ASTRA_DB_APPLICATION_TOKEN && ASTRA_DB_API_ENDPOINT
 );
 
-export const LANGFLOW_BASE_URL = process.env.LANGFLOW_BASE_URL;
-export const LANGFLOW_API_KEY = process.env.LANGFLOW_API_KEY;
-export const LANGFLOW_ANALYZE_FLOW_ID = process.env.LANGFLOW_ANALYZE_FLOW_ID;
-const rawLangflowAnalyze = Boolean(
-  LANGFLOW_BASE_URL && LANGFLOW_API_KEY && LANGFLOW_ANALYZE_FLOW_ID
-);
-
 export const GROQ_API_KEY = process.env.GROQ_API_KEY;
 export const GROQ_ANALYSIS_MODEL =
   process.env.GROQ_ANALYSIS_MODEL ?? "openai/gpt-oss-20b";
@@ -38,9 +31,6 @@ export const GROQ_CHAT_MODEL =
   process.env.GROQ_CHAT_MODEL ?? "qwen/qwen3.6-27b";
 export const GROQ_FALLBACK_MODEL =
   process.env.GROQ_FALLBACK_MODEL ?? "openai/gpt-oss-120b";
-// Groq quotas are per model, so an extra model family is an extra 429 budget.
-export const GROQ_OSS_MODEL =
-  process.env.GROQ_OSS_MODEL ?? "openai/gpt-oss-20b";
 export const GROQ_SAFETY_MODEL =
   process.env.GROQ_SAFETY_MODEL ?? "openai/gpt-oss-safeguard-20b";
 const rawGroq = Boolean(GROQ_API_KEY);
@@ -48,17 +38,6 @@ const rawGroq = Boolean(GROQ_API_KEY);
 // chat synthesis down with it.
 const safetyClassifierOff =
   process.env.STOCKSAGE_SAFETY_CLASSIFIER === "off";
-
-export const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
-export const CEREBRAS_CHAT_MODEL =
-  process.env.CEREBRAS_CHAT_MODEL ?? "gpt-oss-120b";
-const rawCerebras = Boolean(CEREBRAS_API_KEY);
-
-export const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-// flash-lite has a 1,000 req/day free tier; plain flash is capped at 20/day.
-export const GEMINI_CHAT_MODEL =
-  process.env.GEMINI_CHAT_MODEL ?? "gemini-2.5-flash-lite";
-const rawGemini = Boolean(GEMINI_API_KEY);
 
 export const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 const rawTavily = Boolean(TAVILY_API_KEY);
@@ -84,8 +63,6 @@ export const hasFinnhub = rawFinnhub && liveAllowed;
 export const hasAstra = rawAstra && liveAllowed;
 export const hasGroq = rawGroq && liveAllowed;
 export const hasSafetyClassifier = hasGroq && !safetyClassifierOff;
-export const hasCerebras = rawCerebras && liveAllowed;
-export const hasGemini = rawGemini && liveAllowed;
 // StockSage synthesis resolves only the direct Groq primary/fallback pair.
 export const hasAnySynthesisLlm = hasGroq;
 export const hasTavily = rawTavily && liveAllowed;
@@ -104,9 +81,6 @@ if (
     rawFinnhub ||
     rawAstra ||
     rawGroq ||
-    rawCerebras ||
-    rawGemini ||
-    rawLangflowAnalyze ||
     rawTavily) &&
   !enforceAuth
 ) {
