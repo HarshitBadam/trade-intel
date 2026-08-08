@@ -247,7 +247,7 @@ export default function DetailsView({
   );
 
   return (
-    <div className="min-h-screen">
+    <div className="pb-8">
       <div className="max-w-[1600px] mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-8 p-8">
