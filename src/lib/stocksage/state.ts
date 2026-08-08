@@ -64,7 +64,12 @@ function sanitizeIntervals(
       calendar: value.calendar,
       startSession: value.startSession,
       endSession: value.endSession,
-      source: value.source === "explicit" ? ("explicit" as const) : ("inherited" as const),
+      source:
+        value.source === "explicit"
+          ? ("explicit" as const)
+          : value.source === "default"
+            ? ("default" as const)
+            : ("inherited" as const),
       ...(typeof value.raw === "string"
         ? { raw: value.raw.slice(0, 60) }
         : {}),

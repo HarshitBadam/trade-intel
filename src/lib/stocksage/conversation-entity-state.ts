@@ -16,6 +16,7 @@ import { primaryCalendar } from "./listing-capability";
 import { sanitizeConversationState } from "./state";
 import {
   intervalsToHorizon,
+  mergeContrastIntervals,
   parseIntervals,
   type TemporalInterval,
 } from "./temporal";
@@ -478,15 +479,11 @@ export function resolveConversationState(
     activeEntities.length > 0 ? activeEntities : base.entities
   );
   const parsedIntervals = parseIntervals({ message, calendar });
-  const intervals: TemporalInterval[] =
-    parsedIntervals.length > 0
-      ? parsedIntervals
-      : startsNewTopic
-        ? []
-        : (base.intervals ?? []).map((value) => ({
-            ...value,
-            source: "inherited" as const,
-          }));
+  const intervals: TemporalInterval[] = mergeContrastIntervals({
+    message,
+    previous: startsNewTopic ? [] : (base.intervals ?? []),
+    parsed: parsedIntervals,
+  });
   const next: ConversationState = {
     version: 1,
     revision,
@@ -517,10 +514,9 @@ export function resolveConversationState(
     criteria:
       criteria.length > 0 ? criteria : startsNewTopic ? [] : base.criteria,
     horizon:
+      intervalsToHorizon(intervals) ??
       horizon ??
-      (startsNewTopic
-        ? undefined
-        : (base.horizon ?? intervalsToHorizon(intervals))),
+      (startsNewTopic ? undefined : base.horizon),
     jurisdiction:
       jurisdiction ?? (startsNewTopic ? undefined : base.jurisdiction),
     safetyRepliesUsed: base.safetyRepliesUsed,

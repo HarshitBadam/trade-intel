@@ -509,6 +509,50 @@ export function describeInterval(value: TemporalInterval): string {
     : `${value.label} (${venue} sessions ${value.startSession} to ${value.endSession})`;
 }
 
+const CONTRAST_FOLLOW_UP =
+  /\b(?:contrast|compared?\s+(?:that|it|them|those)?\s*(?:with|to)|different from|versus|vs\.?)\b/i;
+
+/**
+ * A contrast follow-up adds a new period beside the active period instead of
+ * silently replacing it. Ordinary explicit periods still replace inherited
+ * periods, so "show last month" remains a single-window request.
+ */
+export function mergeContrastIntervals(args: {
+  message: string;
+  previous: readonly TemporalInterval[];
+  parsed: readonly TemporalInterval[];
+}): TemporalInterval[] {
+  if (args.parsed.length === 0) {
+    return args.previous.map((value) => ({
+      ...value,
+      source: "inherited" as const,
+    }));
+  }
+  if (
+    args.previous.length === 0 ||
+    args.parsed.length !== 1 ||
+    !CONTRAST_FOLLOW_UP.test(args.message)
+  ) {
+    return [...args.parsed];
+  }
+  const combined = [
+    ...args.previous.map((value) => ({
+      ...value,
+      source: "inherited" as const,
+    })),
+    ...args.parsed,
+  ];
+  const seen = new Set<string>();
+  return combined
+    .filter((value) => {
+      const key = `${value.calendar}:${value.startSession}:${value.endSession}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 4);
+}
+
 /** Legacy wire format; conversation state keeps this until clients migrate. */
 export function intervalsToHorizon(
   intervals: TemporalInterval[]

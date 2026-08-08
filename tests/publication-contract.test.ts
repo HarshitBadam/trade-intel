@@ -142,6 +142,25 @@ test("deep requires at least one citation even when every other check would pass
   assert.equal(rejection?.reasonCode, "missing_citations");
 });
 
+test("a causal market explanation requires a claim-adjacent citation", () => {
+  const candidate =
+    "Apple recovered because investors reassessed its earnings outlook, The Motley Fool.";
+  const rejection = evaluatePublicationCandidate(
+    candidate,
+    regularSynthesisChecks({
+      guardFigures: false,
+      requireCitations: true,
+      requireCoverage: false,
+      wantsData: true,
+      offTopicTurn: false,
+      blendedOffTopic: false,
+      farewellTurn: false,
+    }),
+    baseContext({ corpus: candidate })
+  );
+  assert.equal(rejection?.reasonCode, "uncited_research_claims");
+});
+
 test("deep never enforces regular-only checks (coverage, style, criteria, curt farewell)", () => {
   const checks = deepSynthesisChecks({ smuggled: false });
   assert.equal(checks.wrong_subject_opening, undefined);

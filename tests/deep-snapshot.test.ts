@@ -103,6 +103,7 @@ test("deep snapshot is signed, bounded, immutable, and tamper resistant", async 
       },
     ],
     asOf: new Date().toISOString(),
+    queueReady: true,
   });
   assert.ok(created.offer);
   const parsed = parseDeepResearchSnapshot(created.offer?.token);
@@ -205,10 +206,48 @@ test("deep pre-flight keeps a quote-only offer available for broader retrieval",
     },
     sources: [],
     asOf: new Date().toISOString(),
+    queueReady: true,
   });
   assert.ok(created.offer);
   assert.equal(created.offer?.available, true);
   assert.equal(created.offer?.unavailableReason, undefined);
+});
+
+test("Deep Research is not offered when the queue or turn capability is unavailable", async () => {
+  const { createDeepResearchOffer } = await import(
+    "../src/lib/stocksage/deep/snapshot"
+  );
+  const base = {
+    question: "What is new with Apple?",
+    reply: { text: "Apple has a supported regular answer.", live: true },
+    entities: [
+      {
+        id: "ticker:AAPL",
+        name: "Apple",
+        query: "Apple AAPL",
+        ticker: "AAPL",
+        market: "us" as const,
+      },
+    ],
+    state: {
+      version: 1 as const,
+      revision: 1,
+      entities: [],
+      explicitEntitySet: ["ticker:AAPL"],
+      criteria: ["outlook"],
+    },
+    sources: [],
+    asOf: new Date().toISOString(),
+  };
+  assert.equal(createDeepResearchOffer(base).offer, undefined);
+  assert.equal(
+    createDeepResearchOffer({
+      ...base,
+      queueReady: true,
+      eligible: false,
+    }).offer,
+    undefined
+  );
 });
 
 test("deep availability distinguishes broad reports from focused questions", async () => {
@@ -286,6 +325,7 @@ test("deep availability distinguishes broad reports from focused questions", asy
     },
     sources: [skHynix],
     asOf: new Date().toISOString(),
+    queueReady: true,
   });
   assert.equal(offer.offer?.available, true);
   assert.equal(offer.offer?.unavailableReason, undefined);

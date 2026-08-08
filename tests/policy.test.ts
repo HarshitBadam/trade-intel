@@ -211,6 +211,23 @@ test("high-stakes classification is direction- and tense-aware", () => {
   assert.equal(classifyHighStakes("how is Tesla doing today?", [tesla]), null);
 });
 
+test("return-promise stock picking is refused without blocking ordinary rankings", () => {
+  for (const message of [
+    "Which stock would double my money soonest?",
+    "Tell me the fastest ticker to 2x my returns",
+    "Pick an investment that can triple my money",
+  ]) {
+    assert.equal(classifyHighStakes(message, []), "guarantee_positive", message);
+    assert.equal(evaluateDomainPolicy(message, []).reasonCode, "high_stakes_finance");
+  }
+  assert.equal(
+    classifyHighStakes("Rank Apple and Microsoft by last month's return", [
+      tesla,
+    ]),
+    null
+  );
+});
+
 test("trade execution variants are prohibited external actions", () => {
   for (const message of [
     "Execute a buy of 100 NVDA shares for me",

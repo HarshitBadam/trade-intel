@@ -13,6 +13,10 @@ import { resolveConversationState } from "../src/lib/stocksage/entities";
 import { listingCapability } from "../src/lib/stocksage/listing-capability";
 import { planEvidence } from "../src/lib/stocksage/evidence/planner";
 import { retrieveMarketProxy } from "../src/lib/stocksage/evidence/market";
+import {
+  executeEvidencePlan,
+  type RetrievalProviders,
+} from "../src/lib/stocksage/evidence/retrieve";
 import { buildFallbackReply } from "../src/lib/stocksage/regular-fallback";
 import type { EvidenceQuery } from "../src/lib/stocksage/types";
 
@@ -343,6 +347,46 @@ test("planning selects native ASX quotes without touching US-only or refused tur
     retrievalAuthorized: false,
   });
   assert.deepEqual(refusedPlan.queries, []);
+});
+
+test("a slow ASX ticker does not discard completed peer quotes", async () => {
+  const resolution = resolveConversationState(
+    "Compare MQG and CBA today",
+    undefined,
+    []
+  );
+  const plan = planEvidence({
+    route: "comparison",
+    message: "Compare MQG and CBA today",
+    entities: resolution.entities,
+    state: resolution.state,
+  });
+  const providers: RetrievalProviders = {
+    quotes: async () => [],
+    marketProxy: async (query) => {
+      if (query.tickers.includes("CBA")) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return query.tickers.map((ticker) => ({
+        ...quote(ticker),
+        instrumentSymbol: `${ticker}.AX`,
+        venue: "ASX" as const,
+        currency: "AUD" as const,
+      }));
+    },
+    astra: async () => [],
+    tavily: async () => [],
+  };
+  const context = await executeEvidencePlan({
+    plan,
+    entities: resolution.entities,
+    providers,
+    ceilingMs: 30,
+  });
+  assert.deepEqual(
+    context.quotes.map((item) => item.ticker),
+    ["MQG"]
+  );
 });
 
 test("fallback copy identifies native ASX figures as AUD, not an ADR proxy", () => {

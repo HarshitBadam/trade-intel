@@ -21,7 +21,7 @@ export function detectCriteria(message: string): string[] {
       "risk",
     ],
     [
-      /\b(?:outlook|prospects|forecast|catalysts?|drivers?|tailwinds?|headwinds?|what (?:matters|to watch)|developments?|recover|bounce back|turn around|do (?:well|good) again)\b/i,
+      /\b(?:outlook|prospects|forecast|catalysts?|drivers?|tailwinds?|headwinds?|what (?:(?:should (?:i|we|investors?) )?watch|matters|to watch)|developments?|recover|bounce back|turn around|do (?:well|good) again)\b/i,
       "outlook",
     ],
     [/\b(?:bigger|biggest|largest|market cap|capitali[sz]ation|size)\b/i, "size"],

@@ -1,4 +1,5 @@
 import { listingCapability } from "../listing-capability";
+import { isMoveCauseAsk } from "../intent";
 import { describeInterval, type TemporalInterval } from "../temporal";
 import type {
   ChatRoute,
@@ -61,8 +62,10 @@ function evidenceFreshnessDays(message: string): number | undefined {
 // Astra stores ~90 days; use wider history except for explicit today/yesterday asks.
 function astraFreshnessDays(
   message: string,
-  freshnessDays: number | undefined
+  freshnessDays: number | undefined,
+  moveCause = false
 ): number | undefined {
+  if (moveCause) return freshnessDays ?? 4;
   if (/\b(?:today|yesterday|breaking|right now)\b/i.test(message)) {
     return freshnessDays ?? 7;
   }
@@ -147,6 +150,7 @@ export function planEvidence(args: {
 }): EvidencePlan {
   const asOf = args.asOf ?? new Date().toISOString();
   const queries: EvidenceQuery[] = [];
+  const intervals = args.intervals ?? args.state.intervals ?? [];
   const capabilities = args.entities.map((entity) => ({
     entity,
     capability: listingCapability(entity),
@@ -157,7 +161,7 @@ export function planEvidence(args: {
     .map(({ entity }) => entity);
   const web = args.entities.filter((entity) => entity.market === "web");
   const marketData = marketQuoteEligible(args.entities);
-  const intervalNote = (args.intervals ?? [])
+  const intervalNote = intervals
     .map((value) => describeInterval(value))
     .join("; ");
   const astraEligible = args.entities.filter((entity) => entity.ticker);
@@ -165,8 +169,11 @@ export function planEvidence(args: {
   const fortuneRanking =
     /\bfortune\s*(?:100|500)\b/i.test(args.message) ||
     args.entities.some((entity) => /^Fortune (?:100|500)$/.test(entity.name));
+  const moveCause = isMoveCauseAsk(args.message);
   const currentCriteria = fortuneRanking
     ? ["revenue ranking"]
+    : moveCause
+      ? ["current developments", "performance"]
     : /\b(?:earnings|revenue|profit|margin)\b/i.test(args.message)
       ? ["earnings"]
       : args.state.criteria.length > 0
@@ -196,6 +203,8 @@ export function planEvidence(args: {
         : "",
     fortuneRanking
       ? `Use the latest official Fortune ranking available as of ${new Date().getUTCFullYear()}. Prefer fortune.com or fortunemedia.mediaroom.com`
+      : moveCause
+        ? "Use reporting from the requested trading window. Do not present an older event as the cause of the current move"
       : currentCriteria.includes("earnings")
         ? "Prefer the company investor-relations release, SEC filing, exchange disclosure, or Reuters"
       : "",
@@ -204,7 +213,9 @@ export function planEvidence(args: {
     .join(". ");
   const freshnessDays = fortuneRanking
     ? 550
-    : evidenceFreshnessDays(args.message);
+    : moveCause
+      ? 4
+      : evidenceFreshnessDays(args.message);
   const historical = historicalPeriod(args.message);
 
   if (args.route === "current_finance") {
@@ -239,7 +250,7 @@ export function planEvidence(args: {
           plannedCriteria,
           "news",
           isPriceOnly(args.message) ? 4 : 8,
-          astraFreshnessDays(args.message, freshnessDays)
+          astraFreshnessDays(args.message, freshnessDays, moveCause)
         )
       );
     }
@@ -427,8 +438,9 @@ export function planEvidence(args: {
       requiredEntityIds: [],
       criteria: [],
       explicitCriteria: currentCriteria,
+      causal: moveCause,
       horizon: args.state.horizon,
-      intervals: args.intervals,
+      intervals,
     };
   }
 
@@ -456,7 +468,8 @@ export function planEvidence(args: {
         : args.route === "comparison"
           ? [...args.state.criteria]
           : currentCriteria,
+    causal: moveCause,
     horizon: args.state.horizon,
-    intervals: args.intervals,
+    intervals,
   };
 }

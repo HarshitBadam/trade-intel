@@ -7,6 +7,7 @@ import {
 } from "node:crypto";
 import { z } from "zod";
 import {
+  hasDeepQueue,
   hasDeepResearch,
   STOCKSAGE_DEEP_SNAPSHOT_SECRET,
 } from "@/lib/config";
@@ -321,9 +322,19 @@ export function createDeepResearchOffer(args: {
   state: ConversationState;
   sources: EvidenceSource[];
   asOf: string;
+  eligible?: boolean;
+  /** Test seam for the mocked queue integration; production uses config. */
+  queueReady?: boolean;
 }): { responseId: string; offer?: DeepResearchOffer } {
   const responseId = randomUUID();
-  if (!hasDeepResearch || !args.reply.text.trim()) return { responseId };
+  if (
+    args.eligible === false ||
+    !hasDeepResearch ||
+    !(args.queueReady ?? hasDeepQueue) ||
+    !args.reply.text.trim()
+  ) {
+    return { responseId };
+  }
   const workId = randomUUID();
   const attemptId = randomUUID();
   const createdAt = new Date().toISOString();

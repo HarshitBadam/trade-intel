@@ -33,11 +33,26 @@ const INVALID_TOKEN: DeepResearchReply = {
   text: "Open Research deeper from the latest StockSage answer.",
 };
 
+type DeepPublisher = (args: {
+  token: string;
+  workId: string;
+  attemptId: string;
+}) => Promise<boolean>;
+
+let publisherForTests: DeepPublisher | undefined;
+
+export function setDeepResearchPublisherForTests(
+  publisher: DeepPublisher | undefined
+): void {
+  publisherForTests = publisher;
+}
+
 async function publish(args: {
   token: string;
   workId: string;
   attemptId: string;
 }): Promise<boolean> {
+  if (publisherForTests) return publisherForTests(args);
   const { Client } = await import("@upstash/qstash");
   const client = new Client({
     token: QSTASH_TOKEN!,
@@ -90,10 +105,11 @@ export async function enqueueDeepResearch(
   }
 
   const startedAt = Date.now();
+  const queueReady = hasDeepQueue || Boolean(publisherForTests);
   const unavailable: DeepResearchReply = {
     workId: snapshot.workId,
     status: "failure",
-    text: hasDeepQueue
+    text: queueReady
       ? "Research deeper could not be queued. The answer above remains the supported view."
       : "Research deeper is unavailable right now. The answer above remains the supported view.",
     retryable: true,
@@ -120,7 +136,7 @@ export async function enqueueDeepResearch(
       return { status: "failure", reply: unavailable };
     }
     const published =
-      hasDeepQueue &&
+      queueReady &&
       (await publish({
         token: token as string,
         workId: identity.workId,
@@ -132,7 +148,7 @@ export async function enqueueDeepResearch(
       durationMs: Date.now() - startedAt,
       reasonCode: published
         ? "queued"
-        : hasDeepQueue
+        : queueReady
           ? "publish_failed"
           : "queue_unavailable",
     });

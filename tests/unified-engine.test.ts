@@ -267,6 +267,72 @@ test("the no-LLM path still enters the same executor's synthesis stage", async (
   assert.equal(tracker.count(), 1);
 });
 
+test("a partial performance comparison keeps its quote without synthesis", async () => {
+  const tracker = synthesisAttemptCounter();
+  const providers: RetrievalProviders = {
+    quotes: async () => [
+      {
+        ticker: "AAPL",
+        venue: "NASDAQ",
+        price: 200,
+        dayPct: 1.2,
+        weekPct: 2,
+        monthPct: 3,
+        mtdPct: 1,
+        ytdPct: 12,
+        yearPct: 18,
+        fewDaysPct: 1.5,
+        currency: "USD",
+        isIndex: false,
+        eod: false,
+        asOf: "2026-08-07T20:00:00.000Z",
+      } as never,
+    ],
+    astra: async () => [],
+    tavily: async () => [],
+  };
+  const reply = await runUnifiedEngine(
+    request("Compare Apple and Microsoft today"),
+    {
+      retrievalProviders: providers,
+      onSynthesisAttempt: tracker.onSynthesisAttempt,
+    }
+  );
+  assert.equal(tracker.count(), 0);
+  assert.match(reply.text, /AAPL.*\+1\.20%/i);
+  assert.match(reply.text, /Microsoft has no matched figure/i);
+});
+
+test("a listed snapshot without a quote stays explicit and deterministic", async () => {
+  const tracker = synthesisAttemptCounter();
+  const providers: RetrievalProviders = {
+    quotes: async () => [],
+    astra: async (query) => [
+      {
+        kind: "astra",
+        title: "SpaceX public-company update",
+        outlet: "Example Markets",
+        publishedAt: new Date().toISOString(),
+        url: "https://example.com/spacex-update",
+        excerpt:
+          "SpaceX reported quarterly revenue growth after becoming a public company.",
+        entityIds: query.entityIds,
+        criteria: query.criteria,
+        queryId: query.id,
+      },
+    ],
+    tavily: async () => [],
+  };
+  const reply = await runUnifiedEngine(request("what up with SpaceX"), {
+    retrievalProviders: providers,
+    onSynthesisAttempt: tracker.onSynthesisAttempt,
+  });
+  assert.equal(tracker.count(), 0);
+  assert.match(reply.text, /publicly listed as SPCX/i);
+  assert.match(reply.text, /current quote was unavailable/i);
+  assert.match(reply.text, /https:\/\/example\.com\/spacex-update/);
+});
+
 test("concurrent requests never share synthesis-attempt state", async () => {
   const rejectedTracker = synthesisAttemptCounter();
   const fundamentalsOnly: RetrievalProviders = {

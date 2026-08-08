@@ -1,8 +1,6 @@
 "use client"
 import { CalendarDays } from "lucide-react"
 import Image from "next/image"
-import { useChart } from "@/context/ChartContext"
-import { useEffect, useState } from "react"
 
 interface NewsCardProps {
   id: string;
@@ -15,26 +13,13 @@ interface NewsCardProps {
   onClick?: () => void;
 }
 
-export function NewsCard({ id, username, content, date, avatarUrl, significance, source, onClick }: NewsCardProps) {
-  const { hoveredTimestamp, setHoveredTimestamp } = useChart();
-  const [currentlyHovered, setCurrentlyHovered] = useState<string | null>(null);
-
+export function NewsCard({ username, content, date, avatarUrl, source, onClick }: NewsCardProps) {
   return (
     <div 
       className={`flex items-start space-x-4 py-4 transition-colors ${
         onClick ? 'cursor-pointer' : ''
-      } ${
-        currentlyHovered === id ? 'bg-accent/30' : ''
       }`} 
       onClick={onClick}
-      onMouseEnter={() => {
-        setHoveredTimestamp(date);
-        setCurrentlyHovered(id);
-      }} 
-      onMouseLeave={() => {
-        setHoveredTimestamp(null);
-        setCurrentlyHovered(null);
-      }}
     >
       
       {avatarUrl ? (
@@ -66,4 +51,4 @@ export function NewsCard({ id, username, content, date, avatarUrl, significance,
       </div>
     </div>
   )
-} 
+}

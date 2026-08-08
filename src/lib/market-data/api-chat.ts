@@ -16,6 +16,9 @@ import { buildChatQuote } from "./quote-metrics";
 const hasPrices = hasAlpaca || hasPolygon;
 
 type FreshCandles = Awaited<ReturnType<typeof getCandlesFresh>>;
+export type ChatCandleFetcher = (
+  ticker: string
+) => Promise<FreshCandles>;
 const CHAT_CANDLE_TTL_MS = 2 * 60 * 1000;
 const chatCandleCache = new Map<
   string,
@@ -27,11 +30,23 @@ const chatFundamentalsCache = new Map<
   { expiresAt: number; value: Promise<ChatFundamentals | null> }
 >();
 
-async function getChatCandles(ticker: string): Promise<FreshCandles> {
+export function resetChatCandleCache(): void {
+  chatCandleCache.clear();
+}
+
+async function getChatCandles(
+  ticker: string,
+  fetcher: ChatCandleFetcher
+): Promise<FreshCandles> {
   const cached = chatCandleCache.get(ticker);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const value = getCandlesFresh(ticker);
+  const value: Promise<FreshCandles> = fetcher(ticker).catch(() => {
+    if (chatCandleCache.get(ticker)?.value === value) {
+      chatCandleCache.delete(ticker);
+    }
+    return null;
+  });
   chatCandleCache.set(ticker, {
     expiresAt: Date.now() + CHAT_CANDLE_TTL_MS,
     value,
@@ -39,12 +54,7 @@ async function getChatCandles(ticker: string): Promise<FreshCandles> {
   if (chatCandleCache.size > 100) {
     chatCandleCache.delete(chatCandleCache.keys().next().value as string);
   }
-  try {
-    return await value;
-  } catch (error) {
-    chatCandleCache.delete(ticker);
-    throw error;
-  }
+  return value;
 }
 
 export async function getLiveQuotes(tickers: string[]): Promise<LiveQuote[]> {
@@ -66,25 +76,40 @@ export async function getLiveQuotes(tickers: string[]): Promise<LiveQuote[]> {
   }
 }
 
-export async function getChatQuotes(tickers: string[]): Promise<ChatQuote[]> {
-  if (!hasPrices || tickers.length === 0) return [];
+export async function getChatQuotes(
+  tickers: string[],
+  fetcher?: ChatCandleFetcher
+): Promise<ChatQuote[]> {
+  if ((!hasPrices && !fetcher) || tickers.length === 0) return [];
   const uniq = [...new Set(tickers.map((t) => t.toUpperCase()))].slice(0, 4);
+  const candleFetcher = fetcher ?? getCandlesFresh;
 
   const results = await Promise.allSettled(
     uniq.map(async (ticker): Promise<ChatQuote | null> => {
-      const candles = await getChatCandles(ticker);
+      const candles = await getChatCandles(ticker, candleFetcher);
       if (!candles) return null;
-      return buildChatQuote(candles.chart_data, {
-        ticker,
-        price: candles.stock_price,
-        dayPct: candles.percent_change,
-      });
+      try {
+        return buildChatQuote(candles.chart_data, {
+          ticker,
+          price: candles.stock_price,
+          dayPct: candles.percent_change,
+          sourceNote: candles.source
+            ? `${candles.source} market data`
+            : "configured market-data feed",
+        });
+      } catch (error) {
+        console.error(
+          `[market-data] ${JSON.stringify({
+            event: "quote_metric_failure",
+            ticker,
+            reason: error instanceof Error ? error.message : "unknown",
+          })}`
+        );
+        return null;
+      }
     })
   );
 
-  if (results.every((result) => result.status === "rejected")) {
-    throw new Error("All configured quote providers failed");
-  }
   return results
     .filter(
       (result): result is PromiseFulfilledResult<ChatQuote | null> =>

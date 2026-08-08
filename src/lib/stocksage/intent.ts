@@ -21,6 +21,14 @@ const COMPARISON =
   /\b(?:compare|comapre|comparison|rank|ranking|order|big\s*(?:4|four)|versus|vs\.?|better (?:stock|investment)|which (?:one|company|stock)|relative to|against)\b/i;
 const TIME_SENSITIVE =
   /\b(?:latest|today|yesterday|now|current|currently|recent(?:ly)?|lately|news|update|developments?|catalysts?|what\b.{0,50}\bmatters?|earnings|guidance|(?:is|are)\b.{0,60}\b(?:public|private|listed)|public\s*\/\s*private status|publicly traded|this (?:week|month|quarter|year)|month[- ]to[- ]date|mtd|trailing month|year[- ]to[- ]date|ytd|last (?:few days|week|month|quarter|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}|(?:stock|share) price|trading at|market move|what (?:changed|happened|moved)|what(?:'?s(?: is)?| is) up with|how (?:is|are|did|has|have)\b.{0,80}\b(?:doing|doin|done|performing|moved|changed)|recover|bounce back|turn around|do (?:well|good) again|anything notable|market conditions?|legal|lawsuit|regulatory|regulator)\b/i;
+const MOVE_CAUSE =
+  /\b(?:why\b.{0,80}\b(?:up|down|higher|lower|rising|falling|rose|fell|rall(?:y|ied)|drop(?:ped)?|selloff)|what\b.{0,50}\b(?:moved|drove|caused|is moving)|reason\b.{0,40}\b(?:move|rise|fall|rally|drop|selloff))\b/i;
+const FORWARD_RESEARCH =
+  /\b(?:next (?:week|month|quarter|year)|what should (?:i|we|investors?) watch)\b/i;
+const SELF_HISTORY_COMPARISON =
+  /\bcompar(?:e|ed|ing)\b.{0,50}\b(?:with|to)\s+(?:its|their|the compan(?:y|ies)'?)\s+(?:own\s+)?history\b/i;
+const RESEARCH_SUMMARY_FOLLOW_UP =
+  /\b(?:summari[sz]e|recap|bottom line|trade-offs?)\b/i;
 const CODE =
   /\b(?:python|javascript|typescript|java|c\+\+|code|script|function|loop|syntax|compile|runtime|output|console\.log|print\s*\(|for\s+\w+\s+in\s+range)\b/i;
 export const STABLE_FINANCE =
@@ -32,6 +40,10 @@ const CURRENT_GENERAL =
 
 export function normalizeMessage(message: string): string {
   return message.normalize("NFKC").replace(/\s+/g, " ").trim();
+}
+
+export function isMoveCauseAsk(message: string): boolean {
+  return MOVE_CAUSE.test(normalizeMessage(message));
 }
 
 export function routeMessage(args: {
@@ -120,6 +132,17 @@ export function routeMessage(args: {
     };
   }
   if (
+    args.entities.length === 1 &&
+    SELF_HISTORY_COMPARISON.test(text)
+  ) {
+    return {
+      route: "current_finance",
+      reasonCode: "current_claim_requires_evidence",
+      retrievalRequired: true,
+      deepEligible: true,
+    };
+  }
+  if (
     COMPARISON.test(text) ||
     (args.entities.length >= 2 &&
       args.state.explicitEntitySet.length >= 2 &&
@@ -147,8 +170,13 @@ export function routeMessage(args: {
     };
   }
   if (
-    (TIME_SENSITIVE.test(text) &&
+    ((TIME_SENSITIVE.test(text) ||
+      isMoveCauseAsk(text) ||
+      FORWARD_RESEARCH.test(text)) &&
       (args.entities.length > 0 || CURRENT_GENERAL.test(text))) ||
+    (args.entities.length > 0 &&
+      args.state.criteria.length > 0 &&
+      RESEARCH_SUMMARY_FOLLOW_UP.test(text)) ||
     (args.entities.some((entity) =>
       /^Fortune (?:100|500)$/.test(entity.name)
     ) &&

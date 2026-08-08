@@ -131,7 +131,7 @@ export function ChatMessage({
   onClarify: (messageId: string, choice: ClarificationChoice) => void;
 }) {
   const deep = message.deepState;
-  const deepAction = nextDeepAction(deep?.status);
+  const deepAction = nextDeepAction(deep?.status, deep?.retryable);
   const canResearch =
     message.sender === "ai" &&
     message.deepResearch &&
@@ -140,6 +140,7 @@ export function ChatMessage({
   const showResearch =
     message.sender === "ai" &&
     message.deepResearch &&
+    message.deepResearch.available &&
     deepAction !== "blocked";
   const containerMode = effectivePresentationMode(
     message.presentationMode,
@@ -173,27 +174,13 @@ export function ChatMessage({
       >
         {message.sender === "ai" ? (
           <div className="space-y-2 text-sm leading-relaxed [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_h2]:mt-3 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_p]:my-1.5 [&_em]:italic [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5">
-            {badge ? (
+            {badge && (
               <div
                 className={`inline-flex rounded-full px-2 py-0.5 text-[0.7rem] font-medium ${badge.toneClass}`}
                 role="status"
               >
                 {badge.label}
               </div>
-            ) : (
-              // Legacy fallback for replies without a presentation mode
-              // (e.g. the pre-unified engine), which only ever carry
-              // `dataStatus`.
-              !message.presentationMode &&
-              message.dataStatus &&
-              message.dataStatus !== "full" && (
-                <div
-                  className="inline-flex rounded-full bg-muted/70 px-2 py-0.5 text-[0.7rem] font-medium text-muted-foreground"
-                  role="status"
-                >
-                  dated evidence
-                </div>
-              )
             )}
             <MarkdownAnswer
               text={message.text}

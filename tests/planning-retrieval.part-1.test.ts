@@ -219,10 +219,12 @@ test("private-company fallback uses sourced business substance, not only structu
   );
   assert.match(reply.text, /completed a launch/i);
   assert.match(reply.text, /https:\/\/example\.com\/spacex/);
+  assert.match(reply.text, /publicly listed as SPCX/i);
+  assert.match(reply.text, /current quote was unavailable/i);
   assert.doesNotMatch(reply.text, /^SpaceX is privately held[^.]*\.$/i);
 });
 
-test("mixed public-private comparison keeps investability explicit", () => {
+test("listed comparison distinguishes a missing quote from a private company", () => {
   const resolution = resolveConversationState(
     "aight so whats up with tesla vs SpaceX",
     undefined,
@@ -260,14 +262,14 @@ test("mixed public-private comparison keeps investability explicit", () => {
       sources: [],
       coverage: {
         "ticker:TSLA": "covered",
-        "name:spacex": "missing",
+        "ticker:SPCX": "missing",
       },
       plan,
     }
   );
   assert.match(reply.text, /TSLA/);
-  assert.match(reply.text, /SpaceX.*privately held/i);
-  assert.match(reply.text, /no public share price/i);
+  assert.match(reply.text, /SpaceX has no matched figure/i);
+  assert.doesNotMatch(reply.text, /privately held|no public share price/i);
 });
 
 test("all-private comparison does not imply dated market figures", () => {
@@ -303,6 +305,52 @@ test("all-private comparison does not imply dated market figures", () => {
   assert.match(reply.text, /privately held/i);
   assert.match(reply.text, /public-share returns/i);
   assert.doesNotMatch(reply.text, /dated figures/i);
+});
+
+test("all-private source coverage is not described as a matched ranking figure", () => {
+  const resolution = resolveConversationState(
+    "the consulting Big 4",
+    undefined,
+    []
+  );
+  const plan = planEvidence({
+    route: "comparison",
+    message: "what about the consulting big 4?",
+    entities: resolution.entities,
+    state: resolution.state,
+  });
+  const reply = buildFallbackReply(
+    { message: "what about the consulting big 4?", history: [] },
+    {
+      route: "comparison",
+      reasonCode: "deterministic_investability_comparison",
+      retrievalRequired: true,
+      deepEligible: true,
+    },
+    resolution.entities,
+    {
+      quotes: [],
+      fundamentals: [],
+      sources: [
+        {
+          id: "S1",
+          kind: "tavily",
+          title: "Deloitte business update",
+          outlet: "Example",
+          url: "https://example.com/deloitte",
+          excerpt: "Deloitte reported an update to its consulting operations.",
+          entityIds: ["name:deloitte"],
+          criteria: ["current developments"],
+          retrievedAt: new Date().toISOString(),
+        },
+      ],
+      coverage: { "name:deloitte": "covered" },
+      plan,
+    }
+  );
+  assert.match(reply.text, /privately held/i);
+  assert.match(reply.text, /Name the dimension you want ranked/i);
+  assert.doesNotMatch(reply.text, /no matched figure|dated figures/i);
 });
 
 test("trailing historical questions use validated period returns", () => {

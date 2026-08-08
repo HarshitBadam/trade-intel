@@ -51,6 +51,8 @@ const GENERAL_NEWS =
 const PREDICTION_MARKET = /\bprediction markets?\b/i;
 const GUARANTEE =
   /\b(?:guarantee(?:s|d|ing)?|promis(?:e|es|ed|ing)|assur(?:e|es|ed|ing)|are you (?:sure|positive|certain)|can you (?:guarantee|promise|assure))\b.{0,90}\b(?:returns?|profits?|double|triple|\d{1,4}x|gains?|go(?:es|ing)? (?:up|down)|positive|negative|perform(?:s|ance|ing)?(?:\s+poorly|\s+well)?|money|lose|loss|year end)\b|\b(?:guaranteed|risk[- ]free|sure[- ]thing)\s+(?:returns?|profits?|picks?|stocks?|winners?)\b|\bno risk\b|\b(?:no|zero)\s+chance\b.{0,80}\b(?:fall|drop|decline|crash|lose|rise|rally|gain|go (?:up|down)|perform (?:poorly|well))\b|\bso you(?:'re| are) saying\b.{0,80}\b(?:will|won't|cannot|can't)\b.{0,30}\b(?:fall|drop|decline|crash|lose|rise|rally|gain|perform (?:poorly|well))\b/i;
+const RETURN_SEEKING_PICK =
+  /\b(?:which|what|pick|name|tell me|best|top|fastest|quickest|soonest)\b.{0,70}\b(?:stocks?|shares?|tickers?|investments?)\b.{0,80}\b(?:would|will|can|could|most likely to)?\b.{0,30}\b(?:double|triple|2x|3x|\d{2,4}x)\b.{0,40}\b(?:my\s+)?(?:money|returns?|profits?|gains?)\b|\b(?:double|triple|2x|3x|\d{2,4}x)\b.{0,35}\b(?:my\s+)?(?:money|returns?|profits?|gains?)\b.{0,70}\b(?:which|what|pick|stock|ticker|investment|soonest|fastest|quickest)\b/i;
 const LIFE_EVENT_STAKE =
   /\b(?:sell my house|sold my house|selling my house|house (?:proceeds|money|sale)|inheritance|life savings|retirement (?:savings|fund)|superannuation|my super\b|redundancy (?:pay(?:out)?)?|mortgage refinance|divorce settlement)\b/i;
 const ALL_IN =
@@ -122,6 +124,9 @@ export function classifyHighStakes(
   entities: FinanceEntity[]
 ): HighStakesKind | null {
   const text = message.trim();
+  if (RETURN_SEEKING_PICK.test(text) && investingContext(text, entities)) {
+    return "guarantee_positive";
+  }
   if (GUARANTEE.test(text) && investingContext(text, entities)) {
     if (NO_CHANCE_DOWNSIDE.test(text)) return "guarantee_positive";
     if (NO_CHANCE_UPSIDE.test(text)) return "guarantee_negative";

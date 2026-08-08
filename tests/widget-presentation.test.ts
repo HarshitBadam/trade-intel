@@ -9,30 +9,30 @@ import {
   presentationBadge,
 } from "../src/components/chat/presentation";
 
-test("presentationBadge is null for unset, social, and stable_finance modes", () => {
+test("presentationBadge hides decorative route labels", () => {
   assert.equal(presentationBadge(undefined), null);
   assert.equal(presentationBadge("social"), null);
   assert.equal(presentationBadge("stable_finance"), null);
+  assert.equal(presentationBadge("current_finance"), null);
+  assert.equal(presentationBadge("comparison"), null);
 });
 
-test("presentationBadge gives every evidence-sensitive mode a distinct, honest label", () => {
+test("presentationBadge only labels actionable states", () => {
   assert.equal(presentationBadge("clarification")?.label, "Needs one more detail");
-  assert.equal(presentationBadge("current_finance")?.label, "Current data");
-  assert.equal(presentationBadge("comparison")?.label, "Comparison");
-  assert.equal(presentationBadge("limited_evidence")?.label, "Limited evidence");
-  assert.equal(presentationBadge("no_evidence")?.label, "No verified evidence");
+  assert.equal(presentationBadge("limited_evidence")?.label, "Partial data");
+  assert.equal(presentationBadge("no_evidence")?.label, "Data unavailable");
   assert.equal(presentationBadge("deep_pending")?.label, "Researching deeper");
-  assert.equal(presentationBadge("deep_failed")?.label, "Deeper research paused");
+  assert.equal(presentationBadge("deep_failed")?.label, "Research unavailable");
 });
 
-test("presentationAccentClass is empty for unset/social and non-empty for every other mode", () => {
+test("presentationAccentClass only accents actionable states", () => {
   assert.equal(presentationAccentClass(undefined), "");
   assert.equal(presentationAccentClass("social"), "");
+  assert.equal(presentationAccentClass("stable_finance"), "");
+  assert.equal(presentationAccentClass("current_finance"), "");
+  assert.equal(presentationAccentClass("comparison"), "");
   for (const mode of [
     "clarification",
-    "stable_finance",
-    "current_finance",
-    "comparison",
     "limited_evidence",
     "no_evidence",
     "deep_pending",
@@ -60,6 +60,7 @@ test("nextDeepAction starts fresh work when idle/never attempted", () => {
 
 test("nextDeepAction retries with a new attempt identity only after a failure", () => {
   assert.equal(nextDeepAction("failure"), "retry");
+  assert.equal(nextDeepAction("failure", false), "blocked");
 });
 
 test("nextDeepAction blocks duplicate clicks while pending or already succeeded", () => {
@@ -81,7 +82,7 @@ test("the badge and accent a message renders both come from the effective mode, 
   assert.equal(failedEffective, "deep_failed");
   assert.equal(
     presentationBadge(failedEffective)?.label,
-    "Deeper research paused"
+    "Research unavailable"
   );
   assert.equal(presentationAccentClass(failedEffective), "border-rose-400/50");
 });

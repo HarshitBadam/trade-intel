@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createDeepResearchOffer } from "./deep/snapshot";
 import { buildFallbackReply, buildDeterministicRankingReply } from "./regular-fallback";
+import { isMoveCauseAsk } from "./intent";
 import { roundFiguresForDisplay } from "./rounding";
 import { logStockSage, type StockSageEvent } from "./telemetry";
 import type { RegularContext } from "./evidence/retrieve";
@@ -15,6 +16,7 @@ export function deterministicModelAnswer(args: {
   dataStatus: ChatReply["dataStatus"];
   wantsData: boolean;
   requestedCriteria: string[];
+  deepEligible: boolean;
   blendedOffTopic: boolean;
   startedAt: number;
   retrievalMs: number;
@@ -24,8 +26,7 @@ export function deterministicModelAnswer(args: {
   const deterministicRanking = buildDeterministicRankingReply(
     request,
     prefetchEntities,
-    context,
-    resolution.state.horizon
+    context
   );
   if (deterministicRanking) {
     logStockSage({
@@ -121,13 +122,21 @@ export function deterministicModelAnswer(args: {
     /\b(?:news|headlines?|developments?|catalysts?|cited|articles?|announce\w*|guidance|outlook|bull case|bear case|risks?)\b/i.test(
       request.message
     );
-  const deterministicMarketSnapshot =
-    prefetchEntities.length === 1 &&
-    context.quotes.length > 0 &&
-    !newsOrResearchSeeking &&
-    /\b(?:what(?:'?s| is) up|how\b.{0,50}\b(?:doing|doin|done|performing|closed?)|price|trading at|latest|today|this week|last week|last month|last year|year[- ]to[- ]date|ytd)\b/i.test(
+  const snapshotLike =
+    /\b(?:what(?:'?s| is)?\s+up|how\b.{0,50}\b(?:doing|doin|done|performing|closed?)|price|trading at|latest|today|this week|last week|last month|last year|year[- ]to[- ]date|ytd)\b/i.test(
       request.message
     );
+  const hasListedSnapshotData =
+    context.quotes.length > 0 ||
+    (context.sources.length > 0 &&
+      Boolean(prefetchEntities[0]?.ticker) &&
+      !prefetchEntities[0]?.private);
+  const deterministicMarketSnapshot =
+    prefetchEntities.length === 1 &&
+    hasListedSnapshotData &&
+    !newsOrResearchSeeking &&
+    !isMoveCauseAsk(request.message) &&
+    snapshotLike;
   if (deterministicMarketSnapshot) {
     const fallback = buildFallbackReply(
       request,
@@ -148,6 +157,7 @@ export function deterministicModelAnswer(args: {
       state: resolution.state,
       sources: context.sources,
       asOf: context.plan.asOf,
+      eligible: args.deepEligible,
     });
     logStockSage({
       event: "request_complete",
@@ -169,101 +179,14 @@ export function deterministicModelAnswer(args: {
       dataStatus,
     };
   }
-  const deterministicProxyComparison =
+  const deterministicComparison =
     prefetchEntities.length >= 2 &&
-    context.quotes.some((quote) => Boolean(quote.proxySymbol));
-  if (deterministicProxyComparison) {
-    const fallback = buildFallbackReply(
-      request,
-      {
-        route: "comparison",
-        reasonCode: "deterministic_proxy_comparison",
-        retrievalRequired: true,
-        deepEligible: context.sources.length > 0,
-      },
-      prefetchEntities,
-      context
-    );
-    const citationUrls = fallback.citationUrls ?? [];
-    const deep = createDeepResearchOffer({
-      question: request.message,
-      reply: { text: fallback.text, live, citationUrls },
-      entities: prefetchEntities,
-      state: resolution.state,
-      sources: context.sources,
-      asOf: context.plan.asOf,
-    });
-    logStockSage({
-      event: "request_complete",
-      route: "model_finance",
-      reasonCode: "deterministic_proxy_comparison",
-      durationMs: Date.now() - startedAt,
-      retrievalMs,
-      ...telemetry,
-      providerCount: context.plan.queries.length,
-      sourceCount: context.sources.length,
-    });
-    return {
-      ...fallback,
-      live,
-      kind: "answer",
-      responseId: deep.responseId,
-      deepResearch: deep.offer,
-      state: resolution.state,
-      dataStatus,
-    };
-  }
-  const deterministicInvestabilityComparison =
-    prefetchEntities.length >= 2 &&
-    prefetchEntities.some((entity) => entity.private) &&
     (context.quotes.length > 0 ||
-      context.fundamentals.length > 0 ||
-      context.sources.length > 0);
-  if (deterministicInvestabilityComparison) {
-    const fallback = buildFallbackReply(
-      request,
-      {
-        route: "comparison",
-        reasonCode: "deterministic_investability_comparison",
-        retrievalRequired: true,
-        deepEligible: context.sources.length > 0,
-      },
-      prefetchEntities,
-      context
-    );
-    const citationUrls = fallback.citationUrls ?? [];
-    const deep = createDeepResearchOffer({
-      question: request.message,
-      reply: { text: fallback.text, live, citationUrls },
-      entities: prefetchEntities,
-      state: resolution.state,
-      sources: context.sources,
-      asOf: context.plan.asOf,
-    });
-    logStockSage({
-      event: "request_complete",
-      route: "model_finance",
-      reasonCode: "deterministic_investability_comparison",
-      durationMs: Date.now() - startedAt,
-      retrievalMs,
-      ...telemetry,
-      providerCount: context.plan.queries.length,
-      sourceCount: context.sources.length,
-    });
-    return {
-      ...fallback,
-      live,
-      kind: "answer",
-      responseId: deep.responseId,
-      deepResearch: deep.offer,
-      state: resolution.state,
-      dataStatus,
-    };
-  }
-  const deterministicStructuredComparison =
-    prefetchEntities.length >= 2 &&
-    (context.quotes.length >= 2 || context.fundamentals.length >= 2);
-  if (deterministicStructuredComparison) {
+      context.fundamentals.length >= 2 ||
+      context.plan.criteria.includes("performance") ||
+      (prefetchEntities.some((entity) => entity.private) &&
+        context.sources.length > 0));
+  if (deterministicComparison) {
     const fallback = buildFallbackReply(
       request,
       {
@@ -283,6 +206,7 @@ export function deterministicModelAnswer(args: {
       state: resolution.state,
       sources: context.sources,
       asOf: context.plan.asOf,
+      eligible: args.deepEligible,
     });
     logStockSage({
       event: "request_complete",

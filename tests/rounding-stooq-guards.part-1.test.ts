@@ -117,7 +117,7 @@ test("proxy comparison preserves instruments and requested horizons", () => {
   ).text;
   assert.match(ytd, /ONEQ \(Nasdaq Composite ETF proxy\).*\$100\.00.*YTD \+10\.00%/);
   assert.doesNotMatch(ytd, /\*\*IXIC\*\* — \$100\.00/);
-  assert.match(ytd, /ONEQ .* led TSLA .* over YTD/i);
+  assert.match(ytd, /ONEQ .* outperformed TSLA .* over YTD/i);
   assert.doesNotMatch(ytd, /latest session/i);
 
   const multi = buildFallbackReply(

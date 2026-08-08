@@ -45,7 +45,7 @@ async function fetchBarsChain(
   toMs: number,
   polygonUrl: string,
   liveTail = false
-): Promise<BarPoint[]> {
+): Promise<{ bars: BarPoint[]; source?: "Alpaca" | "Polygon" }> {
   let alpacaFailed = false;
   if (hasAlpaca) {
     try {
@@ -53,7 +53,9 @@ async function fetchBarsChain(
         ? await getAlpacaBarsLive(ticker, alpacaTimeframe, isoTime(fromMs), isoTime(toMs))
         : await getAlpacaBars(ticker, alpacaTimeframe, isoTime(fromMs), isoTime(toMs));
       const bars = mapAlpacaBars(raw);
-      if (bars.length >= 2 || !hasPolygon) return bars;
+      if (bars.length >= 2 || !hasPolygon) {
+        return { bars, source: "Alpaca" };
+      }
     } catch (error) {
       alpacaFailed = true;
       console.error(`[alpaca] ${alpacaTimeframe} bars failed for ${ticker}:`, error);
@@ -68,12 +70,15 @@ async function fetchBarsChain(
       throw new Error(`polygon bars failed: ${response.status}`);
     }
     const data = await response.json();
-    return mapPolygonAggs((data.results ?? []) as PolygonAggBar[]);
+    return {
+      bars: mapPolygonAggs((data.results ?? []) as PolygonAggBar[]),
+      source: "Polygon",
+    };
   }
   if (alpacaFailed) {
     throw new Error(`bars failed for ${ticker} with no available fallback`);
   }
-  return [];
+  return { bars: [] };
 }
 
 export async function getCandlesFresh(ticker: string) {
@@ -83,7 +88,13 @@ export async function getCandlesFresh(ticker: string) {
     new Date(from)
   )}/${fmtDay(new Date(to))}?adjusted=true&sort=asc&limit=50000`;
 
-  const bars = await fetchBarsChain(ticker, "1Day", from, to, polygonUrl);
+  const { bars, source } = await fetchBarsChain(
+    ticker,
+    "1Day",
+    from,
+    to,
+    polygonUrl
+  );
   if (bars.length < 2) return null;
 
   const last = bars[bars.length - 1];
@@ -94,6 +105,7 @@ export async function getCandlesFresh(ticker: string) {
     price_change: last.value - prev.value,
     percent_change: ((last.value - prev.value) / prev.value) * 100,
     latest_volume: typeof last.volume === "number" ? Math.round(last.volume) : null,
+    source,
   };
 
   if (hasAlpaca) {
@@ -104,6 +116,7 @@ export async function getCandlesFresh(ticker: string) {
         result.stock_price = quote.price;
         result.price_change = quote.change;
         result.percent_change = quote.percentChange;
+        result.source = "Alpaca";
       }
     } catch (error) {
       console.error(`[alpaca] headline snapshot failed for ${ticker}:`, error);
@@ -233,7 +246,14 @@ async function fetchIntraday(ticker: string): Promise<BarPoint[] | null> {
     new Date(from)
   )}/${fmtDay(new Date(to))}?adjusted=true&sort=asc&limit=50000`;
 
-  const bars = await fetchBarsChain(ticker, "1Min", from, to, polygonUrl, true);
+  const { bars } = await fetchBarsChain(
+    ticker,
+    "1Min",
+    from,
+    to,
+    polygonUrl,
+    true
+  );
   if (bars.length < 2) return null;
 
   const lastDay = bars[bars.length - 1].date.slice(0, 10);
@@ -253,7 +273,14 @@ async function fetchFine(ticker: string): Promise<BarPoint[] | null> {
     new Date(from)
   )}/${fmtDay(new Date(to))}?adjusted=true&sort=asc&limit=50000`;
 
-  const bars = await fetchBarsChain(ticker, "15Min", from, to, polygonUrl, true);
+  const { bars } = await fetchBarsChain(
+    ticker,
+    "15Min",
+    from,
+    to,
+    polygonUrl,
+    true
+  );
   if (bars.length < 2) return null;
 
   const latest = Date.parse(bars[bars.length - 1].date);

@@ -64,7 +64,7 @@ test("recovers constrained entity and ordered-reference typos", () => {
   );
   assert.deepEqual(
     latter.entities.map((entity) => entity.ticker ?? entity.name),
-    ["SpaceX", "IXIC"]
+    ["SPCX", "IXIC"]
   );
   assert.equal(latter.reasonCode, "ordered_reference_resolved");
 
@@ -151,7 +151,7 @@ test("anchored pronoun keeps the prior subject beside a named one", () => {
   assert.equal(compared.reasonCode, "anchored_reference_resolved");
   assert.deepEqual(
     compared.entities.map((entity) => entity.ticker ?? entity.name),
-    ["SpaceX", "TSLA"]
+    ["SPCX", "TSLA"]
   );
 
   const idiom = resolveConversationState(
