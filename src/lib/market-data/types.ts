@@ -197,6 +197,8 @@ export type AnalysisDoc = {
   content_fingerprint?: string;
   analysis_fingerprint?: string;
   news_checked_at?: string;
+  /** Last successful, atomically published system conclusion. */
+  concluded_at?: string;
   last_success_at?: string;
   refresh_requested_at?: string;
   refresh_source?: "showcase_cron" | "user_request" | "manual";

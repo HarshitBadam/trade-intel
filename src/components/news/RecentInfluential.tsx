@@ -6,7 +6,10 @@ import { NewsCard } from "./NewsCard";
 import { Bar } from "./Bar";
 import { NewsModal, type NewsArticle } from "./NewsModal";
 import { VerdictModal, type NewsVerdict } from "./VerdictModal";
-import type { RefreshState } from "@/lib/market-intelligence/types";
+import {
+  deriveEffectiveNewsStatus,
+  type RefreshState,
+} from "@/lib/market-intelligence/types";
 
 export type News = {
   _id: string;
@@ -55,9 +58,9 @@ function formatCooldown(seconds: number): string {
   return `${Math.round(seconds / 60)}m`;
 }
 
-function timeAgo(iso?: string): string {
+export function timeAgo(iso?: string, now: number = Date.now()): string {
   if (!iso) return "";
-  const diffMs = Date.now() - Date.parse(iso);
+  const diffMs = now - Date.parse(iso);
   if (Number.isNaN(diffMs) || diffMs < 0) return "just now";
   const hours = Math.floor(diffMs / 3_600_000);
   if (hours < 1) return "just now";
@@ -69,82 +72,68 @@ function timeAgo(iso?: string): string {
 function StatusBadge({
   status,
   updatedAt,
+  now,
   onOpen,
 }: {
   status?: NewsStatus;
   updatedAt?: string;
+  now?: number;
   onOpen?: () => void;
 }) {
   if (!status) return null;
 
   const config: Record<
     NewsStatus,
-    { label: string; dot: string; text: string }
+    { label: string; text: string }
   > = {
     fresh: {
-      label: `AI analysis${updatedAt ? ` updated ${timeAgo(updatedAt)}` : ""}`,
-      dot: "bg-green-500",
+      label: `AI analysis updated ${timeAgo(updatedAt, now) || "just now"}`,
       text: "text-green-700 dark:text-green-400",
     },
     stale: {
-      label: `Previous snapshot${updatedAt ? `, checked ${timeAgo(updatedAt)}` : ""}`,
-      dot: "bg-amber-500",
+      label: `Last checked${updatedAt ? ` ${timeAgo(updatedAt, now)}` : ""}`,
       text: "text-amber-700 dark:text-amber-400",
     },
     degraded: {
-      label: `Showing last checked information${updatedAt ? `, ${timeAgo(updatedAt)}` : ""}`,
-      dot: "bg-amber-500",
+      label: `Last checked${updatedAt ? ` ${timeAgo(updatedAt, now)}` : ""}`,
       text: "text-amber-700 dark:text-amber-400",
     },
     hard_expired: {
       label: "Preparing current coverage",
-      dot: "bg-yellow-500",
       text: "text-yellow-700 dark:text-yellow-400",
     },
     no_news: {
       label: "No recent coverage found",
-      dot: "bg-gray-400",
       text: "text-gray-500 dark:text-gray-400",
     },
     analysis_unavailable: {
       label: "Current headlines; AI analysis unavailable",
-      dot: "bg-amber-500",
       text: "text-amber-700 dark:text-amber-400",
     },
     analyzing: {
       label: "Analyzing latest news",
-      dot: "bg-yellow-500",
       text: "text-yellow-700 dark:text-yellow-400",
     },
     live: {
-      label: "Live headlines",
-      dot: "bg-blue-500",
+      label: "AI analysis updating...",
       text: "text-blue-700 dark:text-blue-400",
     },
     sample: {
       label: "Sample data",
-      dot: "bg-gray-400",
       text: "text-gray-500 dark:text-gray-400",
     },
     unavailable: {
       label: "Headlines unavailable",
-      dot: "bg-gray-400",
       text: "text-gray-500 dark:text-gray-400",
     },
   };
 
-  const { label, dot, text } = config[status];
-  const content = (
-    <>
-      <span className={`h-2 w-2 rounded-full ${dot}`} />
-      {label}
-    </>
-  );
+  const { label, text } = config[status];
 
   if (!onOpen) {
     return (
-      <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${text}`}>
-        {content}
+      <span className={`inline-flex items-center whitespace-nowrap text-xs font-medium ${text}`}>
+        {label}
       </span>
     );
   }
@@ -154,9 +143,9 @@ function StatusBadge({
       type="button"
       onClick={onOpen}
       title="View the full AI verdict"
-      className={`inline-flex items-center gap-1.5 rounded-md text-xs font-medium underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-80 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${text}`}
+      className={`inline-flex items-center whitespace-nowrap rounded-md text-xs font-medium underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-80 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${text}`}
     >
-      {content}
+      {label}
     </button>
   );
 }
@@ -187,6 +176,13 @@ export function RecentInfluential({
 }: RecentInfluentialProps) {
   const [selected, setSelected] = useState<NewsArticle | null>(null);
   const [verdictOpen, setVerdictOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const displayStatus = deriveEffectiveNewsStatus(status, refreshState);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Force a repaint after polling because Chromium can retain stale layers under backdrop-filter.
   const panelRef = useRef<HTMLDivElement>(null);
@@ -231,7 +227,7 @@ export function RecentInfluential({
             refreshState === "queued" ||
             refreshState === "running") && (
             <span className="text-xs font-medium text-muted-foreground">
-              Updating
+              Updating...
             </span>
           )}
           {refreshState === "backgrounded" && (
@@ -242,7 +238,7 @@ export function RecentInfluential({
           {refreshState === "failed" && (
             <span className="text-xs font-medium text-muted-foreground">
               {retryAfterSec
-                ? `Refresh paused, retry in ${formatCooldown(retryAfterSec)}`
+                ? `Refresh delayed, retrying in ${formatCooldown(retryAfterSec)}`
                 : "Refresh unavailable right now"}
             </span>
           )}
@@ -276,19 +272,28 @@ export function RecentInfluential({
       </div>
 
       {(news.length > 0 ||
+        status === "fresh" ||
         status === "analyzing" ||
         status === "hard_expired" ||
         status === "no_news" ||
         status === "unavailable" ||
+        refreshState === "queued" ||
+        refreshState === "running" ||
         refreshState === "backgrounded") && (
         <div className="flex-1 min-h-0 flex flex-col">
-          <div className="flex items-center justify-between mb-6 gap-3">
-            <h2 className="text-xl font-bold">Recent Influential</h2>
-            <StatusBadge
-              status={status}
-              updatedAt={updatedAt}
-              onOpen={verdict ? () => setVerdictOpen(true) : undefined}
-            />
+          <div className="mb-5">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-xl font-bold">Market-moving news</h2>
+              <StatusBadge
+                status={displayStatus}
+                updatedAt={updatedAt}
+                now={now}
+                onOpen={verdict ? () => setVerdictOpen(true) : undefined}
+              />
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Recent coverage shaping sentiment
+            </p>
           </div>
           {/* The cap is needed below lg, where the panel has no bounded parent. */}
           <div className="flex-1 min-h-0 overflow-y-auto max-h-[26rem] lg:max-h-none">
@@ -320,11 +325,12 @@ export function RecentInfluential({
                   news.length === 0 && (
                   <NewsCardSkeleton />
                 )}
-                {status === "no_news" && news.length === 0 && (
+                {(status === "no_news" || status === "fresh") &&
+                  news.length === 0 && (
                   <p className="py-4 text-sm text-muted-foreground">
                     No recent provider coverage was found for this ticker.
                   </p>
-                )}
+                  )}
                 {news.map((news) => (
                   <NewsCard
                     key={news._id}

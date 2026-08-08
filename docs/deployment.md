@@ -16,7 +16,7 @@ QStash owns two recurring schedules:
 
 | Schedule | Cadence | What it does |
 |----------|---------|--------------|
-| `tradeintel-showcase-cron` | Hourly | Calls `/api/cron/showcase`, which publishes ten paced ticker refresh jobs |
+| `tradeintel-showcase-cron` | Every 30 minutes | Calls `/api/cron/showcase`, which publishes ten paced ticker refresh jobs |
 | `tradeintel-maintenance-cron` | Daily | Calls `/api/cron/maintenance` to prune articles older than 90 days |
 
 Fill the QStash, Redis, cron, and app-origin values in `.env.local`, then create or
@@ -28,7 +28,8 @@ npm run ops:qstash
 
 The setup deletes the retired universe-news and keep-warm schedules before
 reconciling the showcase and maintenance schedules. Showcase jobs are staggered
-by one minute to avoid a provider/LLM burst. `vercel.json` also registers the
+by 30 seconds to avoid a provider/LLM burst while retaining headroom inside the
+one-hour freshness SLO. `vercel.json` also registers the
 maintenance endpoint as a daily backstop.
 
 User visits publish the same signed worker job used by the showcase scheduler.

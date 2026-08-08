@@ -134,3 +134,7 @@ export const MARKET_INTELLIGENCE_USER_DAILY_LIMIT = Math.max(
   1,
   Number(process.env.MARKET_INTELLIGENCE_USER_DAILY_LIMIT ?? 20)
 );
+export const MARKET_INTELLIGENCE_USER_BURST_LIMIT = Math.max(
+  1,
+  Number(process.env.MARKET_INTELLIGENCE_USER_BURST_LIMIT ?? 10)
+);

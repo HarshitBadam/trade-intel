@@ -4,6 +4,9 @@ import test from "node:test";
 import {
   computeRetryAfterSec,
   deriveActiveRefreshState,
+  deriveEffectiveNewsStatus,
+  shouldApplyRefreshedGeneration,
+  shouldRequestDetailsRefresh,
 } from "../src/lib/market-intelligence/types";
 
 test("computeRetryAfterSec renders a positive countdown from an absolute deadline", () => {
@@ -32,4 +35,25 @@ test("deriveActiveRefreshState never collapses known outstanding work into idle"
   // A lost/unknown poll response still implies the durable job is
   // outstanding, so it must default to "queued", never "idle".
   assert.equal(deriveActiveRefreshState(undefined), "queued");
+});
+
+test("details refresh gating follows the conclusion freshness contract", () => {
+  assert.equal(shouldRequestDetailsRefresh("fresh", "fresh"), false);
+  assert.equal(shouldRequestDetailsRefresh("fresh", "no_news"), false);
+  assert.equal(shouldRequestDetailsRefresh("stale", "stale"), true);
+  assert.equal(shouldRequestDetailsRefresh("degraded", "degraded"), true);
+  assert.equal(shouldRequestDetailsRefresh("hard_expired", "hard_expired"), true);
+});
+
+test("active refreshes present updating instead of an amber stale badge", () => {
+  assert.equal(deriveEffectiveNewsStatus("stale", "queued"), "live");
+  assert.equal(deriveEffectiveNewsStatus("degraded", "running"), "live");
+  assert.equal(deriveEffectiveNewsStatus("fresh", "running"), "fresh");
+  assert.equal(deriveEffectiveNewsStatus("stale", "idle"), "stale");
+});
+
+test("poll completion cannot replace a newer generation", () => {
+  assert.equal(shouldApplyRefreshedGeneration(5, 4), false);
+  assert.equal(shouldApplyRefreshedGeneration(5, 5), true);
+  assert.equal(shouldApplyRefreshedGeneration(5, 6), true);
 });

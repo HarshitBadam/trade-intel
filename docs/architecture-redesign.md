@@ -47,7 +47,7 @@ conversation engine.
 
 The market-intelligence system has two triggers but only one implementation:
 
-1. An hourly scheduler refreshes the ten tickers intentionally showcased by the
+1. A 30-minute scheduler refreshes the ten tickers intentionally showcased by the
    product.
 2. A user visiting any other ticker requests the same refresh job on demand.
 
@@ -206,6 +206,8 @@ Analysis:
 
 - is stored per ticker in `stock_analysis`, with a news-collection fallback;
 - writes `analyzed_at` only after a fully validated LLM response;
+- writes `concluded_at` after every successful atomic conclusion, including
+  unchanged-analysis reuse and no-news;
 - preserves the previous verdict if analysis fails.
 
 Next cache:
@@ -253,13 +255,12 @@ AAPL, TSLA, NVDA, and MSFT (`src/data/mockStocks.ts`), which must be reconciled.
 
 ### Showcase scheduler
 
-Recommended cadence: hourly.
+Recommended cadence: every 30 minutes.
 
 Price freshness remains independent and uses short request-time caches.
-Sentiment/news freshness does not require ten full jobs every 20 minutes.
-Hourly scheduling produces 240 refresh jobs/day for ten tickers, leaving ample
-room within QStash's free 1,000-message daily limit for long-tail and Deep
-Research work.
+The 30-minute cadence produces 480 refresh jobs/day for ten tickers and leaves
+headroom inside the strict one-hour conclusion SLO. Unchanged fingerprints
+avoid model calls, while on-demand work retains a separately enforced budget.
 
 The scheduler:
 
@@ -309,17 +310,19 @@ waits for Polygon, Alpaca, or Groq.
 
 Conditions:
 
-- the latest news check is within its freshness window;
+- the latest successful system conclusion and its provider check are within
+  their freshness window;
 - the stored analysis fingerprint matches the current article fingerprint.
 
-The freshness window is one hour. `analyzed_at` may be older when a recent
-provider check confirms that the fingerprint is unchanged.
+The freshness window is one hour. `concluded_at` advances after every successful
+atomic conclusion; `analyzed_at` may be older when a current provider check
+confirms that the fingerprint is unchanged.
 
 Behavior:
 
 - return immediately;
 - perform no queue or model work;
-- show absolute “news checked” and “analysis generated” times.
+- show the user-facing conclusion time as “AI analysis updated”.
 
 #### Stale
 
@@ -422,7 +425,8 @@ analysis_fingerprint =
 
 Refresh rules:
 
-- age expires the **news check**, not stored content;
+- age expires the successful **system conclusion** and its provider check, not
+  stored content;
 - changed `content_fingerprint` triggers analysis;
 - changed prompt/model/schema triggers analysis;
 - unchanged inputs reuse the previous analysis even if `analyzed_at` is old;
@@ -435,6 +439,7 @@ pipeline_version
 content_fingerprint
 analysis_fingerprint
 news_checked_at
+concluded_at
 last_success_at
 refresh_requested_at
 refresh_source
@@ -588,7 +593,8 @@ Retain:
 Change:
 
 - cold-only priority becomes cold-or-stale durable refresh;
-- age-based analysis TTL becomes news-check age plus input fingerprint;
+- age-based analysis TTL becomes conclusion age, provider-check age, and input
+  fingerprint;
 - global tags become ticker-scoped tags;
 - optimistic boolean `analyzing` becomes durable job state;
 - full-universe cron becomes showcase-only scheduling;
@@ -600,7 +606,8 @@ Change:
 - Cached details page p95 first response: at most 1.5 seconds.
 - No page request performs Polygon news ingestion or LLM analysis.
 - Refresh enqueue p95: at most 300 ms.
-- Showcase news check age: at most one hour while scheduler is healthy.
+- Showcase conclusion and provider-check age: at most one hour while the
+  scheduler is healthy; normally below 35 minutes.
 - A stale page always remains usable during refresh or provider failure.
 - A cold ticker reaches a verdict, `no_news`, or honest failure within 90
   seconds at p95; UI stops making active promises by 120 seconds.
@@ -1253,7 +1260,7 @@ request one deduplicated QStash refresh job after first paint. The worker
 refreshes news, fingerprints the article set, skips unchanged analysis, runs
 direct lightweight Groq only when needed, validates and atomically replaces the
 per-ticker result, then invalidates ticker-scoped caches. The top ten use this
-same worker from an hourly cron.
+same worker from a 30-minute cron.
 
 ### What was the old pipeline, and what changes?
 

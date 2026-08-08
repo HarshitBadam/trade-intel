@@ -79,12 +79,17 @@ export async function POST(request: Request): Promise<NextResponse> {
             error?: string;
             errorCode?: string;
             retryAfter?: string;
+            generation?: number;
+            concludedAt?: string;
+            newsCheckedAt?: string;
+            outcome?: string;
           })
         : undefined;
 
     if (outcome?.ok === false && outcome.retryable === true) {
       recordMarketIntelligenceEvent("worker_retryable_failure", {
         ticker: payload.ticker,
+        source: job.source,
         errorCode: outcome.errorCode ?? "refresh_retryable",
         durationMs: Date.now() - startedAt,
       });
@@ -119,6 +124,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       ).catch(() => ({ claimed: false }));
       recordMarketIntelligenceEvent("worker_terminal_failure", {
         ticker: payload.ticker,
+        source: job.source,
         errorCode,
         durationMs: Date.now() - startedAt,
         claimed,
@@ -129,10 +135,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     await markRefreshJobDone(payload.workId, payload.ticker);
     recordMarketIntelligenceEvent("worker_complete", {
       ticker: payload.ticker,
-      outcome:
-        result && typeof result === "object" && "outcome" in result
-          ? String((result as { outcome: unknown }).outcome)
-          : "done",
+      source: job.source,
+      outcome: outcome?.outcome ?? "done",
+      generation: outcome?.generation,
+      concludedAt: outcome?.concludedAt,
+      newsCheckedAt: outcome?.newsCheckedAt,
+      queueDelayMs: Math.max(0, startedAt - Date.parse(job.requestedAt)),
       durationMs: Date.now() - startedAt,
     });
     return NextResponse.json({ ok: true, state: "done" });
@@ -141,6 +149,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     // its configured attempts and eventual failure callback remain effective.
     recordMarketIntelligenceEvent("worker_exception", {
       ticker: payload.ticker,
+      source: job.source,
       durationMs: Date.now() - startedAt,
     });
     return NextResponse.json(

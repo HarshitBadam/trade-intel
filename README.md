@@ -8,7 +8,7 @@ TradeIntel home screen with the price chart, sentiment gauge, and top market mov
 >
 > **Note:** a research project, not financial advice.
 
-An hourly showcase schedule and authenticated on-demand requests publish durable per-ticker jobs through QStash. Each worker fetches recent news, runs direct Groq analysis when the stored fingerprint changes, and atomically publishes the result to Astra DB. Pages stay fast by reading that finished bundle plus cached market data, never waiting on providers or an LLM. [How it works →](docs/architecture.md)
+A 30-minute showcase schedule and authenticated on-demand requests publish durable per-ticker jobs through QStash. Each worker fetches recent news, reconfirms or regenerates the analysis, and atomically publishes a current system conclusion to Astra DB. Pages stay fast by reading that finished bundle plus cached market data, never waiting on providers or an LLM. [How it works →](docs/architecture.md)
 
 ## Getting started
 

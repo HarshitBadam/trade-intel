@@ -30,6 +30,7 @@ export type AnalysisRefreshMetadata = {
   content_fingerprint?: string;
   analysis_fingerprint?: string;
   news_checked_at?: string;
+  concluded_at?: string;
   last_success_at?: string;
   refresh_requested_at?: string;
   refresh_source?: RefreshSource;
@@ -46,6 +47,7 @@ export type TickerIntelligenceBundle = {
   contentFingerprint?: string;
   analysisFingerprint?: string;
   newsCheckedAt?: string;
+  concludedAt?: string;
   analyzedAt?: string;
   lastSuccessAt?: string;
   analysisStatus?: AnalysisStatus;
@@ -115,4 +117,36 @@ export function deriveActiveRefreshState(
   jobState: string | undefined
 ): "queued" | "running" {
   return jobState === "running" ? "running" : "queued";
+}
+
+export function shouldRequestDetailsRefresh(
+  newsStatus: NewsStatus,
+  intelligenceState: MarketIntelligenceState
+): boolean {
+  return (
+    newsStatus !== "sample" &&
+    intelligenceState !== "fresh" &&
+    intelligenceState !== "no_news"
+  );
+}
+
+export function deriveEffectiveNewsStatus(
+  status: NewsStatus | undefined,
+  refreshState: RefreshState
+): NewsStatus | undefined {
+  if (
+    (refreshState === "queued" || refreshState === "running") &&
+    status !== "fresh" &&
+    status !== "sample"
+  ) {
+    return "live";
+  }
+  return status;
+}
+
+export function shouldApplyRefreshedGeneration(
+  currentGeneration: number,
+  incomingGeneration: number
+): boolean {
+  return incomingGeneration >= currentGeneration;
 }

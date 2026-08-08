@@ -11,6 +11,7 @@ import {
   hasAlpaca,
   hasFinnhub,
   hasPolygon,
+  MARKET_INTELLIGENCE_USER_BURST_LIMIT,
   MARKET_INTELLIGENCE_USER_DAILY_LIMIT,
 } from "@/lib/config";
 import { guard } from "@/lib/guard";
@@ -100,7 +101,10 @@ export async function requestDetailsRefresh(
 ): Promise<RefreshActionResult> {
   const symbol = sanitizeTicker(ticker);
   if (!symbol) return { ok: false, reason: "invalid" };
-  const burst = await guard("ticker-refresh", { limit: 4, windowSec: 60 });
+  const burst = await guard("ticker-refresh", {
+    limit: MARKET_INTELLIGENCE_USER_BURST_LIMIT,
+    windowSec: 60,
+  });
   if (!burst.ok) {
     return {
       ok: false,

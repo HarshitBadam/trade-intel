@@ -7,8 +7,8 @@ market-intelligence bundle; it never waits for news providers or an LLM.
 
 The same ticker worker has two triggers:
 
-- `/api/cron/showcase` publishes the ten canonical showcase tickers hourly,
-  staggered by one minute.
+- `/api/cron/showcase` publishes the ten canonical showcase tickers every 30
+  minutes, staggered by 30 seconds.
 - An authenticated stale or cold details page reserves or joins one on-demand
   job after first paint.
 
@@ -38,8 +38,8 @@ A signed failure callback records terminal state and a retry cooldown.
 The worker:
 
 1. Normalizes the ticker and acquires its lease.
-2. Checks `news_checked_at`; it contacts Polygon, with Alpaca fallback, only
-   when the one-hour news-check window has expired.
+2. Contacts Polygon, with Alpaca fallback, for every accepted logical refresh.
+   Overlapping triggers join the same durable job before provider work starts.
 3. Upserts articles by stable URL-derived ID and selects the newest 25 eligible
    articles from the retained 90-day corpus.
 4. Computes a deterministic content fingerprint. Prompt, model, and response
@@ -59,15 +59,19 @@ work. Every exit path conditionally releases only the lease it owns.
 
 ## Freshness and retention
 
-Freshness, analysis age, and retention are separate:
+Conclusion freshness, provider checks, analysis age, and retention are separate:
 
-- `news_checked_at` no more than one hour old plus a matching fingerprint is
-  fresh.
+- `concluded_at` records every successful atomic system conclusion, including
+  unchanged-fingerprint reuse and a successful no-news result.
+- Green requires both `concluded_at` and its underlying `news_checked_at` to be
+  no more than one hour old, plus a matching fingerprint and no terminal error.
 - From one hour to under 48 hours, the last published bundle remains visible
   as a previous snapshot while a refresh runs.
 - At 48 hours, the bundle is not presented as current.
-- `analyzed_at` may be older when a recent provider check confirms that the
-  article fingerprint is unchanged.
+- `analyzed_at` records only a real model run and may be older when a current
+  provider check reconfirms an unchanged analysis.
+- `last_success_at` remains the committed-evidence watermark; it is not a UI
+  freshness clock.
 - Articles remain stored for 90 days so StockSage can answer temporal queries.
 
 A successful empty provider result publishes `no_news`. After exhausted model
@@ -77,7 +81,7 @@ creates sample news in production.
 
 ## Scheduling and operations
 
-`scripts/setup-qstash.ts` reconciles the hourly showcase and daily maintenance
+`scripts/setup-qstash.ts` reconciles the 30-minute showcase and daily maintenance
 schedules and removes the retired universe-news and keep-warm schedules.
 
 ```bash
@@ -93,5 +97,6 @@ Relevant controls:
 - `CRON_SECRET` authenticates showcase and maintenance routes.
 - `MARKET_INTELLIGENCE_ON_DEMAND_DAILY_BUDGET` defaults to 300 new user jobs.
 - `MARKET_INTELLIGENCE_USER_DAILY_LIMIT` defaults to 20 requests per user.
+- `MARKET_INTELLIGENCE_USER_BURST_LIMIT` defaults to 10 requests per minute.
 - QStash token/signing keys, `APP_URL`, and Upstash Redis are mandatory for the
   production refresh queue.

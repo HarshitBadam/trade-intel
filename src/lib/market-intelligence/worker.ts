@@ -40,7 +40,13 @@ import {
 const LOCK_HEARTBEAT_MS = 30_000;
 
 export type RefreshWorkerResult =
-  | { ok: true; generation: number; outcome: "published" | "reused" | "no_news" }
+  | {
+      ok: true;
+      generation: number;
+      outcome: "published" | "reused" | "no_news";
+      concludedAt: string;
+      newsCheckedAt: string;
+    }
   | {
       ok: false;
       retryable: boolean;
@@ -148,6 +154,7 @@ async function publishNoNews(
   ticker: string,
   current: AnalysisDoc | null,
   checkedAt: string,
+  concludedAt: string,
   dependencies: RefreshWorkerDependencies
 ): Promise<number> {
   const generation = nextGeneration(current);
@@ -161,6 +168,7 @@ async function publishNoNews(
       published_article_labels: [],
       article_count: 0,
       news_checked_at: checkedAt,
+      concluded_at: concludedAt,
       last_success_at: checkedAt,
       last_error_code: "",
       source_window_days: SOURCE_WINDOW_DAYS,
@@ -216,46 +224,39 @@ export async function runTickerRefreshJob(
 
   try {
     const current = await dependencies.readAnalysis(ticker);
-    const checkedMs = Date.parse(current?.news_checked_at ?? "");
-    const newsIsFresh =
-      Number.isFinite(checkedMs) &&
-      dependencies.now() - checkedMs <= 60 * 60 * 1000;
-
-    if (!newsIsFresh) {
-      const articles = await dependencies.loadNews(ticker);
-      if (!ownsLock) {
-        return { ok: false, retryable: true, errorCode: "lock_lost" };
-      }
-      // Written before the rows land in storage: any reader without its own
-      // manifest/watermark now knows a refresh is in flight and must not
-      // treat freshly-upserted rows as safe legacy data. Left in place on
-      // any failure below, so a dead refresh fails closed instead of
-      // silently reverting to the old unscoped behavior.
-      await dependencies.markStaging(ticker);
-      await dependencies.upsert(ticker, articles);
-      await dependencies.touchLoadedAt(ticker);
+    const articles = await dependencies.loadNews(ticker);
+    if (!ownsLock) {
+      return { ok: false, retryable: true, errorCode: "lock_lost" };
     }
-
-    // `news_checked_at` records a successful provider check, not merely a
-    // worker run. Preserve it when this job reuses a still-fresh snapshot so
-    // frequent scheduler/manual invocations cannot keep stale news fresh
-    // indefinitely without contacting a provider.
-    const checkedAt = newsIsFresh
-      ? current!.news_checked_at!
-      : new Date(dependencies.now()).toISOString();
+    // Every accepted logical refresh performs a provider check. Redis/QStash
+    // deduplication joins overlapping triggers before they reach this point,
+    // so advancing the conclusion clock can never manufacture freshness from
+    // an old provider snapshot.
+    await dependencies.markStaging(ticker);
+    await dependencies.upsert(ticker, articles);
+    await dependencies.touchLoadedAt(ticker);
+    const checkedAt = new Date(dependencies.now()).toISOString();
     const candidate = await dependencies.selectCandidates(ticker);
     if (candidate.articles.length === 0) {
       if (!(await reaffirmLock())) {
         return { ok: false, retryable: true, errorCode: "lock_lost" };
       }
+      const concludedAt = new Date(dependencies.now()).toISOString();
       const generation = await publishNoNews(
         ticker,
         current,
         checkedAt,
+        concludedAt,
         dependencies
       );
       dependencies.revalidateTicker(ticker);
-      return { ok: true, generation, outcome: "no_news" };
+      return {
+        ok: true,
+        generation,
+        outcome: "no_news",
+        concludedAt,
+        newsCheckedAt: checkedAt,
+      };
     }
 
     const generation = nextGeneration(current);
@@ -266,6 +267,7 @@ export async function runTickerRefreshJob(
       if (!(await reaffirmLock())) {
         return { ok: false, retryable: true, errorCode: "lock_lost" };
       }
+      const concludedAt = new Date(dependencies.now()).toISOString();
       const published = await dependencies.publishAnalysis(
         {
           ...current,
@@ -276,6 +278,7 @@ export async function runTickerRefreshJob(
           content_fingerprint: candidate.contentFingerprint,
           analysis_fingerprint: candidate.analysisFingerprint,
           news_checked_at: checkedAt,
+          concluded_at: concludedAt,
           last_success_at: checkedAt,
           last_error_code: "",
         },
@@ -283,7 +286,13 @@ export async function runTickerRefreshJob(
       );
       if (!published) throw new Error("obsolete_generation");
       dependencies.revalidateTicker(ticker);
-      return { ok: true, generation: generation.next, outcome: "reused" };
+      return {
+        ok: true,
+        generation: generation.next,
+        outcome: "reused",
+        concludedAt,
+        newsCheckedAt: checkedAt,
+      };
     }
 
     if (!dependencies.groqConfigured) {
@@ -317,6 +326,7 @@ export async function runTickerRefreshJob(
         content_fingerprint: candidate.contentFingerprint,
         analysis_fingerprint: candidate.analysisFingerprint,
         news_checked_at: checkedAt,
+        concluded_at: analyzedAt,
         analyzed_at: analyzedAt,
         last_success_at: analyzedAt,
         last_error_code: "",
@@ -325,7 +335,13 @@ export async function runTickerRefreshJob(
     );
     if (!published) throw new Error("obsolete_generation");
     dependencies.revalidateTicker(ticker);
-    return { ok: true, generation: generation.next, outcome: "published" };
+    return {
+      ok: true,
+      generation: generation.next,
+      outcome: "published",
+      concludedAt: analyzedAt,
+      newsCheckedAt: checkedAt,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "refresh_failed";
     const nonRetryable =
