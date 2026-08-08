@@ -201,9 +201,15 @@ export function buildNewsSummary(
   priorityStarted: boolean,
   now: number = Date.now()
 ): NewsSummary {
+  const concludedAt =
+    analysisDoc?.concluded_at ??
+    analysisDoc?.last_success_at ??
+    analysisDoc?.analyzed_at ??
+    analysisDoc?.news_checked_at;
   if (analysisDoc?.analysis_status === "no_news") {
     const state = classifyMarketIntelligence({
       hasUsableContent: true,
+      concludedAt,
       newsCheckedAt: analysisDoc.news_checked_at,
       lastErrorCode: analysisDoc.last_error_code,
       now,
@@ -214,18 +220,21 @@ export function buildNewsSummary(
         ? "hard_expired"
         : state === "degraded"
           ? "degraded"
-          : "no_news",
-      analysisDoc.news_checked_at
+          : state === "fresh"
+            ? "fresh"
+            : "stale",
+      concludedAt
     );
   }
   if (articles.length > 0) {
     const analyzedAt = analysisDoc?.analyzed_at;
     const updatedAt =
-      analyzedAt ?? analysisDoc?.news_loaded_at ?? latestNewsTimestamp(articles);
+      concludedAt ?? analysisDoc?.news_loaded_at ?? latestNewsTimestamp(articles);
     const recent = windowNews(articles, POPULARITY_WINDOW_DAYS, now);
     const verdict = toVerdict(analysisDoc);
     const state = classifyMarketIntelligence({
       hasUsableContent: true,
+      concludedAt,
       newsCheckedAt: analysisDoc?.news_checked_at,
       analysisFingerprint: analysisDoc?.analysis_fingerprint,
       expectedAnalysisFingerprint: expectedAnalysisFingerprint(analysisDoc),
@@ -382,6 +391,11 @@ export async function getDetailsData(
   const classifiedState = classifyMarketIntelligence({
     hasUsableContent:
       storedArticles.length > 0 || analysisDoc?.analysis_status === "no_news",
+    concludedAt:
+      analysisDoc?.concluded_at ??
+      analysisDoc?.last_success_at ??
+      analysisDoc?.analyzed_at ??
+      analysisDoc?.news_checked_at,
     newsCheckedAt: analysisDoc?.news_checked_at,
     analysisFingerprint: analysisDoc?.analysis_fingerprint,
     expectedAnalysisFingerprint: expectedAnalysisFingerprint(analysisDoc),
@@ -411,6 +425,11 @@ export async function getDetailsData(
       contentFingerprint: analysisDoc?.content_fingerprint,
       analysisFingerprint: analysisDoc?.analysis_fingerprint,
       newsCheckedAt: analysisDoc?.news_checked_at,
+      concludedAt:
+        analysisDoc?.concluded_at ??
+        analysisDoc?.last_success_at ??
+        analysisDoc?.analyzed_at ??
+        analysisDoc?.news_checked_at,
       analyzedAt: analysisDoc?.analyzed_at,
       lastSuccessAt: analysisDoc?.last_success_at,
       analysisStatus: analysisDoc?.analysis_status,

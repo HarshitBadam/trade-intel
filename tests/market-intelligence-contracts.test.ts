@@ -84,6 +84,7 @@ test("freshness uses the one-hour boundary", () => {
   const checkedAt = new Date(now - NEWS_FRESH_FOR_MS).toISOString();
   const base = {
     hasUsableContent: true,
+    concludedAt: checkedAt,
     analysisFingerprint: "analysis-v1",
     expectedAnalysisFingerprint: "analysis-v1",
     now,
@@ -96,6 +97,7 @@ test("freshness uses the one-hour boundary", () => {
   assert.equal(
     classifyMarketIntelligence({
       ...base,
+      concludedAt: new Date(now - NEWS_FRESH_FOR_MS - 1).toISOString(),
       newsCheckedAt: new Date(now - NEWS_FRESH_FOR_MS - 1).toISOString(),
     }),
     "stale"
@@ -112,18 +114,25 @@ test("freshness uses the one-hour boundary", () => {
 
 test("freshness hard-expires at 48 hours and preserves missing", () => {
   const now = Date.parse("2026-08-05T03:00:00Z");
-  const base = { hasUsableContent: true, now };
+  const expiredAt = new Date(now - NEWS_DEGRADED_AFTER_MS).toISOString();
+  const base = {
+    hasUsableContent: true,
+    concludedAt: expiredAt,
+    newsCheckedAt: expiredAt,
+    now,
+  };
 
   assert.equal(
     classifyMarketIntelligence({
       ...base,
-      newsCheckedAt: new Date(now - NEWS_DEGRADED_AFTER_MS).toISOString(),
+      newsCheckedAt: expiredAt,
     }),
     "hard_expired"
   );
   assert.equal(
     classifyMarketIntelligence({
       ...base,
+      concludedAt: new Date(now - NEWS_DEGRADED_AFTER_MS - 1).toISOString(),
       newsCheckedAt: new Date(now - NEWS_DEGRADED_AFTER_MS - 1).toISOString(),
     }),
     "hard_expired"
@@ -131,10 +140,36 @@ test("freshness hard-expires at 48 hours and preserves missing", () => {
   assert.equal(
     classifyMarketIntelligence({
       hasUsableContent: false,
+      concludedAt: new Date(now).toISOString(),
       newsCheckedAt: new Date(now).toISOString(),
       now,
     }),
     "missing"
+  );
+});
+
+test("freshness rejects future conclusions and degrades recorded failures", () => {
+  const now = Date.parse("2026-08-05T03:00:00Z");
+  const current = new Date(now).toISOString();
+
+  assert.equal(
+    classifyMarketIntelligence({
+      hasUsableContent: true,
+      concludedAt: new Date(now + 1).toISOString(),
+      newsCheckedAt: current,
+      now,
+    }),
+    "stale"
+  );
+  assert.equal(
+    classifyMarketIntelligence({
+      hasUsableContent: true,
+      concludedAt: current,
+      newsCheckedAt: current,
+      lastErrorCode: "refresh_failed",
+      now,
+    }),
+    "degraded"
   );
 });
 

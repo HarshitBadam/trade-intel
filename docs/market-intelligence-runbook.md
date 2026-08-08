@@ -9,7 +9,7 @@
 4. Run one signed manual refresh for a non-showcase ticker and verify
    `queued -> running -> done`, a new analysis generation, exact published
    article IDs, and ticker-scoped cache invalidation.
-5. Run `npm run ops:showcase` and verify ten selected jobs with one-minute
+5. Run `npm run ops:showcase` and verify ten selected jobs with 30-second
    delivery offsets.
 
 Do not run `npm run ops:qstash` until these checks pass: it changes external
@@ -17,12 +17,13 @@ QStash schedules.
 
 ## Healthy signals
 
-- Showcase reports select ten canonical tickers hourly.
+- Showcase reports select ten canonical tickers every 30 minutes.
 - Duplicate requests report `refresh_joined`, not a second queued job.
 - Most unchanged refreshes finish with `outcome: reused` and make no Groq call.
 - Locks release on every terminal path; CAS rejection appears only for an
   intentionally obsolete worker.
-- Showcase `news_checked_at` values remain approximately hourly.
+- Showcase `concluded_at` and `news_checked_at` values remain under one hour
+  old; healthy cycles normally keep both below 35 minutes.
 - Details requests make no Polygon, Alpaca-news, or Groq calls.
 
 Structured logs use the `[market-intelligence]` prefix and never contain
@@ -54,8 +55,9 @@ let bounded QStash retries finish. Resume with a new work ID after cooldown.
 
 ### Stuck active job
 
-Check the job timestamp and ticker lease. Active reservations expire after 15
-minutes and status records after 24 hours. Do not delete a live owner lock. If
+Check the job timestamp and ticker lease. Active reservations begin at 15
+minutes and may be owner-conditionally extended to at most 45 minutes; status
+records expire after 24 hours. Do not delete a live owner lock. If
 the worker is conclusively gone, wait for lease/active expiry and enqueue a new
 job.
 

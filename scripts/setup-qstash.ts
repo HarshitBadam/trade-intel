@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   const showcase = await client.schedules.create({
     scheduleId: "tradeintel-showcase-cron",
     destination: `${appUrl}/api/cron/showcase`,
-    cron: "0 * * * *",
+    cron: "0,30 * * * *",
     method: "GET",
     headers: {
       Authorization: `Bearer ${cronSecret}`,

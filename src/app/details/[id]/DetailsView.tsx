@@ -19,6 +19,8 @@ import {
   computeRetryAfterSec,
   deriveActiveRefreshState,
   POLL_DELAYS_MS,
+  shouldApplyRefreshedGeneration,
+  shouldRequestDetailsRefresh,
 } from "@/lib/market-intelligence/types";
 
 function ChartCardSkeleton() {
@@ -82,11 +84,7 @@ export default function DetailsView({
   const news = stockData.news;
 
   useEffect(() => {
-    if (
-      initial.newsStatus === "sample" ||
-      initial.intelligence.state === "fresh" ||
-      initial.intelligence.state === "no_news"
-    ) {
+    if (!shouldRequestDetailsRefresh(initial.newsStatus, initial.intelligence.state)) {
       return;
     }
 
@@ -106,6 +104,12 @@ export default function DetailsView({
             retryAfterSec: requested.retryAfterSec,
           },
         }));
+        if (requested.retryAfterSec) {
+          timer = setTimeout(
+            () => void run(),
+            Math.max(1, requested.retryAfterSec) * 1000
+          );
+        }
         return;
       }
       const { workId } = requested.job;
@@ -118,6 +122,10 @@ export default function DetailsView({
             retryAfterSec: computeRetryAfterSec(requested.job.retryAfter),
           },
         }));
+        const retryAfterSec = computeRetryAfterSec(requested.job.retryAfter);
+        if (retryAfterSec) {
+          timer = setTimeout(() => void run(), retryAfterSec * 1000);
+        }
         return;
       }
       setStockData((current) => ({
@@ -152,7 +160,10 @@ export default function DetailsView({
             const refreshed = await fetchDetails(ticker).catch(() => null);
             if (!refreshed || cancelled) return;
             setStockData((current) =>
-              refreshed.intelligence.generation >= current.intelligence.generation
+              shouldApplyRefreshedGeneration(
+                current.intelligence.generation,
+                refreshed.intelligence.generation
+              )
                 ? refreshed
                 : current
             );

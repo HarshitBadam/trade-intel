@@ -4,7 +4,8 @@ import { requestTickerRefresh } from "./queue";
 import { SHOWCASE_SYMBOLS } from "./showcase";
 import { recordMarketIntelligenceEvent } from "./telemetry";
 
-export const SHOWCASE_STAGGER_SECONDS = 60;
+export const SHOWCASE_STAGGER_SECONDS = 30;
+export const SHOWCASE_REFRESH_INTERVAL_MINUTES = 30;
 
 /**
  * Per-ticker outcome of a showcase enqueue attempt.

@@ -178,6 +178,11 @@ async function readMarketIntelligence(
             ? ("no_news" as const)
             : classifyMarketIntelligence({
                 hasUsableContent: committed.length > 0,
+                concludedAt:
+                  analysis?.concluded_at ??
+                  analysis?.last_success_at ??
+                  analysis?.analyzed_at ??
+                  analysis?.news_checked_at,
                 newsCheckedAt:
                   analysis?.news_checked_at ?? analysis?.last_success_at,
                 analysisFingerprint: analysis?.analysis_fingerprint,

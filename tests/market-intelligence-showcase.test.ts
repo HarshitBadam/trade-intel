@@ -12,6 +12,7 @@ import {
 import {
   enqueueShowcaseRefreshes,
   isShowcaseScheduleHealthy,
+  SHOWCASE_REFRESH_INTERVAL_MINUTES,
   SHOWCASE_STAGGER_SECONDS,
   type ShowcaseScheduleReport,
 } from "../src/lib/market-intelligence/scheduler";
@@ -43,6 +44,18 @@ test("showcase scheduler publishes only canonical tickers with pacing", async ()
     setRefreshPublisherForTests();
     resetRefreshJobStoreForTests();
   }
+});
+
+test("showcase cadence keeps the last staggered conclusion inside the one-hour SLO", () => {
+  const cycleSeconds = SHOWCASE_REFRESH_INTERVAL_MINUTES * 60;
+  const finalDelaySeconds =
+    (SHOWCASE_SYMBOLS.length - 1) * SHOWCASE_STAGGER_SECONDS;
+
+  assert.equal(SHOWCASE_REFRESH_INTERVAL_MINUTES, 30);
+  assert.ok(
+    cycleSeconds + finalDelaySeconds < 60 * 60,
+    "a healthy cycle must retain headroom before the 60-minute boundary"
+  );
 });
 
 test("showcase scheduler classifies uncertain publishes separately from queued", async () => {
