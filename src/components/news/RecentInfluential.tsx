@@ -283,7 +283,7 @@ export function RecentInfluential({
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="mb-5">
             <div className="flex items-center gap-1.5">
-              <h2 className="text-xl font-bold">Market-moving news</h2>
+              <h2 className="text-xl font-bold">Recent Influential</h2>
               <StatusBadge
                 status={displayStatus}
                 updatedAt={updatedAt}

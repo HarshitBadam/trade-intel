@@ -44,12 +44,22 @@ function formatAnalyzedAt(iso?: string): string | null {
   });
 }
 
+function meterColor(score: number): string {
+  if (score > 0.05) return "bg-green-600 dark:bg-green-500";
+  if (score < -0.05) return "bg-red-700 dark:bg-red-500";
+  return "bg-gray-400 dark:bg-gray-500";
+}
+
 function ScoreMeter({ score }: { score: number }) {
   const clamped = Math.max(-1, Math.min(1, score));
   const position = ((clamped + 1) / 2) * 100;
   return (
     <div className="space-y-1.5">
-      <div className="relative h-2 rounded-full bg-muted">
+      <div className="relative h-2 overflow-hidden rounded-full bg-muted">
+        <div
+          className={`absolute inset-y-0 left-0 rounded-full ${meterColor(score)}`}
+          style={{ width: `${position}%` }}
+        />
         <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
         <div
           className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-foreground shadow"
@@ -93,11 +103,7 @@ export function VerdictModal({
   if (!verdict || !mounted) return null;
 
   const analyzedOn = formatAnalyzedAt(verdict.analyzedAt);
-  const meta = [
-    analyzedOn ? `Analyzed ${analyzedOn}` : null,
-    verdict.articleCount ? `${verdict.articleCount} articles` : null,
-    verdict.sourceWindowDays ? `${verdict.sourceWindowDays}-day window` : null,
-  ].filter(Boolean);
+  const meta = [analyzedOn ? `Analyzed ${analyzedOn}` : null].filter(Boolean);
 
   return createPortal(
     <div
@@ -120,9 +126,9 @@ export function VerdictModal({
           <X className="h-5 w-5" />
         </button>
 
-        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 pr-6">
-          AI verdict{ticker ? `, ${ticker}` : ""}
-        </div>
+        {ticker && (
+          <div className="text-lg font-bold mb-2 pr-6">{ticker}</div>
+        )}
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm mb-5 pr-6">
           <SentimentLabel
