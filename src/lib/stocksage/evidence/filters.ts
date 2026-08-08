@@ -7,6 +7,7 @@ import type {
   FinanceEntity,
 } from "../types";
 import { createEvidenceSources } from "../citations";
+import { addDays } from "../temporal";
 
 function normalizeSearchText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -251,6 +252,24 @@ function contentDateCompatible(
   return years.length === 0 || Math.max(...years) >= asOfYear - 1;
 }
 
+function causalDateCompatible(
+  input: EvidenceInput,
+  plan: EvidencePlan
+): boolean {
+  if (!plan.causal) return true;
+  if (!input.publishedAt) return false;
+  const published = new Date(input.publishedAt);
+  if (!Number.isFinite(published.getTime())) return false;
+  const publishedDate = published.toISOString().slice(0, 10);
+  const intervals = plan.intervals ?? [];
+  if (intervals.length === 0) return true;
+  return intervals.some(
+    (interval) =>
+      publishedDate >= addDays(interval.startSession, -1) &&
+      publishedDate <= addDays(interval.endSession, 1)
+  );
+}
+
 export function filterEvidenceWithDiagnostics(args: {
   inputs: EvidenceInput[];
   plan: EvidencePlan;
@@ -282,6 +301,7 @@ export function filterEvidenceWithDiagnostics(args: {
     if (!contentDateCompatible(input, args.plan, freshnessDays)) {
       return reject("stale_content");
     }
+    if (!causalDateCompatible(input, args.plan)) return reject("stale");
     const assigned = (input.entityIds ?? [])
       .map((id) => byId.get(id))
       .filter((entity): entity is FinanceEntity => Boolean(entity));

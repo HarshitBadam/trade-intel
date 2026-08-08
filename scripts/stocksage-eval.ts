@@ -158,6 +158,17 @@ const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    name: "reliability-regressions",
+    turns: [
+      "How's Tesla vs SpaceX doing?",
+      "Contrast that with last month",
+      "What about the former vs IXIC?",
+      "Why is AAPL up?",
+      "Which stock would double my money soonest?",
+      "Compare Macquarie with the Australian Big Four banks",
+    ],
+  },
+  {
     name: "benchmark-2026-07-19",
     turns: [
       "Wassup whats gucci my ---",

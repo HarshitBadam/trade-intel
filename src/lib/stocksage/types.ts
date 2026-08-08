@@ -207,6 +207,8 @@ export type EvidencePlan = {
   requiredEntityIds: string[];
   criteria: string[];
   explicitCriteria?: string[];
+  /** True when sources are being used to explain a price move in this window. */
+  causal?: boolean;
   /** Legacy label; `intervals` carries the normalized market-calendar window. */
   horizon?: string;
   intervals?: TemporalInterval[];

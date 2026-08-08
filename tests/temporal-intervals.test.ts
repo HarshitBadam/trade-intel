@@ -6,10 +6,12 @@ import {
   defaultInterval,
   describeInterval,
   isTradingSession,
+  mergeContrastIntervals,
   parseIntervals,
   previousSession,
   translateInterval,
 } from "../src/lib/stocksage/temporal";
+import { buildChatQuote } from "../src/lib/market-data/quote-metrics";
 
 test("AU and US disagree about 'today' across the dateline", () => {
   // 10:30 Monday in Sydney is still 20:30 Sunday in New York.
@@ -82,6 +84,27 @@ test("multiple windows in one question keep their spoken order", () => {
   }
 });
 
+test("a contrast follow-up keeps the active period beside the new period", () => {
+  const now = new Date("2026-07-27T20:00:00.000Z");
+  const previous = [defaultInterval("US", now)];
+  const parsed = parseIntervals({
+    message: "contrast that with last month",
+    calendar: "US",
+    now,
+  });
+  const merged = mergeContrastIntervals({
+    message: "contrast that with last month",
+    previous,
+    parsed,
+  });
+  assert.deepEqual(
+    merged.map((interval) => interval.label),
+    ["today", "last month"]
+  );
+  assert.equal(merged[0].source, "inherited");
+  assert.equal(merged[1].source, "explicit");
+});
+
 test("an unspoken window defaults to the current session, not a raw string", () => {
   const now = new Date("2026-07-27T20:00:00.000Z");
   assert.deepEqual(parseIntervals({ message: "how is Apple?", calendar: "US", now }), []);
@@ -124,4 +147,23 @@ test("explicit date ranges survive as bounded trading sessions", () => {
   // Both endpoints land on weekends and snap inward to real sessions.
   assert.equal(range.startSession, "2026-07-06");
   assert.equal(range.endSession, "2026-07-10");
+});
+
+test("quote metrics distinguish calendar periods from trailing windows", () => {
+  const quote = buildChatQuote(
+    [
+      { date: "2026-06-30T04:00:00.000Z", value: 100 },
+      { date: "2026-07-01T04:00:00.000Z", value: 110 },
+      { date: "2026-07-31T04:00:00.000Z", value: 120 },
+      { date: "2026-08-03T04:00:00.000Z", value: 119 },
+      { date: "2026-08-07T04:00:00.000Z", value: 121 },
+    ],
+    { ticker: "TEST", price: 121, dayPct: 1.68 }
+  );
+  assert.ok(quote);
+  assert.equal(quote.asOf, "2026-08-07");
+  assert.equal(quote.lastMonthPct, 20);
+  assert.equal(quote.lastMonthStart, "2026-07-01");
+  assert.equal(quote.lastMonthEnd, "2026-07-31");
+  assert.ok(Math.abs((quote.wtdPct ?? 0) - 0.8333333333) < 0.001);
 });

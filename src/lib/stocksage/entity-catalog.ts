@@ -146,7 +146,7 @@ export const WEB_ALIASES: WebAlias[] = [
   { name: "BHP Group", query: "BHP Group Australia ASX", ticker: "BHP", aliases: ["bhp group", "bhp"], jurisdiction: "Australia", market: "au" },
   { name: "CSL Limited", query: "CSL Limited Australia ASX", ticker: "CSL", aliases: ["csl limited", "csl"], jurisdiction: "Australia", market: "au" },
   { name: "Atlassian", query: "Atlassian company financial news", ticker: "TEAM", aliases: ["atlassian"] },
-  { name: "SpaceX", query: "SpaceX company financial news", aliases: ["spacex", "space x"], private: true },
+  { name: "SpaceX", query: "SpaceX SPCX stock financial news", ticker: "SPCX", aliases: ["spacex", "space x"], market: "us", jurisdiction: "United States" },
   { name: "Nasdaq Composite", query: "Nasdaq Composite IXIC market index", ticker: "IXIC", aliases: ["nasdaq composite", "ixic", "nasdaq"], market: "index" },
   { name: "Fortune 500", query: "Fortune 500 companies revenue ranking", aliases: ["fortune 500"] },
   { name: "Fortune 100", query: "Fortune 100 companies revenue ranking", aliases: ["fortune 100"] },

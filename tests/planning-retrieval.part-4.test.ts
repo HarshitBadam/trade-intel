@@ -22,6 +22,7 @@ import {
   writeCachedEvidence,
 } from "../src/lib/stocksage/evidence/cache";
 import { buildGroundedDeterministicReply } from "../src/lib/stocksage/grounded-answer";
+import { defaultInterval } from "../src/lib/stocksage/temporal";
 import type {
   FinanceEntity,
   RouteDecision,
@@ -179,4 +180,237 @@ test("grounded deterministic outlook separates facts from inference", () => {
   assert.match(reply.text, /bear case, beta is 2\.2/);
   assert.match(reply.text, /trade-off is rapid growth/i);
   assert.doesNotMatch(reply.text, /Best current sources|Market snapshot/);
+});
+
+test("move-cause evidence is limited to reporting around the requested session", () => {
+  const entity: FinanceEntity = {
+    id: "ticker:AAPL",
+    name: "Apple",
+    query: "Apple AAPL stock financial news",
+    ticker: "AAPL",
+    market: "us",
+  };
+  const interval = defaultInterval(
+    "US",
+    new Date("2026-08-08T02:00:00.000Z")
+  );
+  const plan = planEvidence({
+    route: "current_finance",
+    message: "Why is AAPL up?",
+    entities: [entity],
+    state: {
+      version: 1,
+      revision: 1,
+      entities: [entity],
+      explicitEntitySet: [entity.id],
+      criteria: [],
+      intervals: [interval],
+    },
+    intervals: [interval],
+    asOf: "2026-08-08T02:00:00.000Z",
+  });
+  const query = plan.queries.find((candidate) => candidate.provider === "tavily");
+  assert.ok(query);
+  const filtered = filterEvidenceWithDiagnostics({
+    plan,
+    entities: [entity],
+    inputs: [
+      {
+        kind: "tavily",
+        title: "Apple shares stabilize after Friday market move",
+        outlet: "Current Wire",
+        publishedAt: "2026-08-07T18:00:00.000Z",
+        url: "https://current.example.com/apple",
+        excerpt:
+          "Apple shares rose as investors reacted to current market developments.",
+        entityIds: [entity.id],
+        criteria: query.criteria,
+        queryId: query.id,
+      },
+      {
+        kind: "tavily",
+        title: "Apple earnings selloff from the prior week",
+        outlet: "Old Wire",
+        publishedAt: "2026-07-31T18:00:00.000Z",
+        url: "https://old.example.com/apple",
+        excerpt:
+          "Apple shares fell after earnings guidance and a memory shortage.",
+        entityIds: [entity.id],
+        criteria: query.criteria,
+        queryId: query.id,
+      },
+    ],
+  });
+  assert.deepEqual(
+    filtered.sources.map((source) => source.outlet),
+    ["Current Wire"]
+  );
+});
+
+test("move-cause answers state the scoped move and attach two independent citations", () => {
+  const entity: FinanceEntity = {
+    id: "ticker:AAPL",
+    name: "Apple",
+    query: "Apple AAPL stock financial news",
+    ticker: "AAPL",
+    market: "us",
+  };
+  const interval = defaultInterval(
+    "US",
+    new Date("2026-08-08T02:00:00.000Z")
+  );
+  const plan = planEvidence({
+    route: "current_finance",
+    message: "Why is AAPL up?",
+    entities: [entity],
+    state: {
+      version: 1,
+      revision: 1,
+      entities: [entity],
+      explicitEntitySet: [entity.id],
+      criteria: [],
+      intervals: [interval],
+    },
+    intervals: [interval],
+    asOf: "2026-08-08T02:00:00.000Z",
+  });
+  const reply = buildGroundedDeterministicReply(
+    { message: "Why is AAPL up?", history: [] },
+    [entity],
+    {
+      quotes: [
+        {
+          ticker: "AAPL",
+          price: 313.33,
+          asOf: "2026-08-07",
+          dayPct: 0.27,
+          fewDaysPct: -1,
+          weekPct: -3,
+          monthPct: -6,
+          yearPct: 12,
+        },
+      ],
+      fundamentals: [],
+      coverage: { [entity.id]: "covered" },
+      plan,
+      sources: [
+        {
+          id: "S1",
+          kind: "tavily",
+          title: "Apple shares stabilize Friday",
+          outlet: "Reuters",
+          publishedAt: "2026-08-07",
+          url: "https://reuters.example.com/apple",
+          excerpt:
+            "Apple shares stabilized as investors assessed the latest outlook.",
+          entityIds: [entity.id],
+          criteria: ["current developments", "performance"],
+          retrievedAt: "2026-08-08T02:00:00.000Z",
+        },
+        {
+          id: "S2",
+          kind: "tavily",
+          title: "Apple edges higher with technology shares",
+          outlet: "Market Wire",
+          publishedAt: "2026-08-07",
+          url: "https://markets.example.com/apple",
+          excerpt:
+            "Apple edged higher alongside the broader technology sector.",
+          entityIds: [entity.id],
+          criteria: ["current developments", "performance"],
+          retrievedAt: "2026-08-08T02:00:00.000Z",
+        },
+      ],
+    }
+  );
+  assert.ok(reply);
+  assert.match(reply.text, /up 0\.27%/);
+  assert.match(reply.text, /effectively flat/i);
+  assert.doesNotMatch(reply.text, /^It(?:'s| is) not/i);
+  assert.deepEqual(reply.citationUrls, [
+    "https://reuters.example.com/apple",
+    "https://markets.example.com/apple",
+  ]);
+});
+
+test("move-cause retrieval seeks independent corroboration after one stored source", async () => {
+  resetEvidenceCacheMemory();
+  const entity: FinanceEntity = {
+    id: "ticker:AAPL",
+    name: "Apple",
+    query: "Apple AAPL stock financial news",
+    ticker: "AAPL",
+    market: "us",
+  };
+  const interval = defaultInterval(
+    "US",
+    new Date("2026-08-08T02:00:00.000Z")
+  );
+  const state = {
+    version: 1 as const,
+    revision: 1,
+    entities: [entity],
+    explicitEntitySet: [entity.id],
+    criteria: [],
+    intervals: [interval],
+  };
+  const plan = planEvidence({
+    route: "current_finance",
+    message: "Why is AAPL up?",
+    entities: [entity],
+    state,
+    intervals: [interval],
+    asOf: "2026-08-08T02:00:00.000Z",
+  });
+  const calls = { quotes: 0, astra: 0, tavily: 0 };
+  const context = await executeEvidencePlan({
+    plan,
+    entities: [entity],
+    providers: {
+      quotes: async () => {
+        calls.quotes += 1;
+        return [];
+      },
+      astra: async (query) => {
+        calls.astra += 1;
+        return [
+          {
+            kind: "astra",
+            title: "Apple shares stabilize after Friday market move",
+            outlet: "Stored Wire",
+            publishedAt: "2026-08-07",
+            url: "https://stored.example.com/apple",
+            excerpt:
+              "Apple shares rose as investors assessed current market developments.",
+            entityIds: query.entityIds,
+            criteria: query.criteria,
+            queryId: query.id,
+          },
+        ];
+      },
+      tavily: async (query) => {
+        calls.tavily += 1;
+        return [
+          {
+            kind: "tavily",
+            title: "Apple edges higher with technology shares",
+            outlet: "Independent Wire",
+            publishedAt: "2026-08-07",
+            url: "https://independent.example.com/apple",
+            excerpt:
+              "Apple shares moved higher alongside the broader technology sector.",
+            score: 0.9,
+            entityIds: query.entityIds,
+            criteria: query.criteria,
+            queryId: query.id,
+          },
+        ];
+      },
+    },
+  });
+  assert.equal(calls.tavily, 1);
+  assert.deepEqual(
+    new Set(context.sources.map((source) => source.outlet)),
+    new Set(["Stored Wire", "Independent Wire"])
+  );
 });

@@ -114,7 +114,7 @@ test("Coinbase and Robinhood comparison uses bounded evidence", async () => {
     reply.state?.entities.map((entity) => entity.ticker),
     ["COIN", "HOOD"]
   );
-  assert.deepEqual(calls, { quotes: 1, astra: 2, tavily: 2 });
+  assert.deepEqual(calls, { quotes: 2, astra: 2, tavily: 2 });
 });
 
 test("listed sportsbook request asks for company without betting help", async () => {

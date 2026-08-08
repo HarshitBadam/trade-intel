@@ -136,8 +136,17 @@ async function retrieveQuotes(query: EvidenceQuery): Promise<ChatQuote[]> {
     return [];
   }
   try {
-    const quotes = await bounded(getChatQuotes(query.tickers), []);
-    await recordSuccess("quotes");
+    const batches = await Promise.all(
+      [...new Set(query.tickers.map((ticker) => ticker.toUpperCase()))].map(
+        (ticker) => bounded(getChatQuotes([ticker]), [])
+      )
+    );
+    const quotes = batches.flat();
+    if (quotes.length > 0) {
+      await recordSuccess("quotes");
+    } else {
+      await recordFailure("quotes");
+    }
     return quotes;
   } catch (error) {
     await recordFailure("quotes");
@@ -292,8 +301,30 @@ async function executeBoundedPlan(args: {
         { inputs: [], revisions: {} }
       )
     : Promise.resolve(undefined);
+  const quoteTasks = quoteQueries.flatMap((query) => {
+    const tickers = [
+      ...new Set(query.tickers.map((ticker) => ticker.toUpperCase())),
+    ];
+    if (tickers.length <= 1) return [query];
+    return tickers.map((ticker): EvidenceQuery => {
+      const entityIds = args.entities
+        .filter(
+          (entity) =>
+            entity.ticker?.toUpperCase() === ticker &&
+            query.entityIds.includes(entity.id)
+        )
+        .map((entity) => entity.id);
+      return {
+        ...query,
+        id: `${query.id}-${ticker.toLowerCase()}`,
+        entityIds: entityIds.length > 0 ? entityIds : query.entityIds,
+        tickers: [ticker],
+        limit: Math.max(1, Math.ceil(query.limit / tickers.length)),
+      };
+    });
+  });
   const quotesPromise = Promise.all(
-    quoteQueries.map(async (query) => {
+    quoteTasks.map(async (query) => {
       if (query.provider === "quotes") {
         return boundedCall(() => providers.quotes(query), []);
       }
@@ -550,19 +581,41 @@ async function executeBoundedPlan(args: {
     phaseA.acceptedSources,
     fundamentals
   );
+  const distinctEvidenceHosts = new Set(
+    phaseA.acceptedSources.map((source) => {
+      try {
+        return new URL(source.url).hostname.replace(/^www\./, "");
+      } catch {
+        return source.outlet.toLowerCase();
+      }
+    })
+  );
+  const needsIndependentSource = distinctEvidenceHosts.size < 2;
+  let deepCorroborationPlanned = false;
   const gapQueries = plannedTavily.flatMap((query) => {
-    const entityIds = query.entityIds.filter((entityId) =>
-      (postFundamentalGaps[entityId] ?? []).some((criterion) =>
-        query.criteria.includes(criterion)
-      )
-    );
-    const criteria = [
-      ...new Set(
-        entityIds.flatMap((entityId) =>
-          (postFundamentalGaps[entityId] ?? []).filter((criterion) =>
+    const corroborationQuery =
+      needsIndependentSource &&
+      (args.plan.causal === true ||
+        (args.plan.depth === "deep" && !deepCorroborationPlanned));
+    if (corroborationQuery && args.plan.depth === "deep") {
+      deepCorroborationPlanned = true;
+    }
+    const entityIds = corroborationQuery
+      ? query.entityIds
+      : query.entityIds.filter((entityId) =>
+          (postFundamentalGaps[entityId] ?? []).some((criterion) =>
             query.criteria.includes(criterion)
           )
-        )
+        );
+    const criteria = [
+      ...new Set(
+        corroborationQuery
+          ? query.criteria
+          : entityIds.flatMap((entityId) =>
+              (postFundamentalGaps[entityId] ?? []).filter((criterion) =>
+                query.criteria.includes(criterion)
+              )
+            )
       ),
     ];
     if (entityIds.length === 0 || criteria.length === 0) return [];
@@ -577,7 +630,13 @@ async function executeBoundedPlan(args: {
           .map((entity) => entity.ticker)
           .filter((ticker): ticker is string => Boolean(ticker)),
         criteria,
-        query: `${entities.map((entity) => entity.query).join(" OR ")} ${criteria.join(" ")}`,
+        query: corroborationQuery
+          ? `${query.query}. ${
+              args.plan.causal
+                ? "Find an independent source that corroborates the same-window explanation"
+                : "Find an independent source that corroborates the material research claims"
+            }`
+          : `${entities.map((entity) => entity.query).join(" OR ")} ${criteria.join(" ")}`,
         limit: Math.min(query.limit, Math.max(3, entityIds.length * 3)),
       },
     ];

@@ -5,6 +5,7 @@ import type {
   ChatRequest,
   FinanceEntity,
 } from "./types";
+import type { TemporalInterval } from "./temporal";
 
 type RankingWindow = {
   label: string;
@@ -35,36 +36,16 @@ function quoteDisplayName(
 
 function requestedRankingWindow(
   message: string,
-  horizon?: string
+  intervals?: readonly TemporalInterval[]
 ): RankingWindow | null {
-  const text = `${message} ${horizon ?? ""}`;
-  if ((horizon?.split(" vs ").length ?? 0) > 1) return null;
-  if (/\b(?:ytd|year[- ]to[- ]date|this year)\b/i.test(text)) {
-    return { label: "YTD", value: (quote) => quote.ytdPct };
-  }
-  if (/\b(?:month[- ]to[- ]date|mtd|this month)\b/i.test(text)) {
-    return { label: "month to date", value: (quote) => quote.mtdPct };
-  }
-  if (/\b(?:trailing month|last month|over the (?:last|past) month)\b/i.test(text)) {
-    return { label: "trailing month", value: (quote) => quote.monthPct };
-  }
-  if (/\b(?:this week|last week|over the last week)\b/i.test(text)) {
-    return { label: "one week", value: (quote) => quote.weekPct };
-  }
-  if (/\b(?:last few days|few days)\b/i.test(text)) {
-    return { label: "last few sessions", value: (quote) => quote.fewDaysPct };
-  }
-  if (/\b(?:today|latest session)\b/i.test(text)) {
-    return { label: "latest session", value: (quote) => quote.dayPct };
-  }
-  return null;
+  const windows = comparisonWindows(message, intervals);
+  return windows.length === 1 ? windows[0] : null;
 }
 
 export function buildDeterministicRankingReply(
   request: ChatRequest,
   entities: FinanceEntity[],
-  context: RegularContext,
-  horizon?: string
+  context: RegularContext
 ): Pick<ChatReply, "text" | "citationUrls" | "retryable"> | null {
   if (
     entities.length < 2 ||
@@ -74,56 +55,138 @@ export function buildDeterministicRankingReply(
   ) {
     return null;
   }
-  const window = requestedRankingWindow(request.message, horizon);
-  if (!window) return null;
+  const intervalWindows = context.plan.intervals
+    ? quoteWindowsForIntervals(context.plan.intervals)
+    : [];
+  const windows =
+    intervalWindows.length > 0
+      ? intervalWindows
+      : [
+          requestedRankingWindow(request.message, context.plan.intervals),
+        ].filter((window): window is RankingWindow => Boolean(window));
+  if (windows.length === 0) return null;
   const quoteByTicker = new Map(
     context.quotes.map((quote) => [quote.ticker, quote])
   );
-  const rows = entities.map((entity, index) => {
-    const quote = entity.ticker ? quoteByTicker.get(entity.ticker) : undefined;
-    return {
-      entity,
-      index,
-      value: quote ? window.value(quote) : null,
-      quote,
-    };
-  });
-  const ranked = rows
-    .filter(
-      (row) => typeof row.value === "number" && Number.isFinite(row.value)
-    )
-    .map((row) => ({ ...row, value: row.value as number }))
-    .sort(
-      (left, right) =>
-        right.value - left.value || left.index - right.index
+  const lines: string[] = [];
+  let anyRanked = false;
+  let hasMissing = false;
+  for (const window of windows) {
+    const rows = entities.map((entity, index) => {
+      const quote = entity.ticker ? quoteByTicker.get(entity.ticker) : undefined;
+      return {
+        entity,
+        index,
+        value: quote ? window.value(quote) : null,
+        quote,
+      };
+    });
+    const ranked = rows
+      .filter(
+        (row) => typeof row.value === "number" && Number.isFinite(row.value)
+      )
+      .map((row) => ({ ...row, value: row.value as number }))
+      .sort(
+        (left, right) =>
+          right.value - left.value || left.index - right.index
+      );
+    if (ranked.length === 0) continue;
+    anyRanked = true;
+    if (windows.length > 1) lines.push(`**${window.label}**`);
+    lines.push(
+      ...ranked.map(
+        (row, index) =>
+          `${index + 1}. **${
+            row.quote
+              ? quoteDisplayName(row.entity, row.quote)
+              : row.entity.ticker ?? casualName(row.entity.name)
+          }**, ${row.value >= 0 ? "+" : ""}${row.value.toFixed(2)}%${
+            row.quote?.proxySymbol
+              ? row.quote.proxyKind === "adr"
+                ? ` (${row.quote.proxySymbol} return, not the underlying Australian listing return)`
+                : ` (${row.quote.proxySymbol} return, not the underlying index return)`
+              : ""
+          }`
+      )
     );
-  if (ranked.length === 0) return null;
-  const missing = rows.filter((row) => !Number.isFinite(row.value));
-  const lines = ranked.map(
-    (row, index) =>
-      `${index + 1}. **${
-        row.quote
-          ? quoteDisplayName(row.entity, row.quote)
-          : row.entity.ticker ?? casualName(row.entity.name)
-      }**, ${
-        row.value >= 0 ? "+" : ""
-      }${row.value.toFixed(2)}% ${window.label}${
-        row.quote?.proxySymbol
-          ? row.quote.proxyKind === "adr"
-            ? ` (${row.quote.proxySymbol} return, not the underlying Australian listing return)`
-            : ` (${row.quote.proxySymbol} return, not the underlying index return)`
-          : ""
-      }`
-  );
-  if (missing.length > 0) lines.push("", "Ranking uses matched figures only.");
+    const missing = rows.filter((row) => !Number.isFinite(row.value));
+    if (missing.length > 0) {
+      hasMissing = true;
+      lines.push("Ranking uses matched figures only.");
+    }
+    if (windows.length > 1) lines.push("");
+  }
+  if (!anyRanked) return null;
   return {
-    text: lines.join("\n"),
+    text: lines.join("\n").trim(),
     citationUrls: [],
-    retryable: missing.length > 0 ? true : undefined,
+    retryable: hasMissing ? true : undefined,
   };
 }
 
-function comparisonWindows(message: string): RankingWindow[] {
+export function quoteWindowsForIntervals(
+  intervals: readonly TemporalInterval[]
+): RankingWindow[] {
+  return intervals.flatMap((interval): RankingWindow[] => {
+    switch (interval.label) {
+      case "today":
+        return [{ label: "latest session", value: (quote) => quote.dayPct }];
+      case "yesterday":
+        return [
+          {
+            label: "previous session",
+            value: (quote) => quote.prevSessionPct,
+          },
+        ];
+      case "last few days":
+        return [
+          {
+            label: "last few sessions",
+            value: (quote) => quote.fewDaysPct,
+          },
+        ];
+      case "this week":
+        return [
+          { label: "week to date", value: (quote) => quote.wtdPct },
+        ];
+      case "last week":
+        return [
+          { label: "last week", value: (quote) => quote.lastWeekPct },
+        ];
+      case "month to date":
+        return [
+          { label: "month to date", value: (quote) => quote.mtdPct },
+        ];
+      case "trailing month":
+        return [
+          { label: "trailing month", value: (quote) => quote.monthPct },
+        ];
+      case "last month":
+        return [
+          {
+            label: "last calendar month",
+            value: (quote) => quote.lastMonthPct,
+          },
+        ];
+      case "this year":
+        return [{ label: "YTD", value: (quote) => quote.ytdPct }];
+      case "last year":
+        return [
+          { label: "trailing year", value: (quote) => quote.yearPct },
+        ];
+      default:
+        return [];
+    }
+  });
+}
+
+function comparisonWindows(
+  message: string,
+  intervals?: readonly TemporalInterval[]
+): RankingWindow[] {
+  if (intervals && intervals.length > 0) {
+    return quoteWindowsForIntervals(intervals);
+  }
   const windows: RankingWindow[] = [];
   const add = (pattern: RegExp, window: RankingWindow) => {
     if (pattern.test(message)) windows.push(window);
@@ -163,7 +226,7 @@ export function comparisonLead(
   const windows =
     asksNonPerformanceCriteria && !asksPerformance
       ? []
-      : comparisonWindows(message);
+      : comparisonWindows(message, context.plan.intervals);
   const rows = entities.flatMap((entity) => {
     const quote = entity.ticker
       ? context.quotes.find((item) => item.ticker === entity.ticker)
@@ -250,12 +313,27 @@ export function comparisonLead(
         )
         .sort((left, right) => right.value - left.value);
       if (ordered.length < 2) continue;
-      const gap = ordered[0].value - ordered[1].value;
+      const best = ordered[0];
+      const worst = ordered[ordered.length - 1];
+      const bestValue = Number(best.value.toFixed(2));
+      const worstValue = Number(worst.value.toFixed(2));
+      const gap = bestValue - worstValue;
       lines.push(
-        `${quoteDisplayName(ordered[0].entity, ordered[0].quote!)} led ${quoteDisplayName(
-          ordered[1].entity,
-          ordered[1].quote!
-        )} by ${gap.toFixed(2)} percentage points over ${window.label}.`
+        ordered.length === 2
+          ? `${quoteDisplayName(best.entity, best.quote!)} outperformed ${quoteDisplayName(
+              worst.entity,
+              worst.quote!
+            )} by ${gap.toFixed(2)} percentage points over ${window.label}.`
+          : `${quoteDisplayName(best.entity, best.quote!)} ranked first at ${
+              bestValue >= 0 ? "+" : ""
+            }${bestValue.toFixed(2)}%, while ${quoteDisplayName(
+              worst.entity,
+              worst.quote!
+            )} ranked last at ${
+              worstValue >= 0 ? "+" : ""
+            }${worstValue.toFixed(2)}% over ${window.label}, a ${gap.toFixed(
+              2
+            )}-point spread.`
       );
     }
   }

@@ -96,6 +96,7 @@ test("YTD rankings are deterministically sorted and retain unranked entities", (
         dayPct: 1,
         fewDaysPct: 2,
         weekPct: 3,
+        wtdPct: 3,
         monthPct: 4,
         yearPct: 100,
         ytdPct: 155.94,
@@ -150,8 +151,7 @@ test("YTD rankings are deterministically sorted and retain unranked entities", (
       history: [],
     },
     resolution.entities,
-    context,
-    resolution.state.horizon
+    context
   );
   assert.ok(reply);
   assert.ok(reply.text.indexOf("AMD") < reply.text.indexOf("GOOGL"));
@@ -176,6 +176,7 @@ test("fallback renders MTD separately from trailing month in multi-window asks",
         dayPct: 1,
         fewDaysPct: 2,
         weekPct: 3,
+        wtdPct: 3,
         monthPct: 4,
         yearPct: 5,
         mtdPct: 1.5,
@@ -207,7 +208,7 @@ test("fallback renders MTD separately from trailing month in multi-window asks",
     resolution.entities,
     context
   );
-  assert.match(reply.text, /one week \+3\.00%/i);
+  assert.match(reply.text, /week to date \+3\.00%/i);
   assert.match(reply.text, /month to date \+1\.50%/i);
   assert.match(reply.text, /trailing month \+4\.00%/i);
 });
@@ -285,8 +286,62 @@ test("degraded comparison leads with side-by-side figures and conclusion", () =>
   assert.match(reply.text, /^### Apple vs Microsoft/);
   assert.match(reply.text, /\*\*AAPL\*\*[\s\S]*\$210\.00[\s\S]*P\/E 31\.2x/);
   assert.match(reply.text, /\*\*MSFT\*\*[\s\S]*\$510\.00[\s\S]*P\/E 36\.4x/);
-  assert.match(reply.text, /AAPL led MSFT by 0\.80 percentage points/i);
+  assert.match(reply.text, /AAPL outperformed MSFT by 0\.80 percentage points/i);
   assert.doesNotMatch(reply.text, /strongest available read|valuation and recent/i);
+});
+
+test("quoted comparison entities are never described as outside their ranking", () => {
+  const message = "Compare Macquarie with the Australian Big Four banks";
+  const resolution = resolveConversationState(message, undefined, []);
+  const values: Record<string, number> = {
+    MQG: -1.05,
+    CBA: -1.03,
+    NAB: -1.1,
+    ANZ: -1,
+    WBC: -1.56,
+  };
+  const context = {
+    quotes: resolution.entities.map((entity) => ({
+      ticker: entity.ticker!,
+      price: 100,
+      asOf: "2026-08-07",
+      dayPct: values[entity.ticker!],
+      fewDaysPct: null,
+      weekPct: null,
+      monthPct: null,
+      yearPct: null,
+      currency: "AUD" as const,
+      venue: "ASX" as const,
+    })),
+    fundamentals: [],
+    sources: [],
+    coverage: Object.fromEntries(
+      resolution.entities.map((entity) => [entity.id, "missing" as const])
+    ),
+    plan: planEvidence({
+      route: "comparison",
+      message,
+      entities: resolution.entities,
+      state: resolution.state,
+    }),
+  };
+  const reply = buildFallbackReply(
+    { message, history: [] },
+    {
+      route: "comparison",
+      reasonCode: "degraded_from_data",
+      retrievalRequired: true,
+      deepEligible: false,
+    },
+    resolution.entities,
+    context
+  );
+  assert.match(
+    reply.text,
+    /ASX:ANZ ranked first at -1\.00%[\s\S]*ASX:WBC ranked last at -1\.56%[\s\S]*0\.56-point spread/i
+  );
+  assert.doesNotMatch(reply.text, /remain outside|outside the matched ranking/i);
+  assert.match(reply.text, /displayed price-performance figures are directly comparable/i);
 });
 
 test("blended degraded fallback declines math without leaking its result", () => {

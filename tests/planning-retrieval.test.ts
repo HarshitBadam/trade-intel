@@ -291,14 +291,14 @@ test("indices and Australian entities route through market proxies with Astra co
 
 test("private companies keep the news pipeline while skipping market quotes", () => {
   const resolution = resolveConversationState(
-    "What's new with SpaceX?",
+    "What's new with StockX?",
     undefined,
     []
   );
   assert.equal(resolution.entities[0]?.private, true);
   const plan = planEvidence({
     route: "current_finance",
-    message: "What's new with SpaceX?",
+    message: "What's new with StockX?",
     entities: resolution.entities,
     state: resolution.state,
   });

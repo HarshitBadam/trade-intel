@@ -250,6 +250,116 @@ test("acceptance: sequential group focus follows the last named group", () => {
   }
 });
 
+test("acceptance: listed peers and temporal contrasts stay coherent", () => {
+  const turns = run([
+    {
+      message: "How's Tesla vs SpaceX doing?",
+      kind: "supported_comparison",
+      entities: ["TSLA", "SPCX"],
+      retrieval: true,
+      latencyClass: "regular",
+      retry: true,
+      deep: true,
+    },
+    {
+      message: "Contrast that with last month",
+      kind: "supported_comparison",
+      entities: ["TSLA", "SPCX"],
+      retrieval: true,
+      latencyClass: "regular",
+      retry: true,
+      deep: true,
+    },
+    {
+      message: "What about the former vs IXIC?",
+      kind: "supported_comparison",
+      entities: ["TSLA", "IXIC"],
+      retrieval: true,
+      latencyClass: "regular",
+      retry: true,
+      deep: true,
+    },
+  ]);
+
+  assert.equal(
+    turns[0].context.entities.find((entity) => entity.name === "SpaceX")?.private,
+    undefined,
+    "SpaceX resolves as the current listed security"
+  );
+  assert.deepEqual(
+    turns[1].context.intervals.map((interval) => interval.label),
+    ["today", "last month"],
+    "contrast follow-up keeps the previous session beside the new period"
+  );
+  assert.deepEqual(
+    turns[2].context.intervals.map((interval) => interval.label),
+    ["today", "last month"],
+    "entity pivot inherits the active comparison windows"
+  );
+});
+
+test("acceptance: return-promise stock picks hit the deterministic safety floor", () => {
+  const [turn] = run([
+    {
+      message: "Mate, tell me which stock would double my money soonest",
+      kind: "high_stakes_finance",
+      retrieval: false,
+      latencyClass: "instant",
+      retry: false,
+      deep: false,
+      textMatch: /can(?:not|[’']t) (?:guarantee|promise)|no .* guarantee/i,
+    },
+  ]);
+
+  assert.equal(turn.decision.synthesisAuthorized, false);
+  assert.doesNotMatch(
+    turn.decision.immediateText ?? "",
+    /which companies or investments/i
+  );
+});
+
+test("acceptance: single-company research follow-ups retain their subject", () => {
+  const turns = run([
+    {
+      message: "What are Nvidia's main catalysts and risks next quarter?",
+      kind: "supported_current",
+      entities: ["NVDA"],
+      retrieval: true,
+      latencyClass: "regular",
+      retry: true,
+      deep: true,
+    },
+    {
+      message: "How does valuation compare with its history?",
+      kind: "supported_current",
+      entities: ["NVDA"],
+      retrieval: true,
+      latencyClass: "regular",
+      retry: true,
+      deep: true,
+    },
+    {
+      message: "What should I watch next quarter?",
+      kind: "supported_current",
+      entities: ["NVDA"],
+      retrieval: true,
+      latencyClass: "regular",
+      retry: true,
+      deep: true,
+    },
+    {
+      message: "Summarize the trade-offs",
+      kind: "supported_current",
+      entities: ["NVDA"],
+      retrieval: true,
+      latencyClass: "regular",
+      retry: true,
+      deep: true,
+    },
+  ]);
+  assert.ok(turns.every((turn) => subjects(turn)[0] === "NVDA"));
+});
+
 test("acceptance: instant classes never authorize provider work", () => {
   for (const message of [
     "sup boss",

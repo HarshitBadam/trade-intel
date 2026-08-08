@@ -92,7 +92,11 @@ export type ChatQuote = {
   prevSessionDate?: string;
   fewDaysPct: number | null;
   weekPct: number | null;
+  // Exchange-session returns for explicit calendar periods.
+  wtdPct?: number | null;
+  lastWeekPct?: number | null;
   monthPct: number | null;
+  lastMonthPct?: number | null;
   yearPct: number | null;
   // Calendar year-to-date, measured from the prior year-end close.
   ytdPct?: number | null;
@@ -102,7 +106,12 @@ export type ChatQuote = {
   mtdStart?: string;
   fewDaysStart?: string;
   weekStart?: string;
+  wtdStart?: string;
+  lastWeekStart?: string;
+  lastWeekEnd?: string;
   monthStart?: string;
+  lastMonthStart?: string;
+  lastMonthEnd?: string;
   yearStart?: string;
 };
 

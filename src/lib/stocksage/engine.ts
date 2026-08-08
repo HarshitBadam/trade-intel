@@ -15,6 +15,7 @@ import { normalizeMessage } from "./intent";
 import { planEvidence } from "./evidence/planner";
 import { executeEvidencePlan, type RegularContext } from "./evidence/retrieve";
 import { deepFreeze } from "./immutable";
+import { enrichTurnListings } from "./listing-status";
 import { decideTurn, isInstantDecision } from "./router";
 import {
   beginInputSafetyCheck,
@@ -127,7 +128,7 @@ export async function runUnifiedEngine(
   const scoped: ChatRequest = { ...request, message: normalized };
   const base = baseConversationState(request.state, request.history);
 
-  const turn = decideTurn(scoped);
+  let turn = decideTurn(scoped);
   // The router already freezes normal decisions and contexts. Deep-freeze
   // both here as a final guard (including the one high-stakes context branch
   // assembled with object spreads), so nested collections — entities,
@@ -135,15 +136,19 @@ export async function runUnifiedEngine(
   // Safe because every array/object reachable from `turn` is data this
   // engine built fresh (see `sanitizeConversationState`/`resolveTurnContext`);
   // `request`/`request.history`, which the caller owns, are never part of it.
-  deepFreeze(turn.decision);
-  deepFreeze(turn.context);
-  Object.freeze(turn);
-  dependencies.onTurnFinalized?.(turn);
+  const finalizeTurn = (candidate: Turn): Turn => {
+    deepFreeze(candidate.decision);
+    deepFreeze(candidate.context);
+    Object.freeze(candidate);
+    dependencies.onTurnFinalized?.(candidate);
+    return candidate;
+  };
   const { decision, context } = turn;
 
   // Crisis and the hard safety floor are themselves the safe output: zero
   // retrieval, zero model, zero classifier round trip.
   if (!decision.safetyRailRequired && decision.immediateText !== undefined) {
+    finalizeTurn(turn);
     const dataStatus =
       decision.reasonCode === "australian_listing_clarified"
         ? ("limited" as const)
@@ -173,6 +178,7 @@ export async function runUnifiedEngine(
     .slice(-2_000);
 
   if (isInstantDecision(decision)) {
+    finalizeTurn(turn);
     // Safety and refusal copy is already the safe answer. Every other
     // instant reply still has to clear the classifier before it is
     // published, and a plain greeting only pays for the rail when it
@@ -217,6 +223,7 @@ export async function runUnifiedEngine(
   // adding a round trip in front of it. The unified engine still awaits the
   // verdict below before any synthesis or publication happens.
   const safety = beginInputSafetyCheck(safetyInput, dependencies.safetyClassifier);
+  turn = finalizeTurn(await enrichTurnListings(turn));
   const budget = budgetFor("regular", startedAt);
   const { context: evidence, retrievalMs } = await retrieveForTurn(
     turn,

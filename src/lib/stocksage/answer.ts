@@ -174,6 +174,7 @@ export async function executeAnswer(args: AnswerExecutorArgs): Promise<ChatReply
     dataStatus,
     wantsData,
     requestedCriteria,
+    deepEligible: decision.deepEligible,
     blendedOffTopic,
     startedAt,
     retrievalMs,
@@ -193,6 +194,7 @@ export async function executeAnswer(args: AnswerExecutorArgs): Promise<ChatReply
       state: resolution.state,
       sources: context.sources,
       asOf: context.plan.asOf,
+      eligible: decision.deepEligible,
     });
     logStockSage({
       event: "request_complete",
@@ -247,6 +249,7 @@ export async function executeAnswer(args: AnswerExecutorArgs): Promise<ChatReply
       state: resolution.state,
       sources: [],
       asOf: context.plan.asOf,
+      eligible: decision.deepEligible,
     });
     logStockSage({
       event: "request_complete",
@@ -293,6 +296,7 @@ export async function executeAnswer(args: AnswerExecutorArgs): Promise<ChatReply
       state: resolution.state,
       sources: [],
       asOf: context.plan.asOf,
+      eligible: decision.deepEligible,
     });
     logStockSage({
       event: "request_complete",
@@ -487,6 +491,7 @@ async function synthesizeRegularAnswer(
     farewellTurn,
     budget,
     telemetry,
+    turn,
     onSynthesisAttempt,
   } = args;
   const system = buildUnifiedSystemPrompt({
@@ -579,6 +584,7 @@ async function synthesizeRegularAnswer(
           state: resolution.state,
           sources: context.sources,
           asOf: context.plan.asOf,
+          eligible: turn.decision.deepEligible,
         })
       : { responseId: randomUUID() };
     logStockSage({
@@ -659,6 +665,7 @@ async function synthesizeRegularAnswer(
             state: resolution.state,
             sources: context.sources,
             asOf: context.plan.asOf,
+            eligible: turn.decision.deepEligible,
           })
         : { responseId: randomUUID() };
       logStockSage({

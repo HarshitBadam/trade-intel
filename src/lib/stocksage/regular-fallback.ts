@@ -1,6 +1,10 @@
 import "server-only";
 
-import { comparisonLead, buildDeterministicRankingReply } from "./regular-comparison";
+import {
+  comparisonLead,
+  buildDeterministicRankingReply,
+  quoteWindowsForIntervals,
+} from "./regular-comparison";
 import { humanAsOf, humanPublishedAt } from "./regular-dates";
 import { hasSmuggledOffTopicTask } from "./regular-guards";
 import { finalizePublicationText } from "./publication";
@@ -37,7 +41,7 @@ function safeEvidenceNote(source: EvidenceSource): string | null {
         )
     );
   if (!sentence) return null;
-  return `${sentence.slice(0, 260).replace(/[,:;,, -]\s*$/, "")}${
+  return `${sentence.slice(0, 260).replace(/[.,:; -]\s*$/, "")}${
     sentence.length > 260 ? "." : ""
   }`;
 }
@@ -53,8 +57,7 @@ export function buildFallbackReply(
     entities.length > 0 &&
     entities.every((entity) => entity.private) &&
     context.quotes.length === 0 &&
-    context.fundamentals.length === 0 &&
-    context.sources.length === 0
+    context.fundamentals.length === 0
   ) {
     const names = entities.map((entity) => casualName(entity.name));
     const list =
@@ -77,27 +80,27 @@ export function buildFallbackReply(
       request.message
     );
 
+  if (decision.route !== "comparison" && context.quotes.length === 0) {
+    for (const entity of entities.filter(
+      (candidate) => candidate.ticker && !candidate.private
+    )) {
+      lines.push(
+        `${casualName(entity.name)} is publicly listed as ${
+          entity.ticker
+        }, but a current quote was unavailable from the configured market-data feeds.`
+      );
+    }
+  }
+
   if (context.quotes.length > 0 && decision.route !== "comparison") {
     lines.push("### Market snapshot");
     for (const quote of context.quotes) {
-      const periods: { label: string; value: number | null | undefined }[] = [];
-      const addPeriod = (
-        pattern: RegExp,
-        label: string,
-        value: number | null | undefined
-      ): void => {
-        if (pattern.test(request.message)) periods.push({ label, value });
-      };
-      addPeriod(/\bthis week\b|\blast week\b|\bover the last week\b/i, "one week", quote.weekPct);
-      addPeriod(/\b(?:month[- ]to[- ]date|mtd|this month)\b/i, "month to date", quote.mtdPct);
-      addPeriod(/\b(?:trailing month|last month|over the (?:last|past) month)\b/i, "trailing month", quote.monthPct);
-      addPeriod(/\b(?:ytd|year[- ]to[- ]date|this year)\b/i, "YTD", quote.ytdPct);
-      addPeriod(/\blast (?:year|12 months)|\bover the last year\b/i, "trailing year", quote.yearPct);
-      addPeriod(
-        /\blast few days\b|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|\bthe other day\b/i,
-        "last few sessions",
-        quote.fewDaysPct
-      );
+      const periods = quoteWindowsForIntervals(
+        context.plan.intervals ?? []
+      ).map((window) => ({
+        label: window.label,
+        value: window.value(quote),
+      }));
       if (periods.length === 0) periods.push({ label: "latest session", value: quote.dayPct });
       const changes = periods
         .filter(
@@ -216,15 +219,54 @@ export function buildFallbackReply(
   }
 
   if (decision.route === "comparison") {
-    const missing = entities.filter(
-      (entity) => context.coverage[entity.id] !== "covered"
+    const hasStructuredFigure = (entity: FinanceEntity) =>
+      Boolean(
+        entity.ticker &&
+          (context.quotes.some((quote) => quote.ticker === entity.ticker) ||
+            context.fundamentals.some(
+              (fundamental) => fundamental.ticker === entity.ticker
+            ))
+      );
+    const asksPerformance =
+      context.plan.explicitCriteria?.includes("performance") === true ||
+      /\b(?:performance|returns?|up|down|done|doing|month|week|year|today)\b/i.test(
+        request.message
+      );
+    if (
+      asksPerformance &&
+      context.quotes.length === 0 &&
+      context.fundamentals.length === 0
+    ) {
+      const requestedNames = entities.map((entity) => casualName(entity.name));
+      const requestedList =
+        requestedNames.length > 1
+          ? `${requestedNames.slice(0, -1).join(", ")} and ${
+              requestedNames[requestedNames.length - 1]
+            }`
+          : requestedNames[0];
+      const periods =
+        context.plan.intervals?.map((interval) => interval.label).join(" and ") ??
+        "the requested period";
+      return {
+        text: `No matched price-performance figures were available for ${requestedList} over ${periods}, so a verified ranking cannot be made. Retrieved articles do not substitute for a like-for-like return series.`,
+        citationUrls: [],
+        retryable: true,
+      };
+    }
+    const outside = entities.filter(
+      (entity) => !hasStructuredFigure(entity)
     );
-    const names = missing.map((entity) => casualName(entity.name));
+    const partial = entities.filter(
+      (entity) =>
+        hasStructuredFigure(entity) &&
+        context.coverage[entity.id] !== "covered"
+    );
+    const names = outside.map((entity) => casualName(entity.name));
     const list =
       names.length > 1
         ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
         : names[0];
-    if (missing.length > 0 && lines.length === 0) {
+    if (outside.length > 0 && lines.length === 0) {
       const allPrivate =
         entities.length > 0 && entities.every((entity) => entity.private);
       return {
@@ -235,14 +277,18 @@ export function buildFallbackReply(
         retryable: true,
       };
     }
-    if (missing.length > 0) {
+    if (outside.length > 0) {
       lines.push(
         "",
-        `${list} remain outside the matched ranking; ${
-          comparisonNeedsArticles && context.sources.length > 0
-            ? "the ranking above is limited to the dated figures and cited reporting"
-            : "the ranking above is limited to the dated figures"
-        }.`
+        `${list} ${
+          outside.length === 1 ? "has" : "have"
+        } no matched figure for this ranking; the comparison above includes only the dated figures actually shown.`
+      );
+    }
+    if (partial.length > 0 && outside.length === 0) {
+      lines.push(
+        "",
+        "The displayed price-performance figures are directly comparable. Broader valuation, growth, or risk evidence is partial where those metrics are not shown."
       );
     }
   }
@@ -308,7 +354,9 @@ export function buildFallbackReply(
   if (decision.route !== "comparison") {
     lines.push(
       "",
-      context.sources.length === 0 &&
+      context.quotes.length === 0 && context.sources.length > 0
+        ? "The reporting above is separate from a current market quote."
+        : context.sources.length === 0 &&
         /\b(?:news|development|catalyst|outlook|guidance|risks?|bull case|bear case)\b/i.test(
           request.message
         )

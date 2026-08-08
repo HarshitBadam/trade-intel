@@ -4,7 +4,9 @@ import {
   expandValidCitations,
   validCitationUrls,
 } from "./citations";
+import { isMoveCauseAsk } from "./intent";
 import { humanAsOf, humanPublishedAt } from "./regular-fallback";
+import { quoteWindowsForIntervals } from "./regular-comparison";
 import type { RegularContext } from "./evidence/retrieve";
 import type {
   ChatReply,
@@ -55,6 +57,27 @@ function sourceDetail(source: EvidenceSource): string | null {
   );
 }
 
+function sourceDetailMatching(
+  source: EvidenceSource,
+  pattern: RegExp
+): string | null {
+  for (const value of [
+    source.keyObservations,
+    source.event,
+    source.excerpt,
+  ]) {
+    if (!value) continue;
+    const sentence = value
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .split(/(?<=[.!?])\s+/)
+      .find((candidate) => pattern.test(candidate));
+    const safe = safeSentence(sentence);
+    if (safe) return safe;
+  }
+  return null;
+}
+
 function sourceRank(source: EvidenceSource): number {
   const importance =
     source.importance?.toLowerCase() === "high"
@@ -66,8 +89,20 @@ function sourceRank(source: EvidenceSource): number {
 }
 
 function rankedSources(context: RegularContext): EvidenceSource[] {
+  const seen = new Set<string>();
   return [...context.sources]
     .sort((left, right) => sourceRank(right) - sourceRank(left))
+    .filter((source) => {
+      let host = "";
+      try {
+        host = new URL(source.url).hostname.replace(/^www\./, "");
+      } catch {
+        host = source.outlet.toLowerCase();
+      }
+      if (seen.has(host)) return false;
+      seen.add(host);
+      return true;
+    })
     .slice(0, 3);
 }
 
@@ -96,6 +131,88 @@ function quoteLine(
   )} as of ${humanAsOf(quote.asOf)}, with a ${
     quote.dayPct >= 0 ? "+" : ""
   }${quote.dayPct.toFixed(2)}% latest-session move.`;
+}
+
+function moveLine(
+  entity: FinanceEntity,
+  context: RegularContext
+): string | null {
+  const quote = entity.ticker
+    ? context.quotes.find((item) => item.ticker === entity.ticker)
+    : undefined;
+  if (!quote) return null;
+  const window = quoteWindowsForIntervals(context.plan.intervals ?? [])[0];
+  const value = window?.value(quote) ?? quote.dayPct;
+  const label = window?.label ?? "latest session";
+  if (value == null) return null;
+  const price = quote.isIndex
+    ? `${quote.price.toFixed(2)} points`
+    : `${quote.currency === "AUD" ? "A$" : "$"}${quote.price.toFixed(2)}`;
+  const direction = value >= 0 ? "up" : "down";
+  const magnitude =
+    Math.abs(value) < 0.5
+      ? "—a positive but effectively flat move"
+      : "";
+  return `${entity.ticker ?? commonName(entity)} was ${price} as of ${humanAsOf(
+    quote.asOf
+  )}, ${direction} ${Math.abs(value).toFixed(2)}% over the ${label}${magnitude}${
+    quote.sourceNote ? ` (${quote.sourceNote})` : ""
+  }.`;
+}
+
+function renderMoveCause(
+  entity: FinanceEntity,
+  context: RegularContext
+): DeterministicReply {
+  const quote = moveLine(entity, context);
+  const sources = rankedSources(context)
+    .map((source) => ({
+      source,
+      detail: sourceDetailMatching(
+        source,
+        /\b(?:because|due to|driven by|after|following|amid|as investors|alongside|catalyst|earnings|guidance|announcement|launch|regulat|demand|outlook)\b/i
+      ),
+    }))
+    .filter(
+      (
+        candidate
+      ): candidate is { source: EvidenceSource; detail: string } =>
+        Boolean(candidate.detail)
+    )
+    .slice(0, 2);
+  if (sources.length === 0) {
+    return finalize(
+      [
+        quote,
+        "No company-specific catalyst was verified in reporting published around that trading window, so an older event should not be presented as the cause.",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      context,
+      true
+    );
+  }
+  const primary = sources[0];
+  const lines = [
+    quote,
+    `The strongest same-window report says: ${primary.detail} [${primary.source.id}]`,
+  ];
+  if (sources[1]) {
+    const secondary = sources[1];
+    lines.push(
+      `A second independent same-window report says: ${secondary.detail} [${secondary.source.id}]`,
+      "Together these reports provide context, but they do not prove a single cause for a small move."
+    );
+  } else {
+    lines.push(
+      "Only one current independent source matched the move, so the causal explanation remains partial."
+    );
+  }
+  return finalize(
+    lines.filter(Boolean).join(" "),
+    context,
+    sources.length < 2 ? true : undefined
+  );
 }
 
 function fundamentalsFrame(
@@ -206,21 +323,33 @@ function renderOutlook(
 ): DeterministicReply {
   const frame = fundamentalsFrame(entity, context);
   const sources = rankedSources(context);
-  const catalyst = sources.find((source) =>
-    source.criteria.some((criterion) =>
-      ["outlook", "growth", "current developments"].includes(criterion)
-    )
-  );
-  const risk = sources.find((source) => source.criteria.includes("risk"));
+  const catalyst = sources
+    .map((source) => ({
+      source,
+      detail: sourceDetailMatching(
+        source,
+        /\b(?:guidance|catalyst|growth|launch|demand|orders?|shipments?|capacity|outlook|tailwind|expan)/i
+      ),
+    }))
+    .find((candidate) => candidate.detail);
+  const risk = sources
+    .map((source) => ({
+      source,
+      detail: sourceDetailMatching(
+        source,
+        /\b(?:risk|regulat|litigation|investigation|headwind|competition|constraint|shortage|restriction|delay|uncertain|pressure|depend|concentrat|cyclical|volatil)/i
+      ),
+    }))
+    .find((candidate) => candidate.detail);
   const bull = [
     ...frame.bull,
     catalyst
-      ? `${sourceDetail(catalyst) ?? catalyst.title} [${catalyst.id}]`
+      ? `${catalyst.detail} [${catalyst.source.id}]`
       : null,
   ].filter(Boolean);
   const bear = [
     ...frame.bear,
-    risk ? `${sourceDetail(risk) ?? risk.title} [${risk.id}]` : null,
+    risk ? `${risk.detail} [${risk.source.id}]` : null,
   ].filter(Boolean);
   const lines = [
     `**Bull case:** ${
@@ -240,14 +369,18 @@ function renderOutlook(
   if (summary) {
     const bullSummary =
       frame.bull[0] ??
-      (catalyst ? sourceDetail(catalyst) ?? catalyst.title : "No qualifying catalyst");
+      (catalyst ? catalyst.detail : "No qualifying catalyst");
     const bearSummary =
       frame.bear[0] ??
-      (risk ? sourceDetail(risk) ?? risk.title : "No qualifying risk event");
+      (risk ? risk.detail : "No qualifying risk event");
     const citations = [
-      frame.bull.length === 0 && catalyst ? `[${catalyst.id}]` : "",
-      frame.bear.length === 0 && risk && risk.id !== catalyst?.id
-        ? `[${risk.id}]`
+      frame.bull.length === 0 && catalyst
+        ? `[${catalyst.source.id}]`
+        : "",
+      frame.bear.length === 0 &&
+      risk &&
+      risk.source.id !== catalyst?.source.id
+        ? `[${risk.source.id}]`
         : "",
     ]
       .filter(Boolean)
@@ -274,6 +407,9 @@ export function buildGroundedDeterministicReply(
   if (entities.length !== 1) return null;
   const entity = entities[0];
   const message = request.message;
+  if (isMoveCauseAsk(message)) {
+    return renderMoveCause(entity, context);
+  }
   if (
     /\b(?:which|what)\b.{0,40}\bdevelopment\b.{0,30}\bmatters?\b/i.test(
       message

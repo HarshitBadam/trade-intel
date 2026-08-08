@@ -54,6 +54,8 @@ const RECENCY_CLAIM =
   /\b(?:latest|recent|new|next[- ]gen(?:eration)?|upcoming|next quarter|this quarter|currently|ongoing|approaches)\b/i;
 const ANALYTICAL_INFERENCE =
   /\b(?:this (?:suggests|implies|indicates)|an inference from|on that evidence|based on (?:that|these cited facts))\b/i;
+const CAUSAL_RESEARCH_CLAIM =
+  /\b(?:because|due to|driven by|caused by|on news of|in response to|investors? (?:reacted|focused)|the (?:reason|catalyst|driver)|recovery from)\b/i;
 
 function claimUnits(text: string): string[] {
   return text
@@ -83,6 +85,7 @@ export function uncitedResearchClaimUnits(
   return claimUnits(text).filter((unit) => {
     if (
       !RESEARCH_CLAIM.test(unit) &&
+      !CAUSAL_RESEARCH_CLAIM.test(unit) &&
       !(
         RECENCY_CLAIM.test(unit) &&
         /\b(?:product|event|earnings|report|chip|development|risk|outlook)\b/i.test(

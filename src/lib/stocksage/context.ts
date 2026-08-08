@@ -1,7 +1,11 @@
 import { detectCriteria } from "./conversation-attributes";
 import { resolveConversationState, type StateResolution } from "./entities";
 import { primaryCalendar } from "./listing-capability";
-import { defaultInterval, parseIntervals } from "./temporal";
+import {
+  defaultInterval,
+  intervalsToHorizon,
+  parseIntervals,
+} from "./temporal";
 import type { ChatRequest, FinanceEntity, TurnContext } from "./types";
 
 /**
@@ -17,7 +21,7 @@ export function hasExplicitConversationReference(message: string): boolean {
     /^(?:(?:and|so|ok(?:ay)?)\s+)?(?:why|what (?:changed|happened|moved)|today|yesterday|(?:a\s+)?few days ago|anything notable|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year))\b/i.test(
       message
     ) ||
-    /\b(?:which developments?\b.*\bmatters?|what\b.*\bmatters?|catalysts?|what should investors? watch)\b/i.test(
+    /\b(?:which developments?\b.*\bmatters?|what\b.*\bmatters?|catalysts?|what should (?:i|we|investors?) watch|summari[sz]e|recap|bottom line|trade-offs?)\b/i.test(
       message
     )
   );
@@ -44,21 +48,29 @@ export function buildTurnContext(args: {
     state.intervals && state.intervals.length > 0
       ? state.intervals
       : [defaultInterval(calendar, args.now)];
-  const focusIds = new Set(state.focusEntityIds ?? []);
+  const contextState =
+    state.intervals && state.intervals.length > 0
+      ? state
+      : {
+          ...state,
+          intervals,
+          horizon: intervalsToHorizon(intervals),
+        };
+  const focusIds = new Set(contextState.focusEntityIds ?? []);
   const focusEntities = args.entities.filter((entity) =>
     focusIds.has(entity.id)
   );
   return Object.freeze({
     version: 1,
     message: args.message,
-    state,
+    state: contextState,
     entities: args.entities,
     focusEntities: focusEntities.length > 0 ? focusEntities : args.entities,
-    groups: state.groups ?? [],
+    groups: contextState.groups ?? [],
     intervals,
     calendar,
-    criteria: state.criteria,
-    jurisdiction: state.jurisdiction,
+    criteria: contextState.criteria,
+    jurisdiction: contextState.jurisdiction,
   } as TurnContext);
 }
 
