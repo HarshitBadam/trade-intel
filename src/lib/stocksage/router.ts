@@ -149,6 +149,7 @@ export function decideTurn(
       },
       entities: [],
       reasonCode: "crisis_short_circuit",
+      temporal: { status: "none", intervals: [] },
     };
     return {
       decision: instant({
@@ -216,6 +217,19 @@ export function decideTurn(
     };
   }
 
+  if (resolution.temporal.status === "invalid") {
+    return {
+      decision: instant({
+        kind: "ambiguous",
+        route: "clarify",
+        reasonCode: "invalid_temporal_date",
+        text: resolution.temporal.clarification,
+        clarification: resolution.temporal.clarification,
+      }),
+      context,
+    };
+  }
+
   const listing = australianListingClarification(message, policyEntities);
   if (listing) {
     return {
@@ -253,6 +267,7 @@ export function decideTurn(
     entities: resolution.entities,
     state: resolution.state,
     clarification: resolution.clarification,
+    hasTemporalIntent: resolution.temporal.status === "resolved",
   });
   if (socialRoute.route === "social") {
     const text = immediateReply(socialRoute, message);
@@ -282,10 +297,7 @@ export function decideTurn(
     };
   }
 
-  const policyView =
-    resolution.reasonCode === "no_entities" && !conversationReference
-      ? []
-      : effectiveEntities;
+  const policyView = effectiveEntities;
   const policy = evaluateDomainPolicy(message, policyView);
   const inheritsScope =
     policy.reasonCode === "out_of_scope" &&
@@ -318,6 +330,7 @@ export function decideTurn(
     entities: effectiveEntities,
     state: resolution.state,
     clarification: resolution.clarification,
+    hasTemporalIntent: resolution.temporal.status === "resolved",
   });
   const immediate = immediateReply(route, message);
   if (immediate) {

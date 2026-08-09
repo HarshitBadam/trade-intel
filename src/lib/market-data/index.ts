@@ -7,6 +7,7 @@ export type {
   Movers,
   LiveQuote,
   ChatQuote,
+  ChatIntervalMetric,
   ChatFundamentals,
   RelatedCard,
   NewsSummary,

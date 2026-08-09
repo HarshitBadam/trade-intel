@@ -1,14 +1,21 @@
 import type { RegularContext } from "./evidence/retrieve";
 import { humanAsOf } from "./regular-dates";
+import type { ChatIntervalMetric } from "@/lib/market-data";
 import type {
   ChatReply,
   ChatRequest,
   FinanceEntity,
 } from "./types";
-import type { TemporalInterval } from "./temporal";
+import {
+  temporalIntervalKey,
+  type TemporalInterval,
+} from "./temporal";
 
 type RankingWindow = {
   label: string;
+  metric: (
+    quote: RegularContext["quotes"][number]
+  ) => ChatIntervalMetric | undefined;
   value: (quote: RegularContext["quotes"][number]) => number | null | undefined;
 };
 
@@ -35,10 +42,9 @@ function quoteDisplayName(
 }
 
 function requestedRankingWindow(
-  message: string,
   intervals?: readonly TemporalInterval[]
 ): RankingWindow | null {
-  const windows = comparisonWindows(message, intervals);
+  const windows = comparisonWindows(intervals);
   return windows.length === 1 ? windows[0] : null;
 }
 
@@ -62,7 +68,7 @@ export function buildDeterministicRankingReply(
     intervalWindows.length > 0
       ? intervalWindows
       : [
-          requestedRankingWindow(request.message, context.plan.intervals),
+          requestedRankingWindow(context.plan.intervals),
         ].filter((window): window is RankingWindow => Boolean(window));
   if (windows.length === 0) return null;
   const quoteByTicker = new Map(
@@ -90,7 +96,10 @@ export function buildDeterministicRankingReply(
         (left, right) =>
           right.value - left.value || left.index - right.index
       );
-    if (ranked.length === 0) continue;
+    if (ranked.length === 0) {
+      hasMissing = true;
+      continue;
+    }
     anyRanked = true;
     if (windows.length > 1) lines.push(`**${window.label}**`);
     lines.push(
@@ -127,89 +136,35 @@ export function buildDeterministicRankingReply(
 export function quoteWindowsForIntervals(
   intervals: readonly TemporalInterval[]
 ): RankingWindow[] {
-  return intervals.flatMap((interval): RankingWindow[] => {
-    switch (interval.label) {
-      case "today":
-        return [{ label: "latest session", value: (quote) => quote.dayPct }];
-      case "yesterday":
-        return [
-          {
-            label: "previous session",
-            value: (quote) => quote.prevSessionPct,
-          },
-        ];
-      case "last few days":
-        return [
-          {
-            label: "last few sessions",
-            value: (quote) => quote.fewDaysPct,
-          },
-        ];
-      case "this week":
-        return [
-          { label: "week to date", value: (quote) => quote.wtdPct },
-        ];
-      case "last week":
-        return [
-          { label: "last week", value: (quote) => quote.lastWeekPct },
-        ];
-      case "month to date":
-        return [
-          { label: "month to date", value: (quote) => quote.mtdPct },
-        ];
-      case "trailing month":
-        return [
-          { label: "trailing month", value: (quote) => quote.monthPct },
-        ];
-      case "last month":
-        return [
-          {
-            label: "last calendar month",
-            value: (quote) => quote.lastMonthPct,
-          },
-        ];
-      case "this year":
-        return [{ label: "YTD", value: (quote) => quote.ytdPct }];
-      case "last year":
-        return [
-          { label: "trailing year", value: (quote) => quote.yearPct },
-        ];
-      default:
-        return [];
-    }
+  return intervals.map((interval): RankingWindow => {
+    const key = temporalIntervalKey(interval);
+    const metric = (quote: RegularContext["quotes"][number]) =>
+      quote.intervalMetrics?.[key] ??
+      (interval.label === "today"
+        ? {
+            intervalKey: key,
+            startSession: interval.startSession,
+            endSession: interval.endSession,
+            firstSession: quote.asOf,
+            lastSession: quote.asOf,
+            price: quote.price,
+            returnPct: quote.dayPct,
+          }
+        : undefined);
+    return {
+      label: interval.label === "today" ? "latest session" : interval.label,
+      metric,
+      value: (quote) => metric(quote)?.returnPct,
+    };
   });
 }
 
 function comparisonWindows(
-  message: string,
   intervals?: readonly TemporalInterval[]
 ): RankingWindow[] {
-  if (intervals && intervals.length > 0) {
-    return quoteWindowsForIntervals(intervals);
-  }
-  const windows: RankingWindow[] = [];
-  const add = (pattern: RegExp, window: RankingWindow) => {
-    if (pattern.test(message)) windows.push(window);
-  };
-  add(/\bthis week\b|\blast week\b|\bover the last week\b/i, {
-    label: "one week",
-    value: (quote) => quote.weekPct,
-  });
-  add(/\b(?:month[- ]to[- ]date|mtd|this month)\b/i, {
-    label: "month to date",
-    value: (quote) => quote.mtdPct,
-  });
-  add(/\b(?:trailing month|last month|over the (?:last|past) month)\b/i, {
-    label: "trailing month",
-    value: (quote) => quote.monthPct,
-  });
-  add(/\b(?:ytd|year[- ]to[- ]date|this year)\b/i, {
-    label: "YTD",
-    value: (quote) => quote.ytdPct,
-  });
-  return windows.length > 0
-    ? windows
-    : [{ label: "latest session", value: (quote) => quote.dayPct }];
+  return intervals && intervals.length > 0
+    ? quoteWindowsForIntervals(intervals)
+    : [];
 }
 
 export function comparisonLead(
@@ -220,18 +175,22 @@ export function comparisonLead(
   const asksNonPerformanceCriteria =
     /\b(?:growth|valuation|risk|earnings|dividend|outlook)\b/i.test(message);
   const asksPerformance =
-    /\b(?:performance|return|price|today|week|month|year|ytd|mtd)\b/i.test(
-      message
-    );
+    (context.plan.intervals?.length ?? 0) > 0 ||
+    /\b(?:performance|return|price)\b/i.test(message);
+  const historicalIntervals = (context.plan.intervals ?? []).some(
+    (interval) => interval.label !== "today"
+  );
+  const includeFundamentals =
+    asksNonPerformanceCriteria || !historicalIntervals;
   const windows =
     asksNonPerformanceCriteria && !asksPerformance
       ? []
-      : comparisonWindows(message, context.plan.intervals);
+      : comparisonWindows(context.plan.intervals);
   const rows = entities.flatMap((entity) => {
     const quote = entity.ticker
       ? context.quotes.find((item) => item.ticker === entity.ticker)
       : undefined;
-    const fundamentals = entity.ticker
+    const fundamentals = includeFundamentals && entity.ticker
       ? context.fundamentals.find((item) => item.ticker === entity.ticker)
       : undefined;
     if (!quote && !fundamentals) {
@@ -249,19 +208,25 @@ export function comparisonLead(
     if (quote && windows.length > 0) {
       const periods = windows.map((window) => ({
         label: window.label,
+        metric: window.metric(quote),
         value: window.value(quote),
       }));
+      const firstMetric = periods.find((period) => period.metric)?.metric;
+      if (firstMetric) {
+        figures.push(
+          `${
+            quote.isIndex
+              ? firstMetric.price.toFixed(2)
+              : `${quote.currency === "AUD" ? "A$" : "$"}${firstMetric.price.toFixed(2)}`
+          } at ${humanAsOf(firstMetric.lastSession)}${
+            quote.eod ? " close" : ""
+          }`
+        );
+      }
       figures.push(
-        `${
-          quote.isIndex
-            ? quote.price.toFixed(2)
-            : `${quote.currency === "AUD" ? "A$" : "$"}${quote.price.toFixed(2)}`
-        } at ${humanAsOf(quote.asOf)}${
-          quote.eod ? " close" : ""
-        }`,
         ...periods
           .filter(
-            (period): period is { label: string; value: number } =>
+            (period): period is typeof period & { value: number } =>
               period.value != null
           )
           .map(
@@ -269,6 +234,14 @@ export function comparisonLead(
               `${period.label} ${period.value >= 0 ? "+" : ""}${period.value.toFixed(2)}%`
           )
       );
+      const missingPeriods = periods
+        .filter((period) => !period.metric)
+        .map((period) => period.label);
+      if (missingPeriods.length > 0) {
+        figures.push(
+          `historical candles unavailable for ${missingPeriods.join(" and ")}`
+        );
+      }
     }
     if (fundamentals?.peTtm != null) {
       figures.push(`P/E ${fundamentals.peTtm.toFixed(1)}x`);
@@ -337,14 +310,14 @@ export function comparisonLead(
       );
     }
   }
-  const fundamentalRows = rows.flatMap((row) => {
+  const fundamentalRows = includeFundamentals ? rows.flatMap((row) => {
     const item = row.entity.ticker
       ? context.fundamentals.find(
           (fundamental) => fundamental.ticker === row.entity.ticker
         )
       : undefined;
     return item ? [{ entity: row.entity, item }] : [];
-  });
+  }) : [];
   const compareMetric = (
     requested: RegExp,
     label: string,
@@ -379,9 +352,11 @@ export function comparisonLead(
       } ${label === "P/E" ? "P/E" : label.toLowerCase()} figure on these numbers.`
     );
   };
-  const generic = !/\b(?:growth|valuation|risk|earnings|performance|return)\b/i.test(
-    message
-  );
+  const generic =
+    windows.length === 0 &&
+    !/\b(?:growth|valuation|risk|earnings|performance|return)\b/i.test(
+      message
+    );
   compareMetric(
     generic ? /./ : /\bgrowth\b/i,
     "Revenue growth",

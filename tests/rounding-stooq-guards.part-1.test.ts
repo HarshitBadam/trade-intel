@@ -19,6 +19,11 @@ import { retrieveMarketProxy } from "../src/lib/stocksage/evidence/market";
 import { roundFiguresForDisplay } from "../src/lib/stocksage/rounding";
 import type { ChatQuote } from "../src/lib/market-data/types";
 import type { EvidenceQuery, EvidenceSource } from "../src/lib/stocksage/types";
+import {
+  resolveTemporalContext,
+  temporalIntervalKey,
+  type TemporalInterval,
+} from "../src/lib/stocksage/temporal";
 
 const STOOQ_FIXTURE = `Date,Open,High,Low,Close,Volume
 2025-12-30,98,101,97,100,1000
@@ -57,6 +62,30 @@ function quote(ticker: string, ytdPct = 12.5): ChatQuote {
   };
 }
 
+function withReturns(
+  value: ChatQuote,
+  intervals: readonly TemporalInterval[],
+  returns: readonly number[]
+): ChatQuote {
+  return {
+    ...value,
+    intervalMetrics: Object.fromEntries(
+      intervals.map((interval, index) => [
+        temporalIntervalKey(interval),
+        {
+          intervalKey: temporalIntervalKey(interval),
+          startSession: interval.startSession,
+          endSession: interval.endSession,
+          firstSession: interval.startSession,
+          lastSession: interval.endSession,
+          price: value.price,
+          returnPct: returns[index],
+        },
+      ])
+    ),
+  };
+}
+
 test("proxy comparison preserves instruments and requested horizons", () => {
   const entities = [
     {
@@ -74,34 +103,61 @@ test("proxy comparison preserves instruments and requested horizons", () => {
       market: "index" as const,
     },
   ];
+  const now = new Date("2026-07-16T20:00:00.000Z");
+  const ytdResolution = resolveTemporalContext({
+    message: "Compare Tesla with IXIC this year.",
+    calendar: "US",
+    now,
+  });
+  const multiResolution = resolveTemporalContext({
+    message: "Compare this week, month to date, and trailing month.",
+    calendar: "US",
+    now,
+  });
+  assert.equal(ytdResolution.status, "resolved");
+  assert.equal(multiResolution.status, "resolved");
+  if (
+    ytdResolution.status !== "resolved" ||
+    multiResolution.status !== "resolved"
+  ) {
+    return;
+  }
+  const allIntervals = [
+    ...ytdResolution.intervals,
+    ...multiResolution.intervals,
+  ];
   const quotes: ChatQuote[] = [
-    {
+    withReturns({
       ...quote("TSLA", -15),
       weekPct: -6,
       mtdPct: -9,
       monthPct: -5,
-    },
-    {
+    }, allIntervals, [-15, -6, -9, -5]),
+    withReturns({
       ...quote("IXIC", 10),
       proxySymbol: "ONEQ",
       proxyKind: "etf",
       weekPct: -2,
       mtdPct: -3,
       monthPct: -4,
-    },
+    }, allIntervals, [10, -2, -3, -4]),
   ];
-  const context = {
+  const basePlan = {
+    version: 1 as const,
+    route: "comparison" as const,
+    asOf: "2026-07-16",
+    queries: [proxyQuery(["TSLA", "IXIC"])],
+    requiredEntityIds: [],
+    criteria: [],
+  };
+  const ytdContext = {
     quotes,
     fundamentals: [],
     sources: [],
     coverage: {},
     plan: {
-      version: 1 as const,
-      route: "comparison" as const,
-      asOf: "2026-07-16",
-      queries: [proxyQuery(["TSLA", "IXIC"])],
-      requiredEntityIds: [],
-      criteria: [],
+      ...basePlan,
+      intervals: ytdResolution.intervals,
     },
   };
   const ytd = buildFallbackReply(
@@ -113,11 +169,11 @@ test("proxy comparison preserves instruments and requested horizons", () => {
       deepEligible: false,
     },
     entities,
-    context
+    ytdContext
   ).text;
-  assert.match(ytd, /ONEQ \(Nasdaq Composite ETF proxy\).*\$100\.00.*YTD \+10\.00%/);
+  assert.match(ytd, /ONEQ \(Nasdaq Composite ETF proxy\).*\$100\.00.*this year \+10\.00%/);
   assert.doesNotMatch(ytd, /\*\*IXIC\*\* — \$100\.00/);
-  assert.match(ytd, /ONEQ .* outperformed TSLA .* over YTD/i);
+  assert.match(ytd, /ONEQ .* outperformed TSLA .* over this year/i);
   assert.doesNotMatch(ytd, /latest session/i);
 
   const multi = buildFallbackReply(
@@ -132,9 +188,15 @@ test("proxy comparison preserves instruments and requested horizons", () => {
       deepEligible: false,
     },
     entities,
-    context
+    {
+      ...ytdContext,
+      plan: {
+        ...basePlan,
+        intervals: multiResolution.intervals,
+      },
+    }
   ).text;
-  assert.match(multi, /over one week/i);
+  assert.match(multi, /over this week/i);
   assert.match(multi, /over month to date/i);
   assert.match(multi, /over trailing month/i);
   assert.doesNotMatch(multi, /over latest session/i);

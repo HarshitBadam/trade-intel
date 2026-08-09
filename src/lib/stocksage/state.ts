@@ -1,5 +1,5 @@
 import { CANONICAL_GROUPS } from "./entity-catalog";
-import type { TemporalInterval } from "./temporal";
+import { intervalsToHorizon, type TemporalInterval } from "./temporal";
 import type {
   ConversationState,
   FinanceEntity,
@@ -110,15 +110,7 @@ export function sanitizeConversationState(
     .filter((entity): entity is FinanceEntity => Boolean(entity))
     .slice(0, 12);
   const ids = new Set(entities.map((entity) => entity.id));
-  const validHorizon =
-    /^(?:today|yesterday|this (?:week|quarter|year)|month to date|trailing month|last (?:few days|week|quarter|year)|(?:past|last|next|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after) \d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}|[135][ -]?year)$/i;
-  const horizon =
-    previous.horizon &&
-    previous.horizon
-      .split(" vs ")
-      .every((part) => validHorizon.test(part))
-      ? previous.horizon
-      : undefined;
+  const intervals = sanitizeIntervals(previous.intervals);
   return {
     version: 1,
     revision: Math.max(0, Math.min(previous.revision, 10_000)),
@@ -129,7 +121,7 @@ export function sanitizeConversationState(
     criteria: [
       ...new Set(previous.criteria.filter((criterion) => CRITERIA.has(criterion))),
     ].slice(0, 8),
-    horizon,
+    horizon: intervals ? intervalsToHorizon(intervals) : undefined,
     jurisdiction:
       previous.jurisdiction && JURISDICTIONS.has(previous.jurisdiction)
         ? previous.jurisdiction
@@ -141,7 +133,7 @@ export function sanitizeConversationState(
     focusEntityIds: previous.focusEntityIds
       ?.filter((id) => ids.has(id))
       .slice(0, 12),
-    intervals: sanitizeIntervals(previous.intervals),
+    intervals,
     pendingClarification:
       typeof previous.pendingClarification === "string"
         ? previous.pendingClarification.slice(0, 300)

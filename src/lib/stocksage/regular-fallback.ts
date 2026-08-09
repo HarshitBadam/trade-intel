@@ -9,6 +9,7 @@ import { humanAsOf, humanPublishedAt } from "./regular-dates";
 import { hasSmuggledOffTopicTask } from "./regular-guards";
 import { finalizePublicationText } from "./publication";
 import type { RegularContext } from "./evidence/retrieve";
+import { addDays } from "./temporal";
 import type {
   ChatReply,
   ChatRequest,
@@ -75,10 +76,9 @@ export function buildFallbackReply(
     decision.route === "comparison"
       ? comparisonLead(request.message, entities, context)
       : [];
-  const historicalRequest =
-    /\b(?:yesterday|last (?:few days|week|month|quarter|year)|over the last|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2})\b/i.test(
-      request.message
-    );
+  const historicalRequest = (context.plan.intervals ?? []).some(
+    (interval) => interval.label !== "today" || interval.source !== "default"
+  );
 
   if (decision.route !== "comparison" && context.quotes.length === 0) {
     for (const entity of entities.filter(
@@ -95,16 +95,41 @@ export function buildFallbackReply(
   if (context.quotes.length > 0 && decision.route !== "comparison") {
     lines.push("### Market snapshot");
     for (const quote of context.quotes) {
-      const periods = quoteWindowsForIntervals(
-        context.plan.intervals ?? []
-      ).map((window) => ({
+      const windows = quoteWindowsForIntervals(context.plan.intervals ?? []);
+      const periods = windows.map((window) => ({
         label: window.label,
+        metric: window.metric(quote),
         value: window.value(quote),
       }));
-      if (periods.length === 0) periods.push({ label: "latest session", value: quote.dayPct });
+      if (periods.length === 0) {
+        periods.push({
+          label: "latest session",
+          metric: {
+            intervalKey: `fallback:${quote.asOf}`,
+            startSession: quote.asOf,
+            endSession: quote.asOf,
+            firstSession: quote.asOf,
+            lastSession: quote.asOf,
+            price: quote.price,
+            returnPct: quote.dayPct,
+          },
+          value: quote.dayPct,
+        });
+      }
+      const displayedMetric = periods.find((period) => period.metric)?.metric;
+      if (!displayedMetric) {
+        const quoteLabel =
+          quote.venue === "ASX" ? `ASX:${quote.ticker}` : quote.ticker;
+        lines.push(
+          `- **${quoteLabel}**, historical candles were unavailable for ${windows
+            .map((window) => window.label)
+            .join(" and ")}; no current-session figure was substituted.`
+        );
+        continue;
+      }
       const changes = periods
         .filter(
-          (period): period is { label: string; value: number } =>
+          (period): period is typeof period & { value: number } =>
             period.value != null
         )
         .map(
@@ -113,6 +138,15 @@ export function buildFallbackReply(
         )
         .join("; ");
       const changesSuffix = changes ? `, ${changes}` : "";
+      const missingPeriods = periods
+        .filter((period) => !period.metric)
+        .map((period) => period.label);
+      const missingSuffix =
+        missingPeriods.length > 0
+          ? ` Historical candles were unavailable for ${missingPeriods.join(
+              " and "
+            )}; no current-session figure was substituted.`
+          : "";
       if (quote.proxySymbol) {
         const entity = entities.find((item) => item.ticker === quote.ticker);
         if (
@@ -148,11 +182,11 @@ export function buildFallbackReply(
                 entity ? casualName(entity.name) : quote.ticker
               } itself.`;
         lines.push(
-          `- **${displayName}**, $${quote.price.toFixed(
+          `- **${displayName}**, $${displayedMetric.price.toFixed(
             2
-          )} at ${humanAsOf(quote.asOf)}${
+          )} at ${humanAsOf(displayedMetric.lastSession)}${
             quote.eod ? " close" : ""
-          }${changesSuffix.replace(", latest session ", ", ")}. ${distinction}`
+          }${changesSuffix.replace(", latest session ", ", ")}. ${distinction}${missingSuffix}`
         );
       } else {
         const quoteLabel =
@@ -160,13 +194,13 @@ export function buildFallbackReply(
         lines.push(
           `- **${quoteLabel}**, ${
             quote.isIndex
-              ? `${quote.price.toFixed(2)} points`
-              : `${quote.currency === "AUD" ? "A$" : "$"}${quote.price.toFixed(2)}`
-          } as of ${humanAsOf(quote.asOf)}${
+              ? `${displayedMetric.price.toFixed(2)} points`
+              : `${quote.currency === "AUD" ? "A$" : "$"}${displayedMetric.price.toFixed(2)}`
+          } as of ${humanAsOf(displayedMetric.lastSession)}${
             quote.eod ? " close (end-of-day)" : ""
           }${quote.sourceNote ? `; ${quote.sourceNote}` : ""}${changesSuffix}${
             quote.venue === "ASX" ? " on its native ASX listing in AUD" : ""
-          }.`
+          }.${missingSuffix}`
         );
       }
     }
@@ -177,20 +211,37 @@ export function buildFallbackReply(
     /\b(?:news|development|event|security|cyber|legal|regulat|lawsuit|catalyst|outlook)\b/i.test(
       request.message
     );
-  if (context.sources.length > 0 && comparisonNeedsArticles) {
+  const requestedIntervals = (context.plan.intervals ?? []).filter(
+    (interval) => interval.label !== "today"
+  );
+  const periodSources =
+    requestedIntervals.length === 0
+      ? context.sources
+      : context.sources.filter((source) => {
+          const date = source.publishedAt?.slice(0, 10);
+          return Boolean(
+            date &&
+              requestedIntervals.some(
+                (interval) =>
+                  date >= interval.startSession &&
+                  date <= addDays(interval.endSession, 3)
+              )
+          );
+        });
+  if (periodSources.length > 0 && comparisonNeedsArticles) {
     if (lines.length > 0) lines.push("");
     const displayedSources =
       decision.route === "comparison"
         ? entities
             .map((entity) =>
-              context.sources.find((source) => source.entityIds.includes(entity.id))
+              periodSources.find((source) => source.entityIds.includes(entity.id))
             )
             .filter(
               (source, index, list) =>
                 Boolean(source) && list.indexOf(source) === index
             )
             .slice(0, 8)
-        : context.sources.slice(0, 3);
+        : periodSources.slice(0, 3);
     lines.push(
       decision.route === "comparison"
         ? "### Evidence checked"
@@ -354,14 +405,16 @@ export function buildFallbackReply(
   if (decision.route !== "comparison") {
     lines.push(
       "",
-      context.quotes.length === 0 && context.sources.length > 0
+      context.quotes.length === 0 && periodSources.length > 0
         ? "The reporting above is separate from a current market quote."
-        : context.sources.length === 0 &&
+        : periodSources.length === 0 &&
         /\b(?:news|development|catalyst|outlook|guidance|risks?|bull case|bear case)\b/i.test(
           request.message
         )
         ? "The dated figures above do not establish a specific news catalyst."
-        : "This snapshot reflects the dated figures and cited reporting above."
+        : periodSources.length > 0
+          ? "This snapshot reflects the dated figures and cited reporting above."
+          : "This snapshot reflects the dated market figures above."
     );
   }
   if (hasSmuggledOffTopicTask(request.message)) {

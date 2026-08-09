@@ -69,6 +69,21 @@ export type LiveQuote = {
   volume: number;
 };
 
+export type ChatIntervalMetric = {
+  /** Calendar/start/end identity from the normalized temporal compiler. */
+  intervalKey: string;
+  startSession: string;
+  endSession: string;
+  /** First and last candles actually used inside the requested bounds. */
+  firstSession: string;
+  lastSession: string;
+  /** Close at the requested point, or the ending close for a range. */
+  price: number;
+  /** Return over the point session or bounded range when a baseline exists. */
+  returnPct: number | null;
+  baselineSession?: string;
+};
+
 export type ChatQuote = {
   ticker: string;
   // The instrument that supplied this quote, kept distinct from logical ticker.
@@ -113,6 +128,8 @@ export type ChatQuote = {
   lastMonthStart?: string;
   lastMonthEnd?: string;
   yearStart?: string;
+  /** Bounded metrics keyed by normalized market-calendar interval identity. */
+  intervalMetrics?: Record<string, ChatIntervalMetric>;
 };
 
 export type ChatFundamentals = {

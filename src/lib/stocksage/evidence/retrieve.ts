@@ -44,6 +44,7 @@ import type {
   FinanceEntity,
 } from "../types";
 import type { MarketIntelligenceState } from "@/lib/market-intelligence/types";
+import type { TemporalInterval } from "../temporal";
 
 export type RegularContext = {
   quotes: ChatQuote[];
@@ -55,9 +56,18 @@ export type RegularContext = {
 };
 
 export type RetrievalProviders = {
-  quotes: (query: EvidenceQuery) => Promise<ChatQuote[]>;
-  stooq?: (query: EvidenceQuery) => Promise<ChatQuote[]>;
-  marketProxy?: (query: EvidenceQuery) => Promise<ChatQuote[]>;
+  quotes: (
+    query: EvidenceQuery,
+    intervals?: readonly TemporalInterval[]
+  ) => Promise<ChatQuote[]>;
+  stooq?: (
+    query: EvidenceQuery,
+    intervals?: readonly TemporalInterval[]
+  ) => Promise<ChatQuote[]>;
+  marketProxy?: (
+    query: EvidenceQuery,
+    intervals?: readonly TemporalInterval[]
+  ) => Promise<ChatQuote[]>;
   fundamentals?: (tickers: string[]) => Promise<ChatFundamentals[]>;
   astra: (
     query: EvidenceQuery,
@@ -127,7 +137,10 @@ async function boundedCall<T>(
   );
 }
 
-async function retrieveQuotes(query: EvidenceQuery): Promise<ChatQuote[]> {
+async function retrieveQuotes(
+  query: EvidenceQuery,
+  intervals: readonly TemporalInterval[] = []
+): Promise<ChatQuote[]> {
   if (
     query.provider !== "quotes" ||
     query.tickers.length === 0 ||
@@ -138,7 +151,7 @@ async function retrieveQuotes(query: EvidenceQuery): Promise<ChatQuote[]> {
   try {
     const batches = await Promise.all(
       [...new Set(query.tickers.map((ticker) => ticker.toUpperCase()))].map(
-        (ticker) => bounded(getChatQuotes([ticker]), [])
+        (ticker) => bounded(getChatQuotes([ticker], undefined, intervals), [])
       )
     );
     const quotes = batches.flat();
@@ -229,7 +242,14 @@ async function readMarketIntelligence(
 
 export const defaultRetrievalProviders: RetrievalProviders = {
   quotes: retrieveQuotes,
-  marketProxy: retrieveMarketProxy,
+  marketProxy: (query, intervals = []) =>
+    retrieveMarketProxy(
+      query,
+      undefined,
+      undefined,
+      undefined,
+      intervals
+    ),
   fundamentals: getChatFundamentals,
   astra: async (query, entities) => {
     try {
@@ -326,15 +346,24 @@ async function executeBoundedPlan(args: {
   const quotesPromise = Promise.all(
     quoteTasks.map(async (query) => {
       if (query.provider === "quotes") {
-        return boundedCall(() => providers.quotes(query), []);
+        return boundedCall(
+          () => providers.quotes(query, args.plan.intervals),
+          []
+        );
       }
       if (query.provider === "stooq") {
         return providers.stooq
-          ? boundedCall(() => providers.stooq!(query), [])
+          ? boundedCall(
+              () => providers.stooq!(query, args.plan.intervals),
+              []
+            )
           : [];
       }
       return providers.marketProxy
-        ? boundedCall(() => providers.marketProxy!(query), [])
+        ? boundedCall(
+            () => providers.marketProxy!(query, args.plan.intervals),
+            []
+          )
         : [];
     })
   );

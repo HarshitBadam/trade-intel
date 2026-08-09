@@ -31,42 +31,6 @@ export function detectCriteria(message: string): string[] {
     .map(([, criterion]) => criterion);
 }
 
-export function detectHorizons(message: string): string[] {
-  const candidates: { index: number; value: string }[] = [];
-  const add = (pattern: RegExp, value: string): void => {
-    const match = pattern.exec(message);
-    if (match?.index !== undefined) candidates.push({ index: match.index, value });
-  };
-
-  add(/\b(?:a\s+)?(?:few|couple(?:\s+of)?)\s+days\s+(?:ago|back)\b/i, "last few days");
-  add(/\b(?:the other day|recently|lately)\b/i, "last few days");
-  add(/\btoday\b/i, "today");
-  add(/\byesterday\b/i, "yesterday");
-  add(/\bthis week\b/i, "this week");
-  add(/\b(?:month[- ]to[- ]date|mtd|this month|since (?:the )?start of (?:the )?month|month so far)\b/i, "month to date");
-  add(/\b(?:trailing month|last month|over the (?:last|past) month|past month)\b/i, "trailing month");
-  add(/\b(?:year[- ]to[- ]date|ytd|this year)\b/i, "this year");
-  add(/\bthis quarter\b/i, "this quarter");
-  add(/\blast (?:few days|week|quarter|year)\b/i, (message.match(/\blast (?:few days|week|quarter|year)\b/i)?.[0] ?? "").toLowerCase());
-  add(/\bover the last (?:day|week|quarter|year)\b/i, (message.match(/\bover the last (?:day|week|quarter|year)\b/i)?.[0] ?? "").toLowerCase());
-
-  const dynamic =
-    /\b(?:(?:past|last|next|over)\s+\d+\s+(?:days?|weeks?|months?|years?)|between\s+\d{4}-\d{2}-\d{2}\s+and\s+\d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2}|[135]\s*[- ]?year)\b/gi;
-  for (const match of message.matchAll(dynamic)) {
-    candidates.push({ index: match.index, value: match[0].toLowerCase() });
-  }
-
-  return candidates
-    .sort((left, right) => left.index - right.index)
-    .map((candidate) => candidate.value)
-    .filter((value, index, all) => value.length > 0 && all.indexOf(value) === index);
-}
-
-export function detectHorizon(message: string): string | undefined {
-  const horizons = detectHorizons(message);
-  return horizons.length > 0 ? horizons.join(" vs ") : undefined;
-}
-
 export function detectJurisdiction(
   message: string,
   entities: FinanceEntity[]

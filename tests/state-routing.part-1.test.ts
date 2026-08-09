@@ -197,6 +197,7 @@ test("preserves YTD, MTD, and distinct multi-window horizons", () => {
       message: "and how have they both done this year",
       entities: ytd.entities,
       state: ytd.state,
+      hasTemporalIntent: ytd.temporal.status === "resolved",
     }).route,
     "comparison"
   );
@@ -212,6 +213,7 @@ test("preserves YTD, MTD, and distinct multi-window horizons", () => {
       message: "how has it moved month to date",
       entities: mtd.entities,
       state: mtd.state,
+      hasTemporalIntent: mtd.temporal.status === "resolved",
     }).route,
     "current_finance"
   );

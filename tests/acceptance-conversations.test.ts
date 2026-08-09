@@ -30,11 +30,13 @@ type Expectation = {
   textNotMatch?: RegExp;
 };
 
+const FROZEN_NOW = new Date("2026-08-09T20:00:00.000Z");
+
 function subjects(turn: Turn): string[] {
   return turn.context.entities.map((entity) => entity.ticker ?? entity.name);
 }
 
-function run(conversation: Expectation[]): Turn[] {
+function run(conversation: Expectation[], now = FROZEN_NOW): Turn[] {
   const history: ChatTurn[] = [];
   let state: ConversationState | undefined;
   const turns: Turn[] = [];
@@ -43,7 +45,7 @@ function run(conversation: Expectation[]): Turn[] {
       message: step.message,
       history: [...history],
       ...(state ? { state } : {}),
-    });
+    }, { now });
     turns.push(turn);
     const where = `"${step.message}"`;
     assert.equal(turn.decision.kind, step.kind, `${where} decision kind`);
@@ -296,6 +298,93 @@ test("acceptance: listed peers and temporal contrasts stay coherent", () => {
     ["today", "last month"],
     "entity pivot inherits the active comparison windows"
   );
+});
+
+test("acceptance: temporal-only follow-up inherits entities without defaulting to today", () => {
+  const turns = run([
+    {
+      message: "What's up with Tesla vs SpaceX?",
+      kind: "supported_comparison",
+      entities: ["TSLA", "SPCX"],
+      retrieval: true,
+      latencyClass: "regular",
+      retry: true,
+      deep: true,
+    },
+    {
+      message: "How was this like a month ago?",
+      kind: "supported_comparison",
+      entities: ["TSLA", "SPCX"],
+      retrieval: true,
+      latencyClass: "regular",
+      retry: true,
+      deep: true,
+    },
+  ]);
+  assert.deepEqual(turns[1].context.intervals, [
+    {
+      version: 1,
+      label: "a month ago",
+      kind: "session",
+      calendar: "US",
+      startSession: "2026-07-07",
+      endSession: "2026-07-07",
+      source: "explicit",
+      raw: "a month ago",
+    },
+  ]);
+});
+
+test("acceptance: explicit point-in-time comparison keeps the named entities", () => {
+  const [turn] = run([
+    {
+      message: "How was Tesla vs SpaceX a month ago?",
+      kind: "supported_comparison",
+      entities: ["TSLA", "SPCX"],
+      retrieval: true,
+      latencyClass: "regular",
+      retry: true,
+      deep: true,
+    },
+  ]);
+  assert.equal(turn.context.intervals[0].startSession, "2026-07-07");
+  assert.equal(turn.context.intervals[0].endSession, "2026-07-07");
+  assert.equal(turn.context.intervals[0].source, "explicit");
+  assert.notEqual(turn.context.intervals[0].label, "today");
+});
+
+test("acceptance: day-first slash date reaches the finance route unchanged", () => {
+  const [turn] = run([
+    {
+      message: "How was SpaceX on 07/07/2026?",
+      kind: "supported_current",
+      entities: ["SPCX"],
+      retrieval: true,
+      latencyClass: "regular",
+      retry: true,
+      deep: true,
+    },
+  ]);
+  assert.equal(turn.context.intervals[0].label, "07/07/2026");
+  assert.equal(turn.context.intervals[0].startSession, "2026-07-07");
+  assert.equal(turn.context.intervals[0].endSession, "2026-07-07");
+  assert.equal(turn.context.intervals[0].source, "explicit");
+});
+
+test("acceptance: an invalid date clarifies and never becomes today", () => {
+  const turn = decideTurn(
+    {
+      message: "How was SpaceX on 31/02/2026?",
+      history: [],
+    },
+    { now: FROZEN_NOW }
+  );
+  assert.equal(turn.decision.kind, "ambiguous");
+  assert.equal(turn.decision.route, "clarify");
+  assert.equal(turn.decision.reasonCode, "invalid_temporal_date");
+  assert.match(turn.decision.immediateText ?? "", /valid date/i);
+  assert.deepEqual(turn.context.intervals, []);
+  assert.equal(turn.context.state.horizon, undefined);
 });
 
 test("acceptance: return-promise stock picks hit the deterministic safety floor", () => {

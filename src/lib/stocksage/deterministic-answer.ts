@@ -123,7 +123,10 @@ export function deterministicModelAnswer(args: {
       request.message
     );
   const snapshotLike =
-    /\b(?:what(?:'?s| is)?\s+up|how\b.{0,50}\b(?:doing|doin|done|performing|closed?)|price|trading at|latest|today|this week|last week|last month|last year|year[- ]to[- ]date|ytd)\b/i.test(
+    (context.plan.intervals ?? []).some(
+      (interval) => interval.source !== "default"
+    ) ||
+    /\b(?:what(?:'?s| is)?\s+up|how\b.{0,50}\b(?:doing|doin|done|performing|closed?)|price|trading at|latest)\b/i.test(
       request.message
     );
   const hasListedSnapshotData =

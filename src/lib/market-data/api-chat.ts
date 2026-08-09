@@ -12,6 +12,7 @@ import {
 } from "./cache";
 import { finnhubBasicFinancials, finnhubEarnings } from "./finnhub";
 import { buildChatQuote } from "./quote-metrics";
+import type { TemporalInterval } from "@/lib/stocksage/temporal";
 
 const hasPrices = hasAlpaca || hasPolygon;
 
@@ -78,7 +79,8 @@ export async function getLiveQuotes(tickers: string[]): Promise<LiveQuote[]> {
 
 export async function getChatQuotes(
   tickers: string[],
-  fetcher?: ChatCandleFetcher
+  fetcher?: ChatCandleFetcher,
+  intervals: readonly TemporalInterval[] = []
 ): Promise<ChatQuote[]> {
   if ((!hasPrices && !fetcher) || tickers.length === 0) return [];
   const uniq = [...new Set(tickers.map((t) => t.toUpperCase()))].slice(0, 4);
@@ -89,14 +91,18 @@ export async function getChatQuotes(
       const candles = await getChatCandles(ticker, candleFetcher);
       if (!candles) return null;
       try {
-        return buildChatQuote(candles.chart_data, {
-          ticker,
-          price: candles.stock_price,
-          dayPct: candles.percent_change,
-          sourceNote: candles.source
-            ? `${candles.source} market data`
-            : "configured market-data feed",
-        });
+        return buildChatQuote(
+          candles.chart_data,
+          {
+            ticker,
+            price: candles.stock_price,
+            dayPct: candles.percent_change,
+            sourceNote: candles.source
+              ? `${candles.source} market data`
+              : "configured market-data feed",
+          },
+          intervals
+        );
       } catch (error) {
         console.error(
           `[market-data] ${JSON.stringify({

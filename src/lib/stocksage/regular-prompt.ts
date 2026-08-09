@@ -4,6 +4,7 @@ import type { ChatFundamentals, ChatQuote } from "@/lib/market-data";
 import { PRIVATE_COMPANY_NAMES } from "./entity-catalog";
 import { humanAsOf, humanPublishedAt } from "./regular-dates";
 import type { EvidenceSource, FinanceEntity } from "./types";
+import { addDays, type TemporalInterval } from "./temporal";
 
 function percent(value: number | null): string {
   if (value === null || Number.isNaN(value)) return "—";
@@ -60,6 +61,18 @@ function quoteBlock(quotes: ChatQuote[]): string {
               : ""
           }`
         : "";
+      const requested = Object.values(quote.intervalMetrics ?? {})
+        .map(
+          (metric) =>
+            `requested ${metric.startSession} to ${metric.endSession}: close ${metric.price.toFixed(2)} on ${metric.lastSession}, return ${percent(metric.returnPct)}`
+        )
+        .join(" | ");
+      if (quote.intervalMetrics !== undefined) {
+        return `${label}${seriesNote}. NORMALIZED REQUESTED INTERVALS ${
+          requested ||
+          "unavailable; do not substitute any latest-session or other-period figure"
+        }.${proxyRule}`;
+      }
       return `${label}, ${level} as of ${asOfLabel}${seriesNote}. Latest session ${percent(quote.dayPct)}${prev} | last 3 sessions ${span(quote.fewDaysStart, quote.fewDaysPct)} | 1 week ${span(quote.weekStart, quote.weekPct)} | trailing month ${span(quote.monthStart, quote.monthPct)}${mtd}${ytd} | trailing year ${span(quote.yearStart, quote.yearPct)}.${proxyRule}`;
     })
     .join("\n");
@@ -137,7 +150,7 @@ const EVIDENCE_RULES = `Facts discipline:
 - Cite only from the SOURCES block below. Never copy links, domains, or [S#] markers from earlier conversation turns, if an earlier fact matters, restate it in plain words.
 - Attribute allegations and single-source reports as such; don't present a rumor as the cause of a move.
 - Never name a specific report, rating action, analyst note, study, or publication unless it appears in SOURCES. "As noted by Moody's" with no source behind it is fabrication.
-- Anchor time words to the data: "today"/"latest" = the latest-session figures; "yesterday" = the prior-session line (its own date and move, not today's); "this year"/"YTD" = the calendar-YTD span; "over the last year" = the trailing-year span; "last week" = the 1-week span. "Last month"/"over the past month" = the TRAILING MONTH span; "since the start of the month"/"this month so far" = the MONTH TO DATE span, these are two different figures with different baselines, never substitute one for the other, and never reuse a month-to-date number you gave earlier as the answer to a trailing-month question. Note the as-of date when it matters.
+- NORMALIZED REQUESTED INTERVALS are authoritative. When present, answer from their dated close and return only; never reinterpret the user's time words or substitute latest-session, trailing, MTD, or YTD fields for a missing requested interval.
 - Conclusions use the user's horizon too: a YTD question may name only the YTD leader; a multi-window question must compare every requested window or give no single winner. Never append a latest-session leader to a YTD or multi-window answer.
 - Recency adjectives are earned, not remembered: call something "upcoming", "next-gen", "new", "recent", or "the latest" ONLY when a source or quote in this turn dates that claim. Your background knowledge lags today's date at the top of this prompt, a product you remember as upcoming may have shipped years ago. When no source dates it, use the dated fact or drop the adjective.`;
 
@@ -187,12 +200,30 @@ export function buildUnifiedSystemPrompt(args: {
   quotes?: ChatQuote[];
   fundamentals?: ChatFundamentals[];
   sources?: EvidenceSource[];
+  intervals?: TemporalInterval[];
   evidenceGap?: boolean;
 }): string {
+  const historicalIntervals = (args.intervals ?? []).filter(
+    (interval) => interval.label !== "today"
+  );
+  const sources =
+    historicalIntervals.length === 0
+      ? (args.sources ?? [])
+      : (args.sources ?? []).filter((source) => {
+          const date = source.publishedAt?.slice(0, 10);
+          return Boolean(
+            date &&
+              historicalIntervals.some(
+                (interval) =>
+                  date >= interval.startSession &&
+                  date <= addDays(interval.endSession, 3)
+              )
+          );
+        });
   const hasData =
     (args.quotes?.length ?? 0) > 0 ||
     (args.fundamentals?.length ?? 0) > 0 ||
-    (args.sources?.length ?? 0) > 0 ||
+    sources.length > 0 ||
     (args.entities?.length ?? 0) > 0;
   return [
     todayHeader(),
@@ -211,7 +242,7 @@ ${quoteBlock(args.quotes ?? [])}`,
           `VALIDATED FUNDAMENTALS
 ${fundamentalsBlock(args.fundamentals ?? [])}`,
           `SOURCES
-${sourceBlock(args.sources ?? [])}`,
+${sourceBlock(sources)}`,
         ].join("\n\n")
       : `PREFETCHED CONTEXT
 None fetched this turn. Do not state any current price, move, ranking, or news as fact, answer from timeless knowledge, or say what you'd need to check.`,

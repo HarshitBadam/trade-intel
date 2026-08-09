@@ -26,6 +26,41 @@ import type {
   FinanceEntity,
   RouteDecision,
 } from "../src/lib/stocksage/types";
+import {
+  defaultInterval,
+  temporalIntervalKey,
+  type TemporalInterval,
+} from "../src/lib/stocksage/temporal";
+import type { ChatQuote } from "../src/lib/market-data";
+
+function withIntervalReturns(
+  quote: ChatQuote,
+  intervals: readonly TemporalInterval[],
+  returns: readonly (number | undefined)[]
+): ChatQuote {
+  const intervalMetrics = Object.fromEntries(
+    intervals.flatMap((interval, index) => {
+      const returnPct = returns[index];
+      return returnPct === undefined
+        ? []
+        : [
+            [
+              temporalIntervalKey(interval),
+              {
+                intervalKey: temporalIntervalKey(interval),
+                startSession: interval.startSession,
+                endSession: interval.endSession,
+                firstSession: interval.startSession,
+                lastSession: interval.endSession,
+                price: quote.price,
+                returnPct,
+              },
+            ],
+          ];
+    })
+  );
+  return { ...quote, intervalMetrics };
+}
 
 function providers(counts: Record<string, number>): RetrievalProviders {
   return {
@@ -89,7 +124,7 @@ test("YTD rankings are deterministically sorted and retain unranked entities", (
   );
   const context = {
     quotes: [
-      {
+      withIntervalReturns({
         ticker: "AMD",
         price: 200,
         asOf: "2026-07-14",
@@ -100,8 +135,8 @@ test("YTD rankings are deterministically sorted and retain unranked entities", (
         monthPct: 4,
         yearPct: 100,
         ytdPct: 155.94,
-      },
-      {
+      }, resolution.state.intervals ?? [], [155.94]),
+      withIntervalReturns({
         ticker: "NVDA",
         price: 210,
         asOf: "2026-07-14",
@@ -111,8 +146,8 @@ test("YTD rankings are deterministically sorted and retain unranked entities", (
         monthPct: 4,
         yearPct: 20,
         ytdPct: 13.71,
-      },
-      {
+      }, resolution.state.intervals ?? [], [13.71]),
+      withIntervalReturns({
         ticker: "GOOGL",
         price: 190,
         asOf: "2026-07-14",
@@ -122,8 +157,8 @@ test("YTD rankings are deterministically sorted and retain unranked entities", (
         monthPct: 4,
         yearPct: 25,
         ytdPct: 15.01,
-      },
-      {
+      }, resolution.state.intervals ?? [], [15.01]),
+      withIntervalReturns({
         ticker: "AAPL",
         price: 220,
         asOf: "2026-07-14",
@@ -133,7 +168,7 @@ test("YTD rankings are deterministically sorted and retain unranked entities", (
         monthPct: 4,
         yearPct: 10,
         ytdPct: -2,
-      },
+      }, resolution.state.intervals ?? [], [-2]),
     ],
     fundamentals: [],
     sources: [],
@@ -165,11 +200,12 @@ test("fallback renders MTD separately from trailing month in multi-window asks",
   const resolution = resolveConversationState(
     "Compare Apple and Microsoft this week vs month-to-date vs trailing month",
     undefined,
-    []
+    [],
+    { now: new Date("2026-07-14T20:00:00.000Z") }
   );
   const context = {
     quotes: [
-      {
+      withIntervalReturns({
         ticker: "AAPL",
         price: 210,
         asOf: "2026-07-14",
@@ -180,7 +216,7 @@ test("fallback renders MTD separately from trailing month in multi-window asks",
         monthPct: 4,
         yearPct: 5,
         mtdPct: 1.5,
-      },
+      }, resolution.state.intervals ?? [], [3, 1.5, 4]),
     ],
     fundamentals: [],
     sources: [],
@@ -208,7 +244,7 @@ test("fallback renders MTD separately from trailing month in multi-window asks",
     resolution.entities,
     context
   );
-  assert.match(reply.text, /week to date \+3\.00%/i);
+  assert.match(reply.text, /this week \+3\.00%/i);
   assert.match(reply.text, /month to date \+1\.50%/i);
   assert.match(reply.text, /trailing month \+4\.00%/i);
 });
@@ -270,6 +306,9 @@ test("degraded comparison leads with side-by-side figures and conclusion", () =>
       message: "Compare Apple and Microsoft",
       entities: resolution.entities,
       state: resolution.state,
+      intervals: [
+        defaultInterval("US", new Date("2026-07-17T20:00:00.000Z")),
+      ],
     }),
   };
   const reply = buildFallbackReply(
@@ -323,6 +362,9 @@ test("quoted comparison entities are never described as outside their ranking", 
       message,
       entities: resolution.entities,
       state: resolution.state,
+      intervals: [
+        defaultInterval("AU", new Date("2026-08-07T04:00:00.000Z")),
+      ],
     }),
   };
   const reply = buildFallbackReply(

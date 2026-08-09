@@ -1,11 +1,7 @@
 import { detectCriteria } from "./conversation-attributes";
 import { resolveConversationState, type StateResolution } from "./entities";
 import { primaryCalendar } from "./listing-capability";
-import {
-  defaultInterval,
-  intervalsToHorizon,
-  parseIntervals,
-} from "./temporal";
+import { defaultInterval, intervalsToHorizon } from "./temporal";
 import type { ChatRequest, FinanceEntity, TurnContext } from "./types";
 
 /**
@@ -18,7 +14,7 @@ export function hasExplicitConversationReference(message: string): boolean {
       message
     ) ||
     /\b(?:a|the)\s+\w+(?:er)?\s+one(?:s)?\b/i.test(message) ||
-    /^(?:(?:and|so|ok(?:ay)?)\s+)?(?:why|what (?:changed|happened|moved)|today|yesterday|(?:a\s+)?few days ago|anything notable|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year))\b/i.test(
+    /^(?:(?:and|so|ok(?:ay)?)\s+)?(?:why|what (?:changed|happened|moved)|anything notable)\b/i.test(
       message
     ) ||
     /\b(?:which developments?\b.*\bmatters?|what\b.*\bmatters?|catalysts?|what should (?:i|we|investors?) watch|summari[sz]e|recap|bottom line|trade-offs?)\b/i.test(
@@ -47,15 +43,23 @@ export function buildTurnContext(args: {
   const intervals =
     state.intervals && state.intervals.length > 0
       ? state.intervals
-      : [defaultInterval(calendar, args.now)];
+      : args.resolution.temporal.status === "invalid"
+        ? []
+        : [defaultInterval(calendar, args.now)];
   const contextState =
     state.intervals && state.intervals.length > 0
       ? state
-      : {
+      : intervals.length > 0
+        ? {
           ...state,
           intervals,
           horizon: intervalsToHorizon(intervals),
-        };
+        }
+        : {
+            ...state,
+            intervals: undefined,
+            horizon: undefined,
+          };
   const focusIds = new Set(contextState.focusEntityIds ?? []);
   const focusEntities = args.entities.filter((entity) =>
     focusIds.has(entity.id)
@@ -101,20 +105,16 @@ export function resolveTurnContext(args: {
   const resolution = resolveConversationState(
     message,
     request.state,
-    request.history
+    request.history,
+    { now: args.now }
   );
   // A bare follow-up that names only a time window ("and over the last
   // month?") or only a criterion ("what risks should I research first?")
   // continues the active subject rather than leaving the finance domain.
   const carriesFollowUpAttribute =
-    resolution.entities.length === 0 &&
     resolution.state.entities.length > 0 &&
-    (parseIntervals({
-      message,
-      calendar: primaryCalendar(resolution.state.entities),
-      now: args.now,
-    }).length > 0 ||
-      detectCriteria(message).length > 0);
+    (resolution.temporal.status === "resolved" ||
+      (resolution.entities.length === 0 && detectCriteria(message).length > 0));
   const conversationReference =
     hasExplicitConversationReference(message) || carriesFollowUpAttribute;
   const effectiveEntities =
@@ -123,12 +123,7 @@ export function resolveTurnContext(args: {
       : conversationReference
         ? resolution.state.entities
         : [];
-  const policyEntities =
-    resolution.entities.length > 0
-      ? resolution.entities
-      : resolution.state.entities.length > 0
-        ? resolution.state.entities
-        : [];
+  const policyEntities = effectiveEntities;
   const context = buildTurnContext({
     message,
     resolution,

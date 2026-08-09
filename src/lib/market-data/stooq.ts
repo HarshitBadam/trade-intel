@@ -3,6 +3,10 @@ import "server-only";
 import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
 import type { ChatQuote } from "./types";
 import { buildChatQuote } from "./quote-metrics";
+import {
+  temporalIntervalKey,
+  type TemporalInterval,
+} from "@/lib/stocksage/temporal";
 
 // Keyless EOD coverage for indices and Australian listings via US ADRs.
 const STOOQ_HISTORY_URL = "https://stooq.com/q/d/l/";
@@ -39,7 +43,8 @@ export function parseStooqDailyCsv(csv: string): DailyBar[] {
 // Uses trailing-session windows and calendar baselines for YTD/MTD.
 export function chatQuoteFromDailyBars(
   ticker: string,
-  bars: DailyBar[]
+  bars: DailyBar[],
+  intervals: readonly TemporalInterval[] = []
 ): ChatQuote | null {
   const points = bars.map(({ date, close }) => ({ date, value: close }));
   const latest = points[points.length - 1];
@@ -48,12 +53,16 @@ export function chatQuoteFromDailyBars(
     latest && previous && previous.value > 0
       ? ((latest.value - previous.value) / previous.value) * 100
       : 0;
-  return buildChatQuote(points, {
-    ticker,
-    price: latest?.value ?? 0,
-    dayPct,
-    eod: true,
-  });
+  return buildChatQuote(
+    points,
+    {
+      ticker,
+      price: latest?.value ?? 0,
+      dayPct,
+      eod: true,
+    },
+    intervals
+  );
 }
 
 export type StooqFetcher = (symbol: string) => Promise<string>;
@@ -95,11 +104,12 @@ async function fetchStooqCsv(symbol: string): Promise<string> {
 async function loadStooqQuote(
   ticker: string,
   symbol: string,
-  fetcher: StooqFetcher
+  fetcher: StooqFetcher,
+  intervals: readonly TemporalInterval[]
 ): Promise<ChatQuote | null> {
   const csv = await fetcher(symbol);
   const bars = parseStooqDailyCsv(csv);
-  const quote = chatQuoteFromDailyBars(ticker, bars);
+  const quote = chatQuoteFromDailyBars(ticker, bars, intervals);
   if (!quote) {
     throw new Error(`Stooq returned no usable series for ${symbol}`);
   }
@@ -109,15 +119,17 @@ async function loadStooqQuote(
 // Fetches cached EOD quotes; partial success does not trip the breaker.
 export async function getStooqQuotes(
   pairs: { ticker: string; symbol: string }[],
-  fetcher: StooqFetcher = fetchStooqCsv
+  fetcher: StooqFetcher = fetchStooqCsv,
+  intervals: readonly TemporalInterval[] = []
 ): Promise<ChatQuote[]> {
   if (pairs.length === 0 || (await isOpen("stooq"))) return [];
   const results = await Promise.allSettled(
     pairs.slice(0, 6).map(async ({ ticker, symbol }) => {
-      const key = `${ticker}:${symbol}`;
+      const intervalKey = intervals.map(temporalIntervalKey).join(",");
+      const key = `${ticker}:${symbol}:${intervalKey}`;
       const cached = quoteCache.get(key);
       if (cached && cached.expiresAt > Date.now()) return cached.value;
-      const value = loadStooqQuote(ticker, symbol, fetcher);
+      const value = loadStooqQuote(ticker, symbol, fetcher, intervals);
       quoteCache.set(key, {
         expiresAt: Date.now() + STOOQ_CACHE_TTL_MS,
         value,

@@ -27,49 +27,53 @@ function isPriceOnly(message: string): boolean {
   );
 }
 
-function historicalPeriod(message: string): boolean {
-  return /\b(?:yesterday|this (?:week|month|year)|month[- ]to[- ]date|mtd|trailing month|ytd|year[- ]to[- ]date|last (?:few days|week|month|quarter|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|(?:past|last|over) \d+ (?:days?|weeks?|months?|years?)|over the last (?:day|week|month|quarter|year)|between \d{4}-\d{2}-\d{2} and \d{4}-\d{2}-\d{2}|(?:on|since|before|after)\s+\d{4}-\d{2}-\d{2}|\d{4}-\d{2}-\d{2})\b/i.test(
-    message
-  );
+function historicalPeriod(intervals: readonly TemporalInterval[]): boolean {
+  return intervals.some((interval) => interval.label !== "today");
 }
 
-function evidenceFreshnessDays(message: string): number | undefined {
-  const isoDate = message.match(/\b(20\d{2}-\d{2}-\d{2})\b/)?.[1];
-  if (isoDate) {
-    const target = Date.parse(`${isoDate}T00:00:00.000Z`);
-    if (Number.isFinite(target)) {
-      return Math.max(
-        14,
-        Math.min(3650, Math.ceil((Date.now() - target) / 86_400_000) + 14)
-      );
-    }
-  }
-  if (/\blast year\b/i.test(message)) return 400;
-  if (/\blast quarter\b/i.test(message)) return 120;
-  if (/\blast month\b/i.test(message)) return 45;
-  if (/\blast week\b/i.test(message)) return 14;
-  if (
-    /\blast few days\b|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|\bthe other day\b/i.test(
-      message
-    )
-  ) {
-    return 7;
-  }
-  if (/\byesterday\b/i.test(message)) return 3;
-  return historicalPeriod(message) ? undefined : 14;
+function intervalAgeDays(
+  intervals: readonly TemporalInterval[],
+  asOf: string
+): number {
+  const current = Date.parse(`${asOf.slice(0, 10)}T00:00:00.000Z`);
+  const oldest = intervals.reduce(
+    (value, interval) =>
+      interval.startSession < value ? interval.startSession : value,
+    asOf.slice(0, 10)
+  );
+  const target = Date.parse(`${oldest}T00:00:00.000Z`);
+  return Number.isFinite(current) && Number.isFinite(target)
+    ? Math.max(0, Math.ceil((current - target) / 86_400_000))
+    : 0;
+}
+
+function evidenceFreshnessDays(
+  intervals: readonly TemporalInterval[],
+  asOf: string
+): number {
+  if (!historicalPeriod(intervals)) return 14;
+  const age = intervalAgeDays(intervals, asOf);
+  if (age <= 14) return 14;
+  if (age <= 45) return 45;
+  if (age <= 120) return 120;
+  if (age <= 400) return 400;
+  return Math.min(3650, age + 14);
 }
 
 // Astra stores ~90 days; use wider history except for explicit today/yesterday asks.
 function astraFreshnessDays(
-  message: string,
-  freshnessDays: number | undefined,
+  intervals: readonly TemporalInterval[],
+  _asOf: string,
+  freshnessDays: number,
   moveCause = false
-): number | undefined {
+): number {
   if (moveCause) return freshnessDays ?? 4;
-  if (/\b(?:today|yesterday|breaking|right now)\b/i.test(message)) {
-    return freshnessDays ?? 7;
-  }
-  return freshnessDays === undefined ? undefined : Math.max(freshnessDays, 60);
+  return intervals.some(
+    (interval) =>
+      interval.label === "today" || interval.label === "yesterday"
+  )
+    ? Math.min(freshnessDays, 7)
+    : Math.max(freshnessDays, 60);
 }
 
 function marketQuoteEligible(entities: FinanceEntity[]): FinanceEntity[] {
@@ -79,12 +83,6 @@ function marketQuoteEligible(entities: FinanceEntity[]): FinanceEntity[] {
       ["primary_asx", "adr_proxy", "etf_proxy", "delayed_index"].includes(
         listingCapability(entity).quoteStrategy
       )
-  );
-}
-
-function supportsTrailingQuote(message: string): boolean {
-  return /\b(?:today|yesterday|this (?:week|month|year)|month[- ]to[- ]date|mtd|trailing month|ytd|year[- ]to[- ]date|last (?:few days|week|month|year)|(?:a\s+)?(?:few|couple(?:\s+of)?) days (?:ago|back)|the other day|over the last (?:few days|week|month|year)|[135]\s*[- ]?year)\b/i.test(
-    message
   );
 }
 
@@ -178,7 +176,7 @@ export function planEvidence(args: {
       ? ["earnings"]
       : args.state.criteria.length > 0
         ? args.state.criteria
-        : historicalPeriod(args.message)
+        : historicalPeriod(intervals)
           ? ["performance"]
           : ["current developments"];
   const deepCriteria = [
@@ -198,11 +196,9 @@ export function planEvidence(args: {
     `Focus: ${currentCriteria.join(", ")}`,
     intervalNote
       ? `Period: ${intervalNote}`
-      : args.state.horizon
-        ? `Period: ${args.state.horizon}`
-        : "",
+      : "",
     fortuneRanking
-      ? `Use the latest official Fortune ranking available as of ${new Date().getUTCFullYear()}. Prefer fortune.com or fortunemedia.mediaroom.com`
+      ? `Use the latest official Fortune ranking available as of ${new Date(asOf).getUTCFullYear()}. Prefer fortune.com or fortunemedia.mediaroom.com`
       : moveCause
         ? "Use reporting from the requested trading window. Do not present an older event as the cause of the current move"
       : currentCriteria.includes("earnings")
@@ -215,18 +211,17 @@ export function planEvidence(args: {
     ? 550
     : moveCause
       ? 4
-      : evidenceFreshnessDays(args.message);
-  const historical = historicalPeriod(args.message);
+      : evidenceFreshnessDays(intervals, asOf);
+  const historical = historicalPeriod(intervals);
 
   if (args.route === "current_finance") {
-    if (us.length > 0 && (!historical || supportsTrailingQuote(args.message))) {
+    if (us.length > 0) {
       queries.push(
         query("quotes-current", "quotes", args.message, us, ["price"], "news", 4)
       );
     }
     if (
-      marketData.length > 0 &&
-      (!historical || supportsTrailingQuote(args.message))
+      marketData.length > 0
     ) {
       queries.push(
         query(
@@ -250,7 +245,7 @@ export function planEvidence(args: {
           plannedCriteria,
           "news",
           isPriceOnly(args.message) ? 4 : 8,
-          astraFreshnessDays(args.message, freshnessDays, moveCause)
+          astraFreshnessDays(intervals, asOf, freshnessDays, moveCause)
         )
       );
     }
@@ -327,15 +322,13 @@ export function planEvidence(args: {
         : args.state.criteria.length > 0
         ? args.state.criteria
         : DEFAULT_COMPARISON_CRITERIA;
-    const topic = /\b(?:today|yesterday|current|recent|latest|earnings|regulat|legal|last|past|over|between)\b/i.test(
-      args.message
-    )
+    const topic =
+      historical ||
+      /\b(?:current|recent|latest|earnings|regulat|legal)\b/i.test(args.message)
       ? "news"
       : "general";
     if (
-      us.length > 0 &&
-      (!historical || supportsTrailingQuote(args.message)) &&
-      args.entities.length <= 12
+      us.length > 0 && args.entities.length <= 12
     ) {
       queries.push(
         query(
@@ -350,9 +343,7 @@ export function planEvidence(args: {
       );
     }
     if (
-      marketData.length > 0 &&
-      (!historical || supportsTrailingQuote(args.message)) &&
-      args.entities.length <= 12
+      marketData.length > 0 && args.entities.length <= 12
     ) {
       queries.push(
         query(
@@ -377,7 +368,8 @@ export function planEvidence(args: {
           topic,
           Math.min(12, astraEligible.length * 3),
           astraFreshnessDays(
-            args.message,
+            intervals,
+            asOf,
             topic === "news" ? freshnessDays : 60
           )
         )

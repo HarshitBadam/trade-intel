@@ -4,7 +4,7 @@ import {
   type CanonicalGroup,
   type WebAlias,
 } from "./entity-catalog";
-import { detectCriteria, detectHorizon, detectJurisdiction } from "./conversation-attributes";
+import { detectCriteria, detectJurisdiction } from "./conversation-attributes";
 import {
   canonicalizeEntity,
   fromAlias,
@@ -17,8 +17,9 @@ import { sanitizeConversationState } from "./state";
 import {
   intervalsToHorizon,
   mergeContrastIntervals,
-  parseIntervals,
+  resolveTemporalContext,
   type TemporalInterval,
+  type TemporalResolution,
 } from "./temporal";
 import type {
   ChatTurn,
@@ -88,11 +89,13 @@ export type StateResolution = {
   entities: FinanceEntity[];
   clarification?: string;
   reasonCode: string;
+  temporal: TemporalResolution;
 };
 export function resolveConversationState(
   message: string,
   previous: ConversationState | undefined,
-  history: ChatTurn[] = []
+  history: ChatTurn[] = [],
+  options: { now?: Date } = {}
 ): StateResolution {
   const base = previous
     ? sanitizeConversationState(previous, canonicalizeEntity)
@@ -106,6 +109,7 @@ export function resolveConversationState(
       state: { ...emptyConversationState(), revision: base.revision + 1 },
       entities: [],
       reasonCode: "state_reset",
+      temporal: { status: "none", intervals: [] },
     };
   }
   let direct = resolveText(message);
@@ -252,6 +256,7 @@ export function resolveConversationState(
         clarification:
           "Which companies do you mean? Name the group before asking for a subset.",
         reasonCode: "ambiguous_ordered_reference",
+        temporal: { status: "none", intervals: [] },
       };
     }
     const useFormer = /former/i.test(subsetMatch[1]);
@@ -271,6 +276,7 @@ export function resolveConversationState(
         clarification:
           "Which two entities do you mean? Name them in order so I can resolve former and latter.",
         reasonCode: "ambiguous_ordered_reference",
+        temporal: { status: "none", intervals: [] },
       };
     }
     const ids = [
@@ -291,6 +297,7 @@ export function resolveConversationState(
         entities: [],
         clarification: "Please name the entity you mean.",
         reasonCode: "stale_ordered_reference",
+        temporal: { status: "none", intervals: [] },
       };
     }
     orderedPivot = direct.length > 0;
@@ -332,6 +339,15 @@ export function resolveConversationState(
       ? base.entities.filter(isIndexEntity)
       : [];
   const priorGroups = base.groups ?? [];
+  const temporal = resolveTemporalContext({
+    message,
+    calendar: primaryCalendar(
+      direct.length > 0 || grouped.length > 0 || indexReference.length > 0
+        ? [...direct, ...grouped, ...indexReference]
+        : base.entities
+    ),
+    now: options.now,
+  });
   const priorGroupMemberIds = new Set(
     priorGroups.flatMap((group) => group.memberIds)
   );
@@ -365,7 +381,7 @@ export function resolveConversationState(
     direct.length === 0 &&
     grouped.length === 0 &&
     base.entities.length > 0 &&
-    CONTEXTUAL_FOLLOW_UP.test(message);
+    (CONTEXTUAL_FOLLOW_UP.test(message) || temporal.status === "resolved");
   const carriesForward =
     removed.length === 0 &&
     !subsetMatch &&
@@ -441,7 +457,6 @@ export function resolveConversationState(
     !subsetMatch &&
     removed.length === 0 &&
     !fortuneReplacement;
-  const horizon = detectHorizon(message);
   const jurisdiction = detectJurisdiction(message, entities);
   const activeEntities = retainComparisonContext
     ? base.entities
@@ -478,12 +493,15 @@ export function resolveConversationState(
   const calendar = primaryCalendar(
     activeEntities.length > 0 ? activeEntities : base.entities
   );
-  const parsedIntervals = parseIntervals({ message, calendar });
-  const intervals: TemporalInterval[] = mergeContrastIntervals({
-    message,
-    previous: startsNewTopic ? [] : (base.intervals ?? []),
-    parsed: parsedIntervals,
-  });
+  const intervals: TemporalInterval[] =
+    temporal.status === "invalid"
+      ? []
+      : mergeContrastIntervals({
+          message,
+          previous: startsNewTopic ? [] : (base.intervals ?? []),
+          parsed:
+            temporal.status === "resolved" ? temporal.intervals : [],
+        });
   const next: ConversationState = {
     version: 1,
     revision,
@@ -513,10 +531,7 @@ export function resolveConversationState(
                 : base.explicitEntitySet,
     criteria:
       criteria.length > 0 ? criteria : startsNewTopic ? [] : base.criteria,
-    horizon:
-      intervalsToHorizon(intervals) ??
-      horizon ??
-      (startsNewTopic ? undefined : base.horizon),
+    horizon: intervalsToHorizon(intervals),
     jurisdiction:
       jurisdiction ?? (startsNewTopic ? undefined : base.jurisdiction),
     safetyRepliesUsed: base.safetyRepliesUsed,
@@ -527,6 +542,7 @@ export function resolveConversationState(
   return {
     state: next,
     entities,
+    temporal,
     reasonCode:
       removed.length > 0
         ? "entity_correction"
@@ -540,6 +556,8 @@ export function resolveConversationState(
                 ? "conversation_reference_resolved"
                 : direct.length > 0
                   ? "explicit_entities"
-                  : "no_entities",
+                  : temporal.status === "resolved" && base.entities.length > 0
+                    ? "temporal_context_inherited"
+                    : "no_entities",
   };
 }

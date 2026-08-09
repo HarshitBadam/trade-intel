@@ -9,9 +9,9 @@ export const SINGULAR_REFERENCE =
   /\b(?:it|its|that one|this one|the company|the bank|the stock|the shares|what about|how about|wb)\b/i;
 export const ORDERED_REFERENCE = /\b(?:former|latter|first one|second one)\b/i;
 export const COMPARISON_FOLLOW_UP =
-  /\b(?:which (?:one|is|looks)|which of (?:the|those|these)|what about|how about|wb|better|safe(?:st|r)|less risky|more risky|more volatile|volatil|rank|order|all of them|former two|latter two|today|yesterday|(?:a\s+)?few days ago|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|over (?:the )?last|past \d+|between)\b/i;
+  /\b(?:which (?:one|is|looks)|which of (?:the|those|these)|what about|how about|wb|better|safe(?:st|r)|less risky|more risky|more volatile|volatil|rank|order|all of them|former two|latter two)\b/i;
 export const CONTEXTUAL_FOLLOW_UP =
-  /^(?:(?:and|so|ok(?:ay)?|\.{2,})\s+)?(?:today|yesterday|(?:a\s+)?few days ago|anything notable|last (?:few days|week|month|quarter|year)|this (?:week|month|quarter|year)|what (?:changed|happened|moved)|what(?:'?s| is) (?:your|the) (?:current\s+)?outlook|which (?:one|is|looks|parts?)|(?:can you )?reconcile|how (?:did|has|is|are|was)|why\b|rank\b|order\b|all of them\b|only the (?:former|latter) two\b)/i;
+  /^(?:(?:and|so|ok(?:ay)?|\.{2,})\s+)?(?:anything notable|what (?:changed|happened|moved)|what(?:'?s| is) (?:your|the) (?:current\s+)?outlook|which (?:one|is|looks|parts?)|(?:can you )?reconcile|how (?:did|has|is|are|was)|why\b|rank\b|order\b|all of them\b|only the (?:former|latter) two\b)/i;
 export const REMOVAL =
   /\b(?:forget|drop|remove|ignore|skip|leave out|without)\s+(?:about\s+)?(.+?)(?=\s*(?:[,, -]{1,2}|,|\.|;|!|\?|$))/i;
 export const SWAP_IN_CORRECTION =

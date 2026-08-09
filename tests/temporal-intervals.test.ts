@@ -9,6 +9,8 @@ import {
   mergeContrastIntervals,
   parseIntervals,
   previousSession,
+  resolveTemporalContext,
+  temporalIntervalKey,
   translateInterval,
 } from "../src/lib/stocksage/temporal";
 import { buildChatQuote } from "../src/lib/market-data/quote-metrics";
@@ -149,6 +151,75 @@ test("explicit date ranges survive as bounded trading sessions", () => {
   assert.equal(range.endSession, "2026-07-10");
 });
 
+test("point-in-time relative offsets resolve to one prior trading session", () => {
+  const now = new Date("2026-08-09T20:00:00.000Z");
+  const resolution = resolveTemporalContext({
+    message: "How was this like a month ago?",
+    calendar: "US",
+    now,
+  });
+  assert.equal(resolution.status, "resolved");
+  if (resolution.status !== "resolved") return;
+  assert.deepEqual(resolution.intervals, [
+    {
+      version: 1,
+      label: "a month ago",
+      kind: "session",
+      calendar: "US",
+      startSession: "2026-07-07",
+      endSession: "2026-07-07",
+      source: "explicit",
+      raw: "a month ago",
+    },
+  ]);
+});
+
+test("slash dates are strict day-first dates and invalid dates are rejected", () => {
+  const now = new Date("2026-08-09T20:00:00.000Z");
+  const valid = resolveTemporalContext({
+    message: "How was SpaceX on 07/07/2026?",
+    calendar: "US",
+    now,
+  });
+  assert.equal(valid.status, "resolved");
+  if (valid.status === "resolved") {
+    assert.equal(valid.intervals[0].label, "07/07/2026");
+    assert.equal(valid.intervals[0].startSession, "2026-07-07");
+    assert.equal(valid.intervals[0].endSession, "2026-07-07");
+  }
+
+  const invalid = resolveTemporalContext({
+    message: "How was SpaceX on 31/02/2026?",
+    calendar: "US",
+    now,
+  });
+  assert.equal(invalid.status, "invalid");
+  if (invalid.status === "invalid") {
+    assert.equal(invalid.raw, "31/02/2026");
+    assert.match(invalid.clarification, /valid date/i);
+  }
+});
+
+test("overlapping month aliases compile exactly once", () => {
+  const now = new Date("2026-08-09T20:00:00.000Z");
+  assert.deepEqual(
+    parseIntervals({
+      message: "How did it perform over the last month?",
+      calendar: "US",
+      now,
+    }).map((value) => value.label),
+    ["trailing month"]
+  );
+  assert.deepEqual(
+    parseIntervals({
+      message: "Compare last month with over the last month",
+      calendar: "US",
+      now,
+    }).map((value) => value.label),
+    ["last month", "trailing month"]
+  );
+});
+
 test("quote metrics distinguish calendar periods from trailing windows", () => {
   const quote = buildChatQuote(
     [
@@ -166,4 +237,112 @@ test("quote metrics distinguish calendar periods from trailing windows", () => {
   assert.equal(quote.lastMonthStart, "2026-07-01");
   assert.equal(quote.lastMonthEnd, "2026-07-31");
   assert.ok(Math.abs((quote.wtdPct ?? 0) - 0.8333333333) < 0.001);
+});
+
+test("normalized point intervals produce the historical close and session move", () => {
+  const resolution = resolveTemporalContext({
+    message: "How was it on 07/07/2026?",
+    calendar: "US",
+    now: new Date("2026-08-09T20:00:00.000Z"),
+  });
+  assert.equal(resolution.status, "resolved");
+  if (resolution.status !== "resolved") return;
+  const [requested] = resolution.intervals;
+  const quote = buildChatQuote(
+    [
+      { date: "2026-07-06", value: 100 },
+      { date: "2026-07-07", value: 110 },
+      { date: "2026-08-07", value: 120 },
+    ],
+    { ticker: "TEST", price: 120, dayPct: 9.09 },
+    resolution.intervals
+  );
+  assert.ok(quote);
+  assert.deepEqual(quote.intervalMetrics?.[temporalIntervalKey(requested)], {
+    intervalKey: "US:2026-07-07:2026-07-07",
+    startSession: "2026-07-07",
+    endSession: "2026-07-07",
+    firstSession: "2026-07-07",
+    lastSession: "2026-07-07",
+    price: 110,
+    returnPct: 10,
+    baselineSession: "2026-07-06",
+  });
+});
+
+test("holiday snapping selects the prior real candle", () => {
+  const resolution = resolveTemporalContext({
+    message: "How was it on 04/07/2026?",
+    calendar: "US",
+    now: new Date("2026-08-09T20:00:00.000Z"),
+  });
+  assert.equal(resolution.status, "resolved");
+  if (resolution.status !== "resolved") return;
+  const [requested] = resolution.intervals;
+  assert.equal(requested.endSession, "2026-07-02");
+  const quote = buildChatQuote(
+    [
+      { date: "2026-07-01", value: 100 },
+      { date: "2026-07-02", value: 105 },
+      { date: "2026-07-06", value: 106 },
+    ],
+    { ticker: "TEST", price: 106, dayPct: 0.95 },
+    resolution.intervals
+  );
+  assert.ok(quote);
+  assert.equal(
+    quote.intervalMetrics?.[temporalIntervalKey(requested)]?.price,
+    105
+  );
+});
+
+test("bounded ranges use the candle before the range as their baseline", () => {
+  const resolution = resolveTemporalContext({
+    message: "How did it do last month?",
+    calendar: "US",
+    now: new Date("2026-08-09T20:00:00.000Z"),
+  });
+  assert.equal(resolution.status, "resolved");
+  if (resolution.status !== "resolved") return;
+  const [requested] = resolution.intervals;
+  const quote = buildChatQuote(
+    [
+      { date: "2026-06-30", value: 100 },
+      { date: "2026-07-01", value: 110 },
+      { date: "2026-07-31", value: 120 },
+      { date: "2026-08-07", value: 125 },
+    ],
+    { ticker: "TEST", price: 125, dayPct: 4.17 },
+    resolution.intervals
+  );
+  assert.ok(quote);
+  const metric = quote.intervalMetrics?.[temporalIntervalKey(requested)];
+  assert.equal(metric?.price, 120);
+  assert.equal(metric?.returnPct, 20);
+  assert.equal(metric?.baselineSession, "2026-06-30");
+});
+
+test("missing historical candles never become latest-session metrics", () => {
+  const resolution = resolveTemporalContext({
+    message: "How was it on 07/07/2025?",
+    calendar: "US",
+    now: new Date("2026-08-09T20:00:00.000Z"),
+  });
+  assert.equal(resolution.status, "resolved");
+  if (resolution.status !== "resolved") return;
+  const [requested] = resolution.intervals;
+  const quote = buildChatQuote(
+    [
+      { date: "2026-08-06", value: 100 },
+      { date: "2026-08-07", value: 110 },
+    ],
+    { ticker: "TEST", price: 110, dayPct: 10 },
+    resolution.intervals
+  );
+  assert.ok(quote);
+  assert.equal(
+    quote.intervalMetrics?.[temporalIntervalKey(requested)],
+    undefined
+  );
+  assert.equal(quote.price, 110);
 });

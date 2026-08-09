@@ -13,21 +13,39 @@ import {
   STOOQ_SYMBOLS,
 } from "../entity-catalog";
 import type { EvidenceQuery } from "../types";
+import type { TemporalInterval } from "../temporal";
 
-export type MarketQuoteFetcher = (symbols: string[]) => Promise<ChatQuote[]>;
-export type StooqQuoteFetcher = (
-  pairs: { ticker: string; symbol: string }[]
+export type MarketQuoteFetcher = (
+  symbols: string[],
+  intervals?: readonly TemporalInterval[]
 ) => Promise<ChatQuote[]>;
-export type AsxQuoteFetcher = (tickers: string[]) => Promise<ChatQuote[]>;
+export type StooqQuoteFetcher = (
+  pairs: { ticker: string; symbol: string }[],
+  intervals?: readonly TemporalInterval[]
+) => Promise<ChatQuote[]>;
+export type AsxQuoteFetcher = (
+  tickers: string[],
+  intervals?: readonly TemporalInterval[]
+) => Promise<ChatQuote[]>;
+
+const defaultQuoteFetcher: MarketQuoteFetcher = (symbols, intervals = []) =>
+  getChatQuotes(symbols, undefined, intervals);
+const defaultStooqFetcher: StooqQuoteFetcher = (pairs, intervals = []) =>
+  getStooqQuotes(pairs, undefined, intervals);
+const defaultAsxFetcher: AsxQuoteFetcher = (tickers, intervals = []) =>
+  getYahooAsxQuotes(tickers, undefined, intervals);
 
 async function fetchProxyCandidates(
   symbols: string[],
-  fetcher: MarketQuoteFetcher
+  fetcher: MarketQuoteFetcher,
+  intervals: readonly TemporalInterval[]
 ): Promise<ChatQuote[]> {
   const output: ChatQuote[] = [];
   for (let index = 0; index < symbols.length; index += 4) {
     try {
-      output.push(...(await fetcher(symbols.slice(index, index + 4))));
+      output.push(
+        ...(await fetcher(symbols.slice(index, index + 4), intervals))
+      );
     } catch {
       continue;
     }
@@ -37,9 +55,10 @@ async function fetchProxyCandidates(
 
 export async function retrieveMarketProxy(
   query: EvidenceQuery,
-  quoteFetcher: MarketQuoteFetcher = getChatQuotes,
-  stooqFetcher: StooqQuoteFetcher = getStooqQuotes,
-  asxFetcher: AsxQuoteFetcher = getYahooAsxQuotes
+  quoteFetcher: MarketQuoteFetcher = defaultQuoteFetcher,
+  stooqFetcher: StooqQuoteFetcher = defaultStooqFetcher,
+  asxFetcher: AsxQuoteFetcher = defaultAsxFetcher,
+  intervals: readonly TemporalInterval[] = []
 ): Promise<ChatQuote[]> {
   if (query.provider !== "market_proxy" || query.tickers.length === 0) {
     return [];
@@ -59,7 +78,7 @@ export async function retrieveMarketProxy(
   if (asxTickers.length > 0) {
     let nativeQuotes: ChatQuote[] = [];
     try {
-      nativeQuotes = await asxFetcher(asxTickers);
+      nativeQuotes = await asxFetcher(asxTickers, intervals);
     } catch {
       nativeQuotes = [];
     }
@@ -108,7 +127,8 @@ export async function retrieveMarketProxy(
       });
       const quotes = await fetchProxyCandidates(
         candidates.map((candidate) => candidate.symbol),
-        quoteFetcher
+        quoteFetcher,
+        intervals
       );
       const bySymbol = new Map(
         quotes.map((quote) => [quote.ticker.toUpperCase(), quote])
@@ -137,7 +157,7 @@ export async function retrieveMarketProxy(
     });
     let stooqQuotes: ChatQuote[] = [];
     try {
-      stooqQuotes = await stooqFetcher(pairs);
+      stooqQuotes = await stooqFetcher(pairs, intervals);
     } catch {
       stooqQuotes = [];
     }

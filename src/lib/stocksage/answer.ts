@@ -143,6 +143,7 @@ export async function executeAnswer(args: AnswerExecutorArgs): Promise<ChatReply
     state: turnContext.state,
     entities: turnContext.entities,
     reasonCode: decision.reasonCode,
+    temporal: { status: "none" as const, intervals: [] as [] },
   };
   const telemetry = {
     latencyClass: budget.latencyClass,
@@ -499,6 +500,7 @@ async function synthesizeRegularAnswer(
     quotes: context.quotes,
     fundamentals: context.fundamentals,
     sources: context.sources,
+    intervals: context.plan.intervals,
     evidenceGap: context.plan.queries.length > 0 && !live,
   });
   const figureCorpus = [

@@ -23,6 +23,23 @@ export type TemporalInterval = {
   raw?: string;
 };
 
+export type TemporalResolution =
+  | { status: "none"; intervals: [] }
+  | { status: "resolved"; intervals: TemporalInterval[] }
+  | {
+      status: "invalid";
+      intervals: [];
+      reason: "invalid_date";
+      raw: string;
+      clarification: string;
+    };
+
+export function temporalIntervalKey(
+  value: Pick<TemporalInterval, "calendar" | "startSession" | "endSession">
+): string {
+  return `${value.calendar}:${value.startSession}:${value.endSession}`;
+}
+
 const TIME_ZONES: Record<MarketCalendar, string> = {
   US: "America/New_York",
   AU: "Australia/Sydney",
@@ -354,15 +371,50 @@ const EXPLICIT_PATTERNS: [RegExp, string][] = [
 
 const RELATIVE_SPAN =
   /\b(?:past|last|over the last|over the past)\s+(\d{1,3})\s+(days?|weeks?|months?|years?)\b/i;
-const EXPLICIT_RANGE =
-  /\bbetween\s+(\d{4}-\d{2}-\d{2})\s+and\s+(\d{4}-\d{2}-\d{2})\b/i;
-const SINGLE_DATE = /\b(\d{4}-\d{2}-\d{2})\b/;
+const RELATIVE_POINT =
+  /\b(a|an|one|\d{1,3})\s+(days?|weeks?|months?|years?)\s+(?:ago|back)\b/i;
+const DATE_TOKEN = String.raw`(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4})`;
+const EXPLICIT_RANGE = new RegExp(
+  String.raw`\bbetween\s+(${DATE_TOKEN})\s+and\s+(${DATE_TOKEN})\b`,
+  "i"
+);
+const SINGLE_DATE = new RegExp(String.raw`\b(${DATE_TOKEN})\b`);
 
-function spanDays(count: number, unit: string): number {
-  if (/^week/i.test(unit)) return count * 7;
-  if (/^month/i.test(unit)) return count * 30;
-  if (/^year/i.test(unit)) return count * 365;
-  return count;
+function strictSessionDate(
+  year: number,
+  month: number,
+  day: number
+): string | null {
+  if (year < 1900 || year > 2200 || month < 1 || month > 12 || day < 1) {
+    return null;
+  }
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return toSession(date);
+}
+
+function parseDateToken(raw: string): string | null {
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    return strictSessionDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  }
+  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return slash
+    ? strictSessionDate(Number(slash[3]), Number(slash[2]), Number(slash[1]))
+    : null;
+}
+
+function offsetStart(end: string, count: number, unit: string): string {
+  if (/^years?/i.test(unit)) return shiftMonths(end, -12 * count);
+  if (/^months?/i.test(unit)) return shiftMonths(end, -count);
+  if (/^weeks?/i.test(unit)) return addDays(end, -7 * count);
+  return addDays(end, -count);
 }
 
 /**
@@ -370,22 +422,45 @@ function spanDays(count: number, unit: string): number {
  * Parsing lives here so planning, prompting and state all read the same
  * intervals rather than each re-interpreting the raw text.
  */
-export function parseIntervals(args: {
+export function resolveTemporalContext(args: {
   message: string;
   calendar: MarketCalendar;
   now?: Date;
-}): TemporalInterval[] {
+}): TemporalResolution {
   const now = args.now ?? new Date();
   const end = currentSession(args.calendar, now);
-  const found: { index: number; interval: TemporalInterval }[] = [];
+  const found: {
+    index: number;
+    endIndex: number;
+    interval: TemporalInterval;
+  }[] = [];
+  let invalid: { raw: string } | undefined;
+
+  const addFound = (
+    match: RegExpExecArray,
+    value: TemporalInterval
+  ): boolean => {
+    if (match.index === undefined) return false;
+    const endIndex = match.index + match[0].length;
+    if (
+      found.some(
+        (candidate) =>
+          match.index < candidate.endIndex && endIndex > candidate.index
+      )
+    ) {
+      return false;
+    }
+    found.push({ index: match.index, endIndex, interval: value });
+    return true;
+  };
 
   for (const [pattern, label] of EXPLICIT_PATTERNS) {
     const match = pattern.exec(args.message);
     if (match?.index === undefined) continue;
     const built = LABEL_BUILDERS[label](args.calendar, end, now);
-    found.push({
-      index: match.index,
-      interval: interval({
+    addFound(
+      match,
+      interval({
         label,
         kind: built.kind,
         calendar: args.calendar,
@@ -393,69 +468,134 @@ export function parseIntervals(args: {
         endSession: built.end,
         source: "explicit",
         raw: match[0].toLowerCase(),
-      }),
-    });
+      })
+    );
   }
 
   const range = EXPLICIT_RANGE.exec(args.message);
   if (range?.index !== undefined) {
-    found.push({
-      index: range.index,
-      interval: interval({
-        label: `${range[1]} to ${range[2]}`,
-        kind: "range",
-        calendar: args.calendar,
-        startSession: sessionOnOrAfter(range[1], args.calendar),
-        endSession: sessionOnOrBefore(range[2], args.calendar),
-        source: "explicit",
-        raw: range[0].toLowerCase(),
-      }),
-    });
-  } else {
-    const span = RELATIVE_SPAN.exec(args.message);
-    if (span?.index !== undefined) {
-      const days = spanDays(Number(span[1]), span[2]);
-      found.push({
-        index: span.index,
-        interval: interval({
-          label: `past ${span[1]} ${span[2].toLowerCase()}`,
-          kind: "trailing",
-          calendar: args.calendar,
-          startSession: sessionOnOrBefore(addDays(end, -days), args.calendar),
-          endSession: end,
-          source: "explicit",
-          raw: span[0].toLowerCase(),
-        }),
-      });
+    const startDate = parseDateToken(range[1]);
+    const endDate = parseDateToken(range[2]);
+    if (!startDate || !endDate || startDate > endDate) {
+      invalid = { raw: !startDate ? range[1] : !endDate ? range[2] : range[0] };
     } else {
-      const single = SINGLE_DATE.exec(args.message);
-      if (single?.index !== undefined && found.length === 0) {
-        const session = sessionOnOrBefore(single[1], args.calendar);
-        found.push({
-          index: single.index,
-          interval: interval({
-            label: single[1],
-            kind: "session",
+      const startSession = sessionOnOrAfter(startDate, args.calendar);
+      const endSession = sessionOnOrBefore(endDate, args.calendar);
+      if (startSession > endSession) {
+        invalid = { raw: range[0] };
+      } else {
+        addFound(
+          range,
+          interval({
+            label: `${range[1]} to ${range[2]}`,
+            kind: "range",
             calendar: args.calendar,
-            startSession: session,
-            endSession: session,
+            startSession,
+            endSession,
             source: "explicit",
-            raw: single[0],
-          }),
-        });
+            raw: range[0].toLowerCase(),
+          })
+        );
       }
     }
   }
 
+  const span = RELATIVE_SPAN.exec(args.message);
+  if (span?.index !== undefined) {
+    const count = Number(span[1]);
+    addFound(
+      span,
+      interval({
+        label: `past ${span[1]} ${span[2].toLowerCase()}`,
+        kind: "trailing",
+        calendar: args.calendar,
+        startSession: sessionOnOrBefore(
+          offsetStart(end, count, span[2]),
+          args.calendar
+        ),
+        endSession: end,
+        source: "explicit",
+        raw: span[0].toLowerCase(),
+      })
+    );
+  }
+
+  const point = RELATIVE_POINT.exec(args.message);
+  if (point?.index !== undefined) {
+    const count = /^(?:a|an|one)$/i.test(point[1]) ? 1 : Number(point[1]);
+    const session = sessionOnOrBefore(
+      offsetStart(end, count, point[2]),
+      args.calendar
+    );
+    addFound(
+      point,
+      interval({
+        label: point[0].toLowerCase(),
+        kind: "session",
+        calendar: args.calendar,
+        startSession: session,
+        endSession: session,
+        source: "explicit",
+        raw: point[0].toLowerCase(),
+      })
+    );
+  }
+
+  const single = SINGLE_DATE.exec(args.message);
+  if (single?.index !== undefined) {
+    const parsed = parseDateToken(single[1]);
+    if (!parsed) {
+      invalid = { raw: single[1] };
+    } else {
+      const session = sessionOnOrBefore(parsed, args.calendar);
+      addFound(
+        single,
+        interval({
+          label: single[1],
+          kind: "session",
+          calendar: args.calendar,
+          startSession: session,
+          endSession: session,
+          source: "explicit",
+          raw: single[0],
+        })
+      );
+    }
+  }
+
+  if (invalid) {
+    return {
+      status: "invalid",
+      intervals: [],
+      reason: "invalid_date",
+      raw: invalid.raw,
+      clarification: `"${invalid.raw}" is not a valid date. Use DD/MM/YYYY or YYYY-MM-DD.`,
+    };
+  }
+
   const seen = new Set<string>();
-  return found
+  const intervals = found
     .sort((left, right) => left.index - right.index)
     .map((entry) => entry.interval)
     .filter((candidate) => {
-      if (seen.has(candidate.label)) return false;
-      seen.add(candidate.label);
+      const key = `${temporalIntervalKey(candidate)}:${candidate.label}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
     });
+  return intervals.length > 0
+    ? { status: "resolved", intervals }
+    : { status: "none", intervals: [] };
+}
+
+/** Compatibility wrapper; new behavior consumes `resolveTemporalContext`. */
+export function parseIntervals(args: {
+  message: string;
+  calendar: MarketCalendar;
+  now?: Date;
+}): TemporalInterval[] {
+  const result = resolveTemporalContext(args);
+  return result.status === "resolved" ? result.intervals : [];
 }
 
 export function defaultInterval(
@@ -545,7 +685,7 @@ export function mergeContrastIntervals(args: {
   const seen = new Set<string>();
   return combined
     .filter((value) => {
-      const key = `${value.calendar}:${value.startSession}:${value.endSession}`;
+      const key = temporalIntervalKey(value);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;

@@ -261,6 +261,7 @@ test("routes historical company questions as evidence-backed finance", () => {
       message: "How did Tesla perform last year?",
       entities: resolution.entities,
       state: resolution.state,
+      hasTemporalIntent: resolution.temporal.status === "resolved",
     }).route,
     "current_finance"
   );

@@ -1,4 +1,8 @@
-import type { ChatQuote } from "./types";
+import {
+  temporalIntervalKey,
+  type TemporalInterval,
+} from "@/lib/stocksage/temporal";
+import type { ChatIntervalMetric, ChatQuote } from "./types";
 
 export type QuoteMetricPoint = {
   date: string;
@@ -18,18 +22,24 @@ type QuoteMetricOptions = {
 
 export function buildChatQuote(
   points: QuoteMetricPoint[],
-  options: QuoteMetricOptions
+  options: QuoteMetricOptions,
+  intervals: readonly TemporalInterval[] = []
 ): ChatQuote | null {
-  const normalizedPoints = points.flatMap((point): QuoteMetricPoint[] => {
-    const sessionDate = point.date.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
-    if (
-      !sessionDate ||
-      !Number.isFinite(Date.parse(`${sessionDate}T00:00:00.000Z`))
-    ) {
-      return [];
-    }
-    return [{ ...point, date: sessionDate }];
-  });
+  const normalizedPoints = [
+    ...new Map(
+      points.flatMap((point): [string, QuoteMetricPoint][] => {
+        const sessionDate = point.date.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+        if (
+          !sessionDate ||
+          !Number.isFinite(Date.parse(`${sessionDate}T00:00:00.000Z`)) ||
+          !Number.isFinite(point.value)
+        ) {
+          return [];
+        }
+        return [[sessionDate, { ...point, date: sessionDate }]];
+      })
+    ).values(),
+  ].sort((left, right) => left.date.localeCompare(right.date));
   if (normalizedPoints.length < 2) return null;
 
   const latestIndex = normalizedPoints.length - 1;
@@ -114,6 +124,63 @@ export function buildChatQuote(
   const weekToDate = rangeReturn(currentWeekStart, latest.date);
   const lastWeek = rangeReturn(previousWeekStart, previousWeekEnd);
   const lastMonth = rangeReturn(previousMonthStart, previousMonthEnd);
+  const intervalMetrics: Record<string, ChatIntervalMetric> = {};
+  for (const requested of intervals.slice(0, 4)) {
+    const key = temporalIntervalKey(requested);
+    const first = normalizedPoints.findIndex(
+      (point) => point.date >= requested.startSession
+    );
+    let last = -1;
+    for (let index = latestIndex; index >= 0; index -= 1) {
+      if (normalizedPoints[index].date <= requested.endSession) {
+        last = index;
+        break;
+      }
+    }
+    const isPoint = requested.startSession === requested.endSession;
+    const exactPoint =
+      isPoint &&
+      first >= 0 &&
+      last === first &&
+      normalizedPoints[first].date === requested.endSession;
+    const boundedRange =
+      !isPoint &&
+      first >= 0 &&
+      last >= first &&
+      normalizedPoints[first].date <= requested.endSession;
+    if (!exactPoint && !boundedRange) {
+      // "Today" is the only interval allowed to use the provider's explicit
+      // current quote fields. Historical intervals never fall through here.
+      if (requested.label === "today" && requested.endSession >= latest.date) {
+        intervalMetrics[key] = {
+          intervalKey: key,
+          startSession: requested.startSession,
+          endSession: requested.endSession,
+          firstSession: latest.date,
+          lastSession: latest.date,
+          price: options.price,
+          returnPct: options.dayPct,
+        };
+      }
+      continue;
+    }
+    const baselineIndex = first - 1;
+    const baseline = normalizedPoints[baselineIndex];
+    const final = normalizedPoints[last];
+    intervalMetrics[key] = {
+      intervalKey: key,
+      startSession: requested.startSession,
+      endSession: requested.endSession,
+      firstSession: normalizedPoints[first].date,
+      lastSession: final.date,
+      price: final.value,
+      returnPct:
+        baseline && baseline.value > 0
+          ? ((final.value - baseline.value) / baseline.value) * 100
+          : null,
+      ...(baseline ? { baselineSession: baseline.date } : {}),
+    };
+  }
 
   return {
     ticker: options.ticker,
@@ -147,5 +214,6 @@ export function buildChatQuote(
     lastMonthStart: lastMonth.start,
     lastMonthEnd: lastMonth.end,
     yearStart: dateFrom(252),
+    ...(intervals.length > 0 ? { intervalMetrics } : {}),
   };
 }

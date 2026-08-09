@@ -24,6 +24,7 @@ import { planEvidence } from "../evidence/planner";
 import { STOCKSAGE_DEEP_SYSTEM } from "../prompt";
 import { executeEvidencePlan } from "../evidence/retrieve";
 import { synthesizeWithFallback } from "../synthesis";
+import { describeInterval } from "../temporal";
 import type {
   ConversationState,
   DeepResearchReply,
@@ -188,6 +189,8 @@ export async function executeDeepResearch(
         retryable: true,
       };
     }
+    const normalizedIntervals =
+      "intervals" in snapshot ? snapshot.intervals : [];
     const user = `ORIGINAL QUESTION
 ${snapshot.question}
 
@@ -210,7 +213,7 @@ CRITERIA
 ${snapshot.criteria.join(", ") || "not specified"}
 
 HORIZON
-${snapshot.horizon ?? "not specified"}`;
+${normalizedIntervals.map(describeInterval).join("; ") || "not specified"}`;
     stage = "synthesis";
     const today = new Date().toISOString().slice(0, 10);
     const system = `${STOCKSAGE_DEEP_SYSTEM}

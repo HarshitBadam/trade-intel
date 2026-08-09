@@ -2,6 +2,10 @@ import "server-only";
 
 import { buildChatQuote } from "./quote-metrics";
 import type { ChatQuote } from "./types";
+import {
+  temporalIntervalKey,
+  type TemporalInterval,
+} from "@/lib/stocksage/temporal";
 
 const YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/";
 const YAHOO_TIMEOUT_MS = 1_200;
@@ -62,7 +66,8 @@ export function yahooAsxSymbol(ticker: string): string | null {
 export function parseYahooAsxChart(
   ticker: string,
   yahooSymbol: string,
-  payload: unknown
+  payload: unknown,
+  intervals: readonly TemporalInterval[] = []
 ): ChatQuote | null {
   const expectedSymbol = yahooAsxSymbol(ticker);
   const normalizedSymbol = yahooSymbol.trim().toUpperCase();
@@ -135,12 +140,16 @@ export function parseYahooAsxChart(
     previousClose > 0
       ? ((latest.value - previousClose) / previousClose) * 100
       : 0;
-  const quote = buildChatQuote(points, {
-    ticker: expectedSymbol.slice(0, -3),
-    price: latest.value,
-    dayPct,
-    sourceNote: "Yahoo Finance delayed ASX data",
-  });
+  const quote = buildChatQuote(
+    points,
+    {
+      ticker: expectedSymbol.slice(0, -3),
+      price: latest.value,
+      dayPct,
+      sourceNote: "Yahoo Finance delayed ASX data",
+    },
+    intervals
+  );
   return quote
     ? {
         ...quote,
@@ -180,10 +189,11 @@ async function fetchYahooChart(
 async function loadYahooAsxQuote(
   ticker: string,
   yahooSymbol: string,
-  fetcher: YahooFetch
+  fetcher: YahooFetch,
+  intervals: readonly TemporalInterval[]
 ): Promise<ChatQuote | null> {
   const payload = await fetchYahooChart(yahooSymbol, fetcher);
-  const quote = parseYahooAsxChart(ticker, yahooSymbol, payload);
+  const quote = parseYahooAsxChart(ticker, yahooSymbol, payload, intervals);
   if (!quote) throw new Error(`Yahoo Finance returned no usable ${yahooSymbol} series`);
   return quote;
 }
@@ -194,7 +204,8 @@ async function loadYahooAsxQuote(
  */
 export async function getYahooAsxQuotes(
   tickers: string[],
-  fetcher: YahooFetch = fetch
+  fetcher: YahooFetch = fetch,
+  intervals: readonly TemporalInterval[] = []
 ): Promise<ChatQuote[]> {
   const requests = [
     ...new Set(
@@ -210,10 +221,12 @@ export async function getYahooAsxQuotes(
 
   const results = await Promise.allSettled(
     requests.map(async ({ ticker, symbol }) => {
-      const cached = quoteCache.get(symbol);
+      const intervalKey = intervals.map(temporalIntervalKey).join(",");
+      const cacheKey = `${symbol}:${intervalKey}`;
+      const cached = quoteCache.get(cacheKey);
       if (cached && cached.expiresAt > Date.now()) return cached.value;
-      const value = loadYahooAsxQuote(ticker, symbol, fetcher);
-      quoteCache.set(symbol, {
+      const value = loadYahooAsxQuote(ticker, symbol, fetcher, intervals);
+      quoteCache.set(cacheKey, {
         expiresAt: Date.now() + YAHOO_CACHE_TTL_MS,
         value,
       });
@@ -223,7 +236,7 @@ export async function getYahooAsxQuotes(
       try {
         return await value;
       } catch {
-        quoteCache.delete(symbol);
+        quoteCache.delete(cacheKey);
         return null;
       }
     })
