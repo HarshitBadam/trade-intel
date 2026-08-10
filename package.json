@@ -12,6 +12,7 @@
     "smoke:stocksage": "tsx --conditions=react-server scripts/stocksage-smoke.ts",
     "smoke:safety": "tsx --conditions=react-server scripts/safety-classifier-smoke.ts",
     "eval:stocksage": "tsx --conditions=react-server scripts/stocksage-eval.ts",
+    "eval:stocksage:greenfield": "tsx --conditions=react-server scripts/stocksage-greenfield-comparison.ts",
     "bench:stocksage": "tsx --conditions=react-server scripts/stocksage-benchmark.ts",
     "bench:asx": "tsx --conditions=react-server scripts/asx-parity-benchmark.ts",
     "ops:qstash": "tsx scripts/setup-qstash.ts",
@@ -43,7 +44,8 @@
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.0.2",
     "tailwindcss-animate": "^1.0.7",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

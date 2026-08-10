@@ -36,6 +36,11 @@ export type LlmChatArgs = {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  jsonSchema?: {
+    name: string;
+    schema: Record<string, unknown>;
+    strict?: boolean;
+  };
 };
 
 function composeMessages(args: LlmChatArgs): LlmMessage[] {
@@ -141,7 +146,20 @@ async function postChatCompletion(
       temperature: args.temperature ?? DEFAULT_TEMPERATURE,
       ...(args.maxTokens ? { max_tokens: args.maxTokens } : {}),
       ...reasoningParams(args),
-      ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+      ...(jsonMode
+        ? {
+            response_format: args.jsonSchema
+              ? {
+                  type: "json_schema",
+                  json_schema: {
+                    name: args.jsonSchema.name,
+                    strict: args.jsonSchema.strict ?? true,
+                    schema: args.jsonSchema.schema,
+                  },
+                }
+              : { type: "json_object" },
+          }
+        : {}),
     }),
     signal: AbortSignal.timeout(args.timeoutMs ?? REQUEST_TIMEOUT_MS),
   });

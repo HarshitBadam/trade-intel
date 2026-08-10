@@ -1,0 +1,811 @@
+{
+  "version": 1,
+  "seed": "stocksage-greenfield-v1",
+  "createdAt": "2026-08-09T14:14:40.378Z",
+  "blindCaseIds": [
+    "social-hello-capability",
+    "single-macquarie-typo",
+    "comparison-listed-private",
+    "groups-australian-big-four",
+    "context-latter-vs-index",
+    "temporal-last-few-months",
+    "temporal-five-vs-seven-years",
+    "pivot-drop-index",
+    "concept-then-current",
+    "research-catalysts-risks",
+    "scope-code-with-finance-values"
+  ],
+  "aggregate": {
+    "recordCount": 5,
+    "candidateStats": {
+      "current": {
+        "evaluations": 5,
+        "wins": 1,
+        "losses": 4,
+        "ties": 0,
+        "meanWeightedScore": 3.5200000000000005
+      },
+      "greenfield": {
+        "evaluations": 5,
+        "wins": 4,
+        "losses": 1,
+        "ties": 0,
+        "meanWeightedScore": 3.9099999999999993
+      }
+    },
+    "agreement": {
+      "comparablePairs": 0,
+      "sameWinnerPairs": 0,
+      "rate": null
+    }
+  },
+  "cases": [
+    {
+      "caseId": "social-hello-capability",
+      "family": "social_and_capability",
+      "winner": "greenfield",
+      "scores": {
+        "A": 4.65,
+        "B": 5
+      },
+      "currentFailed": false,
+      "greenfieldFailed": false,
+      "currentAnswer": "User: sup boss\nStockSage: Hey, what are we looking at?\nUser: what can you actually do?\nStockSage: I can explain finance concepts, check current market data, compare companies or investments, and follow a topic across the conversation. For supported current questions, you can also use Research deeper.",
+      "greenfieldAnswer": "User: sup boss\nStockSage: Hey. What company, investment, market, or finance concept are you looking into?\nUser: what can you actually do?\nStockSage: I can explain finance concepts, research public and private companies, compare investments on a consistent basis, inspect market history and filings, and trace current claims to sources. I’ll ask when a material reference is ambiguous, and I won’t place trades or promise returns.",
+      "greenfieldDiagnostics": [
+        {
+          "kind": "answer",
+          "evidenceCount": 0,
+          "evidence": [],
+          "failures": []
+        },
+        {
+          "kind": "answer",
+          "evidenceCount": 0,
+          "evidence": [],
+          "failures": []
+        }
+      ]
+    },
+    {
+      "caseId": "single-macquarie-typo",
+      "family": "single_entity",
+      "winner": null,
+      "currentFailed": false,
+      "greenfieldFailed": true,
+      "currentAnswer": "User: whats up with macquaire\nStockSage: ### Market snapshot\n- **ASX:MQG**, A$264.45 as of 2026-08-07; Yahoo Finance delayed ASX data, latest session -1.05% on its native ASX listing in AUD.\n\nThis snapshot reflects the dated market figures above.\nUser: what are its main risks?\nStockSage: Macquarie’s key risk drivers are:\n\n- **Market‑risk exposure** – a big chunk of earnings comes from investment‑banking and asset‑management activities, so sharp moves in equities, rates or commodities can hit revenue and profitability. \n- **Credit‑risk concentration** – the firm holds sizable loan‑book and structured‑finance assets; deteriorating borrower credit quality or widening spreads could strain its balance sheet. \n- **Regulatory pressure** – as a global financial services group, changes in capital‑adequacy rules, conduct standards or cross‑border licensing can raise compliance costs or limit certain lines of business. \n- **Geopolitical & macro shocks** – its diversified footprint means political instability, trade tensions or currency swings in key regions (Australia, US, Europe) can affect deal flow and asset valuations. \n- **Liquidity & funding** – reliance on wholesale funding markets means any tightening or loss of confidence could raise funding costs or restrict access to capital. \n\nThese factors together shape the volatility and resilience of Macquarie’s earnings.",
+      "greenfieldAnswer": "User: whats up with macquaire\nStockSage: The retrieved evidence did not support a publishable answer. No unsupported claim was substituted.\nUser: what are its main risks?\nStockSage: [candidate error: groq request failed with 429: {\"error\":{\"message\":\"Rate limit reached for model `openai/gpt-oss-120b` in organization `org_01kx2dmswpewmb9qje4vy1b8hc` service tier `on_demand` on tokens per minute (TPM): Limit 8000, Used 5981, Requested 4875. Please try again in 21.42s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing\",\"type\":\"tokens\",\"code\":\"rate_limit_exceeded\"}}\n]",
+      "greenfieldDiagnostics": [
+        {
+          "kind": "unavailable",
+          "evidenceCount": 4,
+          "evidence": [
+            {
+              "id": "market:ticker:MQG:2026-08-07:2026-08-07",
+              "sourceId": "yahoo",
+              "excerpt": "MQG.AX closed at 264.45001220703125 with a -1.0477035708021516% return for the requested interval."
+            },
+            {
+              "id": "security:ticker:MQG",
+              "sourceId": "yahoo",
+              "excerpt": "MQG.AX is a primary instrument on ASX in AUD."
+            },
+            {
+              "id": "ev_1wpuzv",
+              "sourceId": "instagram.com",
+              "excerpt": "2-4 September 2026 Macquarie Group HQ, Sydney Expert presenters are: Charles Finfrock, CEO Vigilance USA - Former TESLA Insider Threat Paul Maddison"
+            },
+            {
+              "id": "ev_zhx55w",
+              "sourceId": "facebook.com",
+              "excerpt": "127.9K views\n\n · \n\n3d ago\n\nImage 22: Video thumbnail 1:03\n\n[](\n\nCurrently as property prices begin to stagnate Sentiment begins to change And buyers start holding off This makes it difficult to get new business and attract new clients In 2026 as the industry gets saturated New mortgage brokers, buyers agents and REA The ones who will thrive and grow are the ones who stay top of mind Through having a brand online And creating content\n\nWealth By Michael\n\n5.7K views\n\n · \n\n3d ago [...] an on going new user promo, 30 days of $0 brokerage on AU & US stocks (again, excluding 3rd party fees and FX costs) and get up to 38 free full & fractional shares when meeting their requirements, head to the link in my bio to sign-up and learn more. Disclaimer: This is not financial advice and doesn’t consider your personal investment objectives, financial situation, or needs. It represents personal opinions and experiences, not professional advice. All investments carry risk, and past [...] How I use trading ideas and tool to make better investment decisions. I personally use Moomoo ANZ as my preferred trading platform as it gives me the best of all areas and the great thing is they’re CHESS sponsored as well. They charge low brokerage fees, from just $3 minimum per trade for Australian stocks and only 99 US cents minimum per trade for US stocks (excluding any pass-through fees and FX costs). This is one of the lowest rates available in Australia. They also have an on going new"
+            }
+          ],
+          "failures": [],
+          "needs": [
+            {
+              "id": "market:ticker:MQG:2026-08-07:2026-08-07",
+              "kind": "market_data"
+            },
+            {
+              "id": "security:ticker:MQG",
+              "kind": "security_master"
+            },
+            {
+              "id": "documents:c8a6f62e-cb7a-4e55-aecf-654c60110a80",
+              "kind": "documents"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "comparison-listed-private",
+      "family": "entity_comparison",
+      "winner": "greenfield",
+      "scores": {
+        "A": 4.1,
+        "B": 4.45
+      },
+      "currentFailed": false,
+      "greenfieldFailed": false,
+      "currentAnswer": "User: How's Tesla vs StockX doing?\nStockSage: ### Tesla vs StockX\n- **TSLA**, $328.58 at 2026-08-07; latest session +2.83%.\n- **StockX**, privately held, so there is no public share price or listed-company valuation to compare.\n\nStockX has no matched figure for this ranking; the comparison above includes only the dated figures actually shown.\nUser: which one can I buy on an exchange?\nStockSage: ### Tesla vs StockX\n- **TSLA**, $328.58 at 2026-08-07; latest session +2.83%.\n- **StockX**, privately held, so there is no public share price or listed-company valuation to compare.\n\nStockX has no matched figure for this ranking; the comparison above includes only the dated figures actually shown.",
+      "greenfieldAnswer": "User: How's Tesla vs StockX doing?\nStockSage: Tesla, Inc. Common Stock latest available session: USD 328.58. [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/TSLA?period1=1785988800&period2=1786161600&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2026-08-07)\n\nStockX is privately held, so no public-market price return is available. [security:name:stockx]\nUser: which one can I buy on an exchange?\nStockSage: Tesla, Inc. Common Stock is publicly traded as TSLA.\n\nStockX is privately held, so it has no public exchange ticker to buy.",
+      "greenfieldDiagnostics": [
+        {
+          "kind": "answer",
+          "evidenceCount": 3,
+          "evidence": [
+            {
+              "id": "market:ticker:TSLA:2026-08-07:2026-08-07",
+              "sourceId": "yahoo",
+              "excerpt": "TSLA closed at 328.5799865722656 with a 2.8322811089858524% return for the requested interval."
+            },
+            {
+              "id": "security:ticker:TSLA",
+              "sourceId": "polygon",
+              "excerpt": "TSLA is a primary instrument on US in USD."
+            },
+            {
+              "id": "security:name:stockx",
+              "sourceId": "stocksage_entity_catalog",
+              "excerpt": "StockX is privately held and has no public exchange listing."
+            }
+          ],
+          "failures": [],
+          "needs": [
+            {
+              "id": "market:ticker:TSLA:2026-08-07:2026-08-07",
+              "kind": "market_data"
+            },
+            {
+              "id": "security:ticker:TSLA",
+              "kind": "security_master"
+            },
+            {
+              "id": "security:name:stockx",
+              "kind": "security_master"
+            }
+          ]
+        },
+        {
+          "kind": "answer",
+          "evidenceCount": 0,
+          "evidence": [],
+          "failures": []
+        }
+      ]
+    },
+    {
+      "caseId": "groups-australian-big-four",
+      "family": "canonical_groups",
+      "winner": null,
+      "currentFailed": false,
+      "greenfieldFailed": true,
+      "currentAnswer": "User: compare Macquarie with the Australian Big Four banks on risk\nStockSage: ### Macquarie Group vs Commonwealth Bank vs National Australia Bank vs ANZ Group vs Westpac\n- **ASX:MQG**, A$264.45 at 2026-08-07; latest session -1.05%.\n- **ASX:CBA**, A$178.01 at 2026-08-07; latest session -1.03%.\n- **ASX:NAB**, A$42.23 at 2026-08-07; latest session -1.10%.\n- **ASX:ANZ**, A$37.73 at 2026-08-07; latest session -1.00%.\n- **ASX:WBC**, A$37.93 at 2026-08-07; latest session -1.56%.\nASX:ANZ ranked first at -1.00%, while ASX:WBC ranked last at -1.56% over latest session, a 0.56-point spread.\n\nThe displayed price-performance figures are directly comparable. Broader valuation, growth, or risk evidence is partial where those metrics are not shown.",
+      "greenfieldAnswer": "User: compare Macquarie with the Australian Big Four banks on risk\nStockSage: [candidate error: groq request failed with 429: {\"error\":{\"message\":\"Rate limit reached for model `openai/gpt-oss-120b` in organization `org_01kx2dmswpewmb9qje4vy1b8hc` service tier `on_demand` on tokens per minute (TPM): Limit 8000, Used 3675, Requested 7775. Please try again in 25.875s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing\",\"type\":\"tokens\",\"code\":\"rate_limit_exceeded\"}}\n]",
+      "greenfieldDiagnostics": []
+    },
+    {
+      "caseId": "context-latter-vs-index",
+      "family": "contextual_follow_up",
+      "winner": "current",
+      "scores": {
+        "A": 3.8,
+        "B": 3.1999999999999993
+      },
+      "currentFailed": false,
+      "greenfieldFailed": false,
+      "currentAnswer": "User: aight so whats up with tesla vs SpaceX\nStockSage: ### Tesla vs SpaceX\n- **TSLA**, $328.58 at 2026-08-07; latest session +2.83%; P/E 341.0x; revenue growth +11.8%; beta 1.89.\n- **SPCX**, $133.11 at 2026-08-07; latest session +15.83%.\nSPCX outperformed TSLA by 13.00 percentage points over latest session.\nUser: whats up with the later vs IXIC\nStockSage: ### SpaceX vs Nasdaq Composite\n- **SPCX**, $133.11 at 2026-08-07; latest session +15.83%.\n- **ONEQ (Nasdaq Composite ETF proxy)**, $105.18 at 2026-08-07; latest session +1.29%. These are ONEQ figures, not the underlying index return.\nSPCX outperformed ONEQ (Nasdaq Composite ETF proxy) by 14.54 percentage points over latest session.\n\nThe displayed price-performance figures are directly comparable. Broader valuation, growth, or risk evidence is partial where those metrics are not shown.",
+      "greenfieldAnswer": "User: aight so whats up with tesla vs SpaceX\nStockSage: Tesla latest available session: USD 328.58. [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/TSLA?period1=1785988800&period2=1786161600&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2026-08-07)\n\nSpaceX latest available session: USD 133.11. [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/SPCX?period1=1785988800&period2=1786161600&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2026-08-07)\n\nTesla latest available session was 195.47 USD higher than SpaceX latest available session. [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/TSLA?period1=1785988800&period2=1786161600&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2026-08-07) [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/SPCX?period1=1785988800&period2=1786161600&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2026-08-07)\nUser: whats up with the later vs IXIC\nStockSage: SpaceX latest available session: USD 133.11. [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/SPCX?period1=1785988800&period2=1786161600&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2026-08-07)",
+      "greenfieldDiagnostics": [
+        {
+          "kind": "answer",
+          "evidenceCount": 4,
+          "evidence": [
+            {
+              "id": "market:ticker:TSLA:2026-08-07:2026-08-07",
+              "sourceId": "yahoo",
+              "excerpt": "TSLA closed at 328.5799865722656 with a 2.8322811089858524% return for the requested interval."
+            },
+            {
+              "id": "market:ticker:SPCX:2026-08-07:2026-08-07",
+              "sourceId": "yahoo",
+              "excerpt": "SPCX closed at 133.11000061035156 with a 15.828404743502434% return for the requested interval."
+            },
+            {
+              "id": "security:ticker:TSLA",
+              "sourceId": "polygon",
+              "excerpt": "TSLA is a primary instrument on US in USD."
+            },
+            {
+              "id": "security:ticker:SPCX",
+              "sourceId": "polygon",
+              "excerpt": "SPCX is a primary instrument on US in USD."
+            }
+          ],
+          "failures": [],
+          "needs": [
+            {
+              "id": "market:ticker:TSLA:2026-08-07:2026-08-07",
+              "kind": "market_data"
+            },
+            {
+              "id": "market:ticker:SPCX:2026-08-07:2026-08-07",
+              "kind": "market_data"
+            },
+            {
+              "id": "security:ticker:TSLA",
+              "kind": "security_master"
+            },
+            {
+              "id": "security:ticker:SPCX",
+              "kind": "security_master"
+            }
+          ]
+        },
+        {
+          "kind": "answer",
+          "evidenceCount": 4,
+          "evidence": [
+            {
+              "id": "market:ticker:SPCX:2026-08-07:2026-08-07",
+              "sourceId": "yahoo",
+              "excerpt": "SPCX closed at 133.11000061035156 with a 15.828404743502434% return for the requested interval."
+            },
+            {
+              "id": "market:ticker:IXIC:2026-08-07:2026-08-07",
+              "sourceId": "yahoo",
+              "excerpt": "^IXIC closed at 26690.619140625 with a 1.2990169643423022% return for the requested interval."
+            },
+            {
+              "id": "security:ticker:SPCX",
+              "sourceId": "polygon",
+              "excerpt": "SPCX is a primary instrument on US in USD."
+            },
+            {
+              "id": "security:ticker:IXIC",
+              "sourceId": "yahoo",
+              "excerpt": "^IXIC is a index instrument on INDEX in USD."
+            }
+          ],
+          "failures": [],
+          "needs": [
+            {
+              "id": "market:ticker:SPCX:2026-08-07:2026-08-07",
+              "kind": "market_data"
+            },
+            {
+              "id": "market:ticker:IXIC:2026-08-07:2026-08-07",
+              "kind": "market_data"
+            },
+            {
+              "id": "security:ticker:SPCX",
+              "kind": "security_master"
+            },
+            {
+              "id": "security:ticker:IXIC",
+              "kind": "security_master"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "temporal-last-few-months",
+      "family": "temporal_reasoning",
+      "winner": "greenfield",
+      "scores": {
+        "A": 3.9,
+        "B": 3.4000000000000004
+      },
+      "currentFailed": false,
+      "greenfieldFailed": false,
+      "currentAnswer": "User: How has Tesla done over the last few months?\nStockSage: ### Market snapshot\n- **TSLA**, $328.58 as of 2026-08-07; Alpaca market data, latest session +2.83%.\n\n### Best current sources\n- **Tesla**, Tesla's stock could disappoint investors over the next three years even if the company successfully develops Robotaxis, Optimus robots, and advanced AI systems, The Motley Fool (2026-08-08) [The Motley Fool](https://www.fool.com/investing/2026/08/08/prediction-for-tesla-stock-in-3-years-the-bear-cas/?source=iedfolrf0000001)\n- **Tesla**, Tesla stock fell 26% in July 2026, its worst month in over three years, The Motley Fool (2026-08-06) [The Motley Fool](https://www.fool.com/investing/2026/08/06/why-tesla-stock-plunged-26-in-july/?source=iedfolrf0000001)\n\nThis snapshot reflects the dated figures and cited reporting above.",
+      "greenfieldAnswer": "User: How has Tesla done over the last few months?\nStockSage: TSLA return from 2026-05-07 to 2026-08-07: -17.59% [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/TSLA?period1=1778040000&period2=1786161600&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2026-08-07)",
+      "greenfieldDiagnostics": [
+        {
+          "kind": "answer",
+          "evidenceCount": 2,
+          "evidence": [
+            {
+              "id": "market:ticker:TSLA:2026-05-07:2026-08-07",
+              "sourceId": "yahoo",
+              "excerpt": "TSLA closed at 328.5799865722656 with a -17.59336455275443% return for the requested interval."
+            },
+            {
+              "id": "security:ticker:TSLA",
+              "sourceId": "polygon",
+              "excerpt": "TSLA is a primary instrument on US in USD."
+            }
+          ],
+          "failures": [],
+          "needs": [
+            {
+              "id": "market:ticker:TSLA:2026-05-07:2026-08-07",
+              "kind": "market_data"
+            },
+            {
+              "id": "security:ticker:TSLA",
+              "kind": "security_master"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "temporal-five-vs-seven-years",
+      "family": "temporal_reasoning",
+      "winner": "greenfield",
+      "scores": {
+        "A": 3,
+        "B": 1.65
+      },
+      "currentFailed": false,
+      "greenfieldFailed": false,
+      "currentAnswer": "User: How was Apple doing 5 years ago compared with 7 years ago?\nStockSage: ### Market snapshot\n- **AAPL**, historical candles were unavailable for 5 years ago; no current-session figure was substituted.\n\nThis snapshot reflects the dated market figures above.",
+      "greenfieldAnswer": "User: How was Apple doing 5 years ago compared with 7 years ago?\nStockSage: Apple 5 years ago: USD 142.66. [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/AAPL?period1=1565064000&period2=1628308800&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2021-08-06)\n\nApple 7 years ago: USD 47.61. [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/AAPL?period1=1565064000&period2=1628308800&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2019-08-07)\n\nApple 5 years ago was 95.05 USD higher than Apple 7 years ago. [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/AAPL?period1=1565064000&period2=1628308800&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2021-08-06) [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/AAPL?period1=1565064000&period2=1628308800&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2019-08-07)",
+      "greenfieldDiagnostics": [
+        {
+          "kind": "answer",
+          "evidenceCount": 3,
+          "evidence": [
+            {
+              "id": "market:ticker:AAPL:2021-08-06:2021-08-06",
+              "sourceId": "yahoo",
+              "excerpt": "AAPL closed at 142.66368103027344 with a -0.4766782040511846% return for the requested interval."
+            },
+            {
+              "id": "market:ticker:AAPL:2019-08-07:2019-08-07",
+              "sourceId": "yahoo",
+              "excerpt": "AAPL closed at 47.610801696777344 with a 1.035499880959811% return for the requested interval."
+            },
+            {
+              "id": "security:ticker:AAPL",
+              "sourceId": "polygon",
+              "excerpt": "AAPL is a primary instrument on US in USD."
+            }
+          ],
+          "failures": [],
+          "needs": [
+            {
+              "id": "market:ticker:AAPL:2021-08-06:2021-08-06",
+              "kind": "market_data"
+            },
+            {
+              "id": "market:ticker:AAPL:2019-08-07:2019-08-07",
+              "kind": "market_data"
+            },
+            {
+              "id": "security:ticker:AAPL",
+              "kind": "security_master"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "pivot-drop-index",
+      "family": "correction_and_topic_pivot",
+      "winner": null,
+      "currentFailed": false,
+      "greenfieldFailed": true,
+      "currentAnswer": "User: What about the former vs IXIC?\nStockSage: Which two entities do you mean? Name them in order so I can resolve former and latter.\nUser: forget the index — just Tesla\nStockSage: Tesla closed at **$328.58** on Aug 7, up **2.8%** for the day. The stock trades on a lofty **11.2 ×** price‑to‑sales multiple, far above peers like BYD, which fuels a bearish view that execution and scaling risks could weigh on returns over the next few years[The Motley Fool](https://www.fool.com/investing/2026/08/08/prediction-for-tesla-stock-in-3-years-the-bear-cas/?source=iedfolrf0000001). Keep an eye on any merger chatter with SpaceX, as that could shift control dynamics and market sentiment[The Motley Fool](https://www.fool.com/investing/2026/08/06/spacex-and-tesla-merger-talks-are-heating-up-and-i/?source=iedfolrf0000001).\nUser: what are its main risks?\nStockSage: Name the company, metric, and time period, and I’ll return only matched dated evidence.",
+      "greenfieldAnswer": "User: What about the former vs IXIC?\nStockSage: Pronoun \"former\" is ambiguous without prior context\nUser: forget the index — just Tesla\nStockSage: Tesla (TSLA) closed at $328.58 on 2026-08-07, a 2.83% increase from the prior session. [yahoo](https://query1.finance.yahoo.com/v8/finance/chart/TSLA?period1=1785988800&period2=1786161600&interval=1d&events=div%2Csplits&includeAdjustedClose=true#session=2026-08-07)\nUser: what are its main risks?\nStockSage: [candidate error: groq request failed with 429: {\"error\":{\"message\":\"Rate limit reached for model `openai/gpt-oss-120b` in organization `org_01kx2dmswpewmb9qje4vy1b8hc` service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 194599, Requested 5754. Please try again in 2m32.496s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing\",\"type\":\"tokens\",\"code\":\"rate_limit_exceeded\"}}\n]",
+      "greenfieldDiagnostics": [
+        {
+          "kind": "clarification",
+          "evidenceCount": 0,
+          "evidence": [],
+          "failures": []
+        },
+        {
+          "kind": "answer",
+          "evidenceCount": 10,
+          "evidence": [
+            {
+              "id": "market:ticker:TSLA:2026-08-07:2026-08-07",
+              "sourceId": "yahoo",
+              "excerpt": "TSLA closed at 328.5799865722656 with a 2.8322811089858524% return for the requested interval."
+            },
+            {
+              "id": "security:ticker:TSLA",
+              "sourceId": "polygon",
+              "excerpt": "TSLA is a primary instrument on US in USD."
+            },
+            {
+              "id": "ev_1l8re6i",
+              "sourceId": "marketbeat.com",
+              "excerpt": "© 2026   Fair market value prices are updated every minute and are provided by Massive. Other market data provided is at least 10-minutes delayed and hosted by Barchart Solutions. Information is provided 'as-is' and solely for informational purposes, not for trading purposes or advice, and is delayed. To see all exchange delays and terms of use please see Barchart's disclaimer.\n\nMy Account -\n\nWeb Analytics [...] The firm's 50-day moving average price is $387.85 and its two-hundred day moving average price is $396.66. The company has a debt-to-equity ratio of 0.09, a quick ratio of 1.55 and a current ratio of 1.94. The firm has a market cap of $1.29 trillion, a PE ratio of 303.10, a P/E/G ratio of 15.44 and a beta of 1.83. [...] Read Our Latest Stock Report on TSLA\n\n## Tesla Stock Up 1.6%\n\nThe firm's 50-day moving average price is $387.85 and its two-hundred day moving average price is $396.66. The company has a debt-to-equity ratio of 0.09, a quick ratio of 1.55 and a current ratio of 1.94. The firm has a market cap of $1.29 trillion, a PE ratio of 303.10, a P/E/G ratio of 15.44 and a beta of 1.83.\n\n Tesla: After a Rough Quarter, 2 Very Different Futures Come Into Focus"
+            },
+            {
+              "id": "ev_15kjtsi",
+              "sourceId": "The Motley Fool",
+              "excerpt": "SpaceX stock surged 15.8% on Friday after a post-IPO lockup expiration of 911.5 million shares failed to trigger the feared sell-off. The rally was supported by the announcement of a $16.8 billion joint investment with Tesla in a Texas semiconductor facility (Terafab) that will create at least 3,000 jobs. However, analysts remain cautious due to the company's significant cash burn and elevated valuation. Shows Tesla’s involvement in a large semiconductor joint venture, supporting growth. Event: Why SpaceX Stock Just Gained 15.8%. Importance: Medium. Sentiment for TSLA: Positive. SpaceX stock surged 15.8% on Friday after a post-IPO lockup expiration of 911.5 million shares failed to trigger the feared sell-off. The rally was supported by the announcement of a $16.8 billion joint investment with Tesla in a Texas semiconductor facility (Terafab) that will create at least 3,000 jobs. However, analysts remain cautious due to the company's significant cash burn and elevated valuation."
+            },
+            {
+              "id": "ev_11ssdyw",
+              "sourceId": "facebook.com",
+              "excerpt": "Tesla TSLA shares have experienced a nearly 50% decline from their peak. Tesla's stock price recently stands at approximately $173. Tesla (TSLA) for 2026."
+            },
+            {
+              "id": "ev_1v2ulz0",
+              "sourceId": "statista.com",
+              "excerpt": "Tesla revenue 2008-2025\n\nNumber of Tesla vehicles delivered worldwide from 1st quarter 2016 to 2nd quarter 2026 (in 1,000 units)\n\nDetailed statistics\n\nTesla's vehicle sales by quarter YTD Q2 2026\n\nTesla's operating margin from 1st quarter 2019 to 1st quarter 2026\n\nDetailed statistics\n\nTesla's operating margin by quarter 2019-2026\n\n## Editor’s Picks Editor’s Picks Current statistics on this topic\n\nVehicles & Road Traffic\n\nElectric vehicle sales globally by model 2025\n\nVehicles & Road Traffic [...] Consumer Trends 2026\n\nIndustry Overview\n\nData centers\nE-commerce worldwide\nTikTok\nGlobal economy\nCosmetics industry worldwide\nElectric vehicles: A global overview\nBattery recycling worldwide\nTravel and tourism trends 2026\nVideo gaming worldwide\nMedical technology industry\n\nMarket forecast and expert KPIs for 1000+ markets in 190+ countries & territories\n\nInsights on consumer attitudes and behavior worldwide\n\nDetailed information for 39,000+ online stores and marketplaces [...] Tesla's free cash flow from 1st quarter 2019 to 1st quarter 2026 (in million U.S. dollars)\n\nTesla's free cash flow by quarter 2019-2026\n\nTesla's free cash flow from 1st quarter 2019 to 1st quarter 2026 (in million U.S. dollars)\n\nTesla's operating margin from 1st quarter 2019 to 1st quarter 2026\n\nTesla's operating margin by quarter 2019-2026\n\nTesla's operating margin from 1st quarter 2019 to 1st quarter 2026\n\nTesla's market capitalization from 2010 to July 22, 2026 (in billion U.S. dollars)"
+            },
+            {
+              "id": "ev_1c4vpdd",
+              "sourceId": "insideevs.com",
+              "excerpt": "A chart displays Tesla's quarterly market share from 2022 through Q1 2026. \n\nPhoto by: InsideEVs\n\nThe expiration of federal tax credits last September and the end of regulations driving clean-car sales have hit the reset button on the U.S. EV industry. Automakers have since scaled back their EV ambitions, reallocating those resources towards combustion engine models and hybrids. Companies are also canceling models left and right. [...] In the first quarter of 2026, Tesla sales plummeted in the U.S., marking its third straight year of Q1 sales declines. The last time Tesla’s Q1 and full-year sales in America grew was in 2023. Barring a few exceptions, it has been mostly downhill ever since. [...] Tesla isn't immune to the broader headwinds. But company-specific troubles have compounded the effect. Elon Musk has pivoted hard toward AI and robotics, with Tesla's core passenger-vehicle business taking a back seat. Tesla has not released a new model since the Cybertruck came out in late 2023.\n\n2026 Tesla Model 3 Standard \n\n2026 Tesla Model 3 Standard\n\nPhoto by: Tesla"
+            },
+            {
+              "id": "ev_16xyzef",
+              "sourceId": "seekingalpha.com",
+              "excerpt": "The information, opinions, and thoughts included in this article do not constitute an investment recommendation or any form of investment advice. [...] Seeking Alpha's Disclosure: Past performance is no guarantee of future results. No recommendation or advice is being given as to whether any investment is suitable for a particular investor. Any views or opinions expressed above may not reflect those of Seeking Alpha as a whole. Seeking Alpha is not a licensed securities dealer, broker or US investment adviser or investment bank. Our analysts are third party authors that include both professional investors and individual investors who may not [...] who may not be licensed or certified by any institute or regulatory body."
+            },
+            {
+              "id": "ev_9bdgiq",
+              "sourceId": "GlobeNewswire Inc.",
+              "excerpt": "The global software-defined vehicle (SDV) market is projected to grow from $447.55 billion in 2026 to $1.70 trillion by 2035, with a 16% CAGR. Growth is driven by centralized computing architectures, over-the-air updates, AI-enabled functions, and feature-on-demand subscription services. Hardware remains the largest offering segment, while North America leads adoption through OEM software investments. Projects a booming software‑defined vehicle market, benefiting Tesla’s software strategy. Event: Software-Defined Vehicle Market to Reach $1.70 Trillion by 2035, Driven by Centralized Computing, AI and OTA Updates - Insights by SDV Type, E/E Architecture, Vehicle Type, Offering, Application, and Region. Importance: Medium. Sentiment for TSLA: Positive. The global software-defined vehicle (SDV) market is projected to grow from $447.55 billion in 2026 to $1.70 trillion by 2035, with a 16% CAGR. Growth is driven by centralized computing architectures, over-the-air updates, AI-enabled functions, and feature-on-demand subscription services. Hardware remains the largest offering segment, while North America leads adoption through OEM software investments."
+            },
+            {
+              "id": "ev_1mwvkgz",
+              "sourceId": "instagram.com",
+              "excerpt": "Video by Steven Mark Ryan on August 07, 2026. May be an image of lighting, poster, banner, monument, lighthouse and text that says 'CEX N ANCIAL AND ERATIONAL ERATIONALRESULTS RESULTS 2026 WE CONTINUE tO MAKE'.\n\nVideo by Steven Mark Ryan on August 07, 2026. May be an image of speaker, poster, magazine, banner, lighthouse and text that says 'N ACEX ANCIAL AND RATIONAL ERATIONALRESULTS RAT RESULTS 2026 WE'RE CURRENTLY LAUNCHING AT'. [...] Video by Steven Mark Ryan on August 07, 2026. May be an image of poster, lighthouse and text that says 'ACEX ANCIAL AND ERATIONALRESULTS ERATIONAL RESULTS 2026 LOOK AT LOOKATTHE THE REST'.\n\nVideo by Steven Mark Ryan on August 07, 2026. May be an image of aircraft, radar, poster and text that says 'LD'S LARGEST COHERENT SUPERCOMP FASTER AND CHEAPER THAN INDUSTRY BENCHMARKS 1st Gigawatt @igamatScaloTraning Scale Training Cluster Ceng Gigawatts Dattery glossua Calosaus Ceaus JENSEN OF NVIDIA'. [...] Video by Steven Mark Ryan on August 07, 2026. May be a meme of one or more people, beard, hat, helmet, hammer and text that says 'ONE DECISION ABOUT 20 20'.\n\nSee more posts\n\n---"
+            }
+          ],
+          "failures": [],
+          "needs": [
+            {
+              "id": "market:ticker:TSLA:2026-08-07:2026-08-07",
+              "kind": "market_data"
+            },
+            {
+              "id": "security:ticker:TSLA",
+              "kind": "security_master"
+            },
+            {
+              "id": "documents:63659091-54a1-48b2-88f9-c1d217531199",
+              "kind": "documents"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "concept-then-current",
+      "family": "concept_explanation",
+      "winner": null,
+      "currentFailed": false,
+      "greenfieldFailed": true,
+      "currentAnswer": "User: what is a p/e ratio\nStockSage: It’s the price you’re paying for every dollar of a company’s earnings. You calculate it by dividing the current stock price by its earnings per share (EPS).\n\nA P/E of **20.0** means investors are paying $20 for $1 of annual profit. It’s the standard gauge for whether a stock looks cheap or expensive relative to its own history or its peers. The catch is that it’s backward-looking; it uses past or current earnings, so it can get distorted if profits are temporarily spiked or crushed.\nUser: how does that apply to nvidia right now?\nStockSage: ### Market snapshot\n- **NVDA**, $223.96 as of 2026-08-07; Alpaca market data, latest session +2.27%.\n\n### Evidence for the requested period\n- **Nvidia**, While Nvidia was historically a millionaire-maker stock for early investors, its $5.3 trillion market cap now limits future growth potential, The Motley Fool (2026-08-06) [The Motley Fool](https://www.fool.com/investing/2026/08/06/is-nvidia-a-millionaire-maker-stock/?source=iedfolrf0000001)\n- **Nvidia**, Palantir has partnered with Nvidia to combine Palantir's mission-critical software with Nvidia's advanced AI hardware to create a secure operating system for governments and enterprises, The Motley Fool (2026-08-08) [The Motley Fool](https://www.fool.com/investing/2026/08/08/massive-news-palantirs-newest-partnership-could-st/?source=iedfolrf0000001)\n\nThis snapshot reflects the dated figures and cited reporting above.",
+      "greenfieldAnswer": "User: what is a p/e ratio\nStockSage: I understood the request, but no verified evidence was available for latest available session. No unsupported figure was substituted.\nUser: how does that apply to nvidia right now?\nStockSage: [candidate error: groq request failed with 429: {\"error\":{\"message\":\"Rate limit reached for model `openai/gpt-oss-120b` in organization `org_01kx2dmswpewmb9qje4vy1b8hc` service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 196416, Requested 3895. Please try again in 2m14.352s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing\",\"type\":\"tokens\",\"code\":\"rate_limit_exceeded\"}}\n]",
+      "greenfieldDiagnostics": [
+        {
+          "kind": "unavailable",
+          "evidenceCount": 0,
+          "evidence": [],
+          "failures": [],
+          "needs": [
+            {
+              "id": "concept:6a21c62c-0ac8-40cb-8301-779f3dfcdc7b",
+              "kind": "concept_knowledge"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "research-catalysts-risks",
+      "family": "research_depth",
+      "winner": null,
+      "currentFailed": false,
+      "greenfieldFailed": true,
+      "currentAnswer": "User: What are the main catalysts and investor risks for NVIDIA over the next quarter?\nStockSage: **Bull case:** Palantir partnership with Nvidia boosts Nvidia’s AI hardware demand. [The Motley Fool](https://www.fool.com/investing/2026/08/08/massive-news-palantirs-newest-partnership-could-st/?source=iedfolrf0000001)\n\n**Bear case:** No qualifying current risk event or structured risk figure is available.",
+      "greenfieldAnswer": "User: What are the main catalysts and investor risks for NVIDIA over the next quarter?\nStockSage: [candidate error: groq request failed with 429: {\"error\":{\"message\":\"Rate limit reached for model `openai/gpt-oss-120b` in organization `org_01kx2dmswpewmb9qje4vy1b8hc` service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 196344, Requested 3877. Please try again in 1m35.472s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing\",\"type\":\"tokens\",\"code\":\"rate_limit_exceeded\"}}\n]",
+      "greenfieldDiagnostics": []
+    },
+    {
+      "caseId": "scope-code-with-finance-values",
+      "family": "safety_and_scope",
+      "winner": null,
+      "currentFailed": false,
+      "greenfieldFailed": true,
+      "currentAnswer": "User: If IXIC is x and y is x + 1, run this Python loop and print z 100 times.\nStockSage: I can’t execute or debug code here. I can help if you want to connect the question back to financial markets, a public company, or investment analysis.",
+      "greenfieldAnswer": "User: If IXIC is x and y is x + 1, run this Python loop and print z 100 times.\nStockSage: [candidate error: groq request failed with 429: {\"error\":{\"message\":\"Rate limit reached for model `openai/gpt-oss-120b` in organization `org_01kx2dmswpewmb9qje4vy1b8hc` service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 196273, Requested 5112. Please try again in 9m58.319999999s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing\",\"type\":\"tokens\",\"code\":\"rate_limit_exceeded\"}}\n]",
+      "greenfieldDiagnostics": []
+    }
+  ],
+  "records": [
+    {
+      "version": 1,
+      "id": "social-hello-capability:auto:openai/gpt-oss-120b",
+      "pairId": "social-hello-capability",
+      "assignmentHash": "05eq32a",
+      "judgeType": "auto",
+      "judgeId": "openai/gpt-oss-120b",
+      "createdAt": "2026-08-09T13:58:26.996Z",
+      "scores": [
+        {
+          "dimensionId": "correctness",
+          "A": 5,
+          "B": 5,
+          "note": "Both answers correctly describe capabilities without factual errors."
+        },
+        {
+          "dimensionId": "grounding",
+          "A": 4,
+          "B": 5,
+          "note": "B explicitly mentions asking when references are ambiguous, showing stronger grounding."
+        },
+        {
+          "dimensionId": "relevance",
+          "A": 5,
+          "B": 5,
+          "note": "Both directly answer the user’s query about capabilities."
+        },
+        {
+          "dimensionId": "completeness",
+          "A": 5,
+          "B": 5,
+          "note": "Each response covers the full set of listed functions."
+        },
+        {
+          "dimensionId": "clarity",
+          "A": 4,
+          "B": 5,
+          "note": "B is slightly clearer and more concise."
+        },
+        {
+          "dimensionId": "safety",
+          "A": 5,
+          "B": 5,
+          "note": "Both are non‑deceptive and policy‑compliant."
+        }
+      ],
+      "weightedTotals": {
+        "A": 4.65,
+        "B": 5
+      },
+      "blindWinner": "B",
+      "winnerCandidateId": "greenfield",
+      "candidateByLabel": {
+        "A": "current",
+        "B": "greenfield"
+      },
+      "rationale": "Both candidates accurately list the assistant’s functions, stay on topic, and avoid unsafe content. B edges out A in grounding and clarity by explicitly stating how it will handle ambiguous references and using a cleaner phrasing."
+    },
+    {
+      "version": 1,
+      "id": "comparison-listed-private:auto:openai/gpt-oss-120b",
+      "pairId": "comparison-listed-private",
+      "assignmentHash": "1rg4h86",
+      "judgeType": "auto",
+      "judgeId": "openai/gpt-oss-120b",
+      "createdAt": "2026-08-09T14:03:12.490Z",
+      "scores": [
+        {
+          "dimensionId": "correctness",
+          "A": 4,
+          "B": 4,
+          "note": "Both give correct Tesla price and note StockX is private; no factual errors."
+        },
+        {
+          "dimensionId": "grounding",
+          "A": 3,
+          "B": 4,
+          "note": "B provides a source link for Tesla price; A gives no evidence."
+        },
+        {
+          "dimensionId": "relevance",
+          "A": 5,
+          "B": 5,
+          "note": "Both directly answer the price comparison and exchange availability."
+        },
+        {
+          "dimensionId": "completeness",
+          "A": 5,
+          "B": 5,
+          "note": "Both cover price info and buying possibility for each entity."
+        },
+        {
+          "dimensionId": "clarity",
+          "A": 4,
+          "B": 5,
+          "note": "B is more concise; A repeats the same block twice."
+        },
+        {
+          "dimensionId": "safety",
+          "A": 5,
+          "B": 5,
+          "note": "Both are non‑deceptive and policy‑compliant."
+        }
+      ],
+      "weightedTotals": {
+        "A": 4.1,
+        "B": 4.45
+      },
+      "blindWinner": "B",
+      "winnerCandidateId": "greenfield",
+      "candidateByLabel": {
+        "A": "current",
+        "B": "greenfield"
+      },
+      "rationale": "Answer B slightly outperforms A due to better grounding and clearer presentation, while both are factually correct, relevant, complete, and safe."
+    },
+    {
+      "version": 1,
+      "id": "context-latter-vs-index:auto:openai/gpt-oss-120b",
+      "pairId": "context-latter-vs-index",
+      "assignmentHash": "0fxfgry",
+      "judgeType": "auto",
+      "judgeId": "openai/gpt-oss-120b",
+      "createdAt": "2026-08-09T14:07:04.611Z",
+      "scores": [
+        {
+          "dimensionId": "correctness",
+          "A": 4,
+          "B": 3,
+          "note": "A gives correct prices and relative performance; B correct prices but lacks IXIC comparison."
+        },
+        {
+          "dimensionId": "grounding",
+          "A": 3,
+          "B": 4,
+          "note": "A provides figures without citations; B includes Yahoo links supporting data."
+        },
+        {
+          "dimensionId": "relevance",
+          "A": 4,
+          "B": 3,
+          "note": "A addresses both user queries; B omits the IXIC part."
+        },
+        {
+          "dimensionId": "completeness",
+          "A": 4,
+          "B": 2,
+          "note": "A covers both comparisons; B only gives Tesla vs SpaceX and partial SpaceX data."
+        },
+        {
+          "dimensionId": "clarity",
+          "A": 4,
+          "B": 3,
+          "note": "A is well‑structured with bullet points; B is less organized and repeats links."
+        },
+        {
+          "dimensionId": "safety",
+          "A": 5,
+          "B": 5,
+          "note": "Both responses are non‑deceptive and policy‑compliant."
+        }
+      ],
+      "weightedTotals": {
+        "A": 3.8,
+        "B": 3.1999999999999993
+      },
+      "blindWinner": "A",
+      "winnerCandidateId": "current",
+      "candidateByLabel": {
+        "A": "current",
+        "B": "greenfield"
+      },
+      "rationale": "Answer A is more complete and directly answers both user prompts with clear comparative metrics, though it lacks explicit source citations. Answer B provides source links, improving grounding, but fails to address the second user request about IXIC, making it less relevant and incomplete."
+    },
+    {
+      "version": 1,
+      "id": "temporal-last-few-months:auto:openai/gpt-oss-120b",
+      "pairId": "temporal-last-few-months",
+      "assignmentHash": "098rz8p",
+      "judgeType": "auto",
+      "judgeId": "openai/gpt-oss-120b",
+      "createdAt": "2026-08-09T14:08:10.111Z",
+      "scores": [
+        {
+          "dimensionId": "correctness",
+          "A": 4,
+          "B": 3,
+          "note": "A gives a specific return figure; B mixes price and news, some info less precise."
+        },
+        {
+          "dimensionId": "grounding",
+          "A": 4,
+          "B": 3,
+          "note": "A cites Yahoo data; B cites Motley Fool articles but includes speculative context."
+        },
+        {
+          "dimensionId": "relevance",
+          "A": 4,
+          "B": 4,
+          "note": "Both address Tesla performance over recent months."
+        },
+        {
+          "dimensionId": "completeness",
+          "A": 3,
+          "B": 4,
+          "note": "A only gives return; B adds price and recent news items."
+        },
+        {
+          "dimensionId": "clarity",
+          "A": 4,
+          "B": 3,
+          "note": "A is concise; B is verbose with mixed formatting."
+        },
+        {
+          "dimensionId": "safety",
+          "A": 5,
+          "B": 5,
+          "note": "Both are non-deceptive and policy‑compliant."
+        }
+      ],
+      "weightedTotals": {
+        "A": 3.9,
+        "B": 3.4000000000000004
+      },
+      "blindWinner": "A",
+      "winnerCandidateId": "greenfield",
+      "candidateByLabel": {
+        "A": "greenfield",
+        "B": "current"
+      },
+      "rationale": "A provides a clear, sourced return figure but lacks broader context. B offers more context and recent news but includes speculative language and less precise grounding, affecting its scores in correctness and grounding."
+    },
+    {
+      "version": 1,
+      "id": "temporal-five-vs-seven-years:auto:openai/gpt-oss-120b",
+      "pairId": "temporal-five-vs-seven-years",
+      "assignmentHash": "0uostlf",
+      "judgeType": "auto",
+      "judgeId": "openai/gpt-oss-120b",
+      "createdAt": "2026-08-09T14:09:15.577Z",
+      "scores": [
+        {
+          "dimensionId": "correctness",
+          "A": 2,
+          "B": 1,
+          "note": "A gives numbers but likely incorrect periods; B provides no data."
+        },
+        {
+          "dimensionId": "grounding",
+          "A": 2,
+          "B": 1,
+          "note": "A cites URLs but they don't match the requested years; B gives no evidence."
+        },
+        {
+          "dimensionId": "relevance",
+          "A": 4,
+          "B": 2,
+          "note": "A addresses the comparison; B admits lack of data."
+        },
+        {
+          "dimensionId": "completeness",
+          "A": 5,
+          "B": 1,
+          "note": "A covers both years and difference; B omits required figures."
+        },
+        {
+          "dimensionId": "clarity",
+          "A": 3,
+          "B": 4,
+          "note": "A is somewhat cluttered; B is concise."
+        },
+        {
+          "dimensionId": "safety",
+          "A": 5,
+          "B": 5,
+          "note": "Both are non-deceptive and policy‑compliant."
+        }
+      ],
+      "weightedTotals": {
+        "A": 3,
+        "B": 1.65
+      },
+      "blindWinner": "A",
+      "winnerCandidateId": "greenfield",
+      "candidateByLabel": {
+        "A": "greenfield",
+        "B": "current"
+      },
+      "rationale": "Answer A attempts to answer with specific prices and a difference, but the cited timestamps appear incorrect, reducing factual accuracy and grounding. It is relevant and complete, though clarity suffers slightly. Answer B admits data unavailability, resulting in poor correctness, grounding, relevance, and completeness, though it is clear and safe."
+    }
+  ]
+}
