@@ -74,7 +74,7 @@ function sanitizeIntervals(
         ? { raw: value.raw.slice(0, 60) }
         : {}),
     }))
-    .slice(0, 4);
+    .slice(0, 8);
   return valid.length > 0 ? valid : undefined;
 }
 
@@ -111,6 +111,8 @@ export function sanitizeConversationState(
     .slice(0, 12);
   const ids = new Set(entities.map((entity) => entity.id));
   const intervals = sanitizeIntervals(previous.intervals);
+  // The legacy engine deliberately projects either wire version back to v1.
+  // A session that has emitted v2 must remain on the greenfield adapter.
   return {
     version: 1,
     revision: Math.max(0, Math.min(previous.revision, 10_000)),

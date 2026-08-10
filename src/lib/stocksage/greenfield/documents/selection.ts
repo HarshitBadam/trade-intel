@@ -42,14 +42,12 @@ function duplicateKeys(hit: FusedRetrievalHit): string[] {
   const url = canonicalizeDocumentUrl(
     document.provenance.canonicalUrl ?? document.provenance.sourceUrl
   );
-  const sourceIdentity = `${document.provenance.provider.toLocaleLowerCase()}:${document.provenance.sourceId}`;
   const contentIdentity = normalizedText(
     `${document.title} ${documentText(document).slice(0, 500)}`
   );
   return [
     `document:${documentIdentity(document)}:${document.contentVersion}`,
     `url:${url}`,
-    `source:${sourceIdentity}`,
     `content:${contentIdentity}`,
   ];
 }

@@ -28,6 +28,16 @@ function appleEntity(): FinanceEntity {
   };
 }
 
+function microsoftEntity(): FinanceEntity {
+  return {
+    id: "issuer:microsoft",
+    name: "Microsoft Corporation",
+    query: "Microsoft",
+    ticker: "MSFT",
+    market: "us",
+  };
+}
+
 function filingFixture(): SecFilingMetadata {
   return {
     accessionNumber: "0000320193-26-000001",
@@ -138,6 +148,78 @@ test("production ports map Astra archive rows to news docs with canonical entity
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("production ports assign only entities confirmed by provider ids or aliases", async () => {
+  const apple = appleEntity();
+  const microsoft = microsoftEntity();
+  const ports = await createProductionHybridDocumentPorts(
+    baseInput({
+      entities: [apple, microsoft],
+      kinds: ["news"],
+      sources: {
+        astra: async () => [
+          {
+            kind: "astra",
+            title: "Microsoft reports cloud growth",
+            outlet: "Example Wire",
+            url: "https://news.example.com/microsoft-cloud",
+            excerpt: "Quarterly cloud revenue increased.",
+            entityIds: ["MSFT"],
+          },
+          {
+            kind: "astra",
+            title: "Apple expands its services business",
+            outlet: "Example Wire",
+            url: "https://news.example.com/apple-services",
+            excerpt: "The company announced a services expansion.",
+          },
+          {
+            kind: "astra",
+            title: "Quarterly results summary",
+            outlet: "Example Wire",
+            url: "https://news.example.com/ticker-metadata",
+            excerpt: "The issuer reported quarterly results.",
+            ticker: "AAPL",
+          },
+          {
+            kind: "astra",
+            title: "Technology sector roundup",
+            outlet: "Example Wire",
+            url: "https://news.example.com/sector-roundup",
+            excerpt: "Several companies moved with the broader market.",
+          },
+        ],
+        filings: async () => [],
+        tavily: async () => [],
+      },
+    })
+  );
+
+  const archive = await ports.store.list({ kinds: ["news"] });
+  const byTitle = new Map(archive.map((document) => [document.title, document]));
+  assert.deepEqual(
+    byTitle.get("Microsoft reports cloud growth")?.issuerIds,
+    [microsoft.id]
+  );
+  assert.deepEqual(
+    byTitle.get("Apple expands its services business")?.issuerIds,
+    [apple.id]
+  );
+  assert.deepEqual(
+    byTitle.get("Quarterly results summary")?.issuerIds,
+    [apple.id]
+  );
+  assert.deepEqual(
+    byTitle.get("Technology sector roundup")?.issuerIds,
+    []
+  );
+
+  const appleFiltered = await ports.store.list({ issuerIds: [apple.id] });
+  assert.deepEqual(
+    appleFiltered.map((document) => document.title).sort(),
+    ["Apple expands its services business", "Quarterly results summary"]
+  );
 });
 
 test("production ports map SEC filing metadata for a US ticker into filing docs", async () => {

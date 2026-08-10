@@ -1,5 +1,6 @@
 import { RotateCcw, Telescope } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type {
   ChatDataStatus,
   ChatPresentationMode,
@@ -11,7 +12,6 @@ import {
   effectivePresentationMode,
   nextDeepAction,
   presentationAccentClass,
-  presentationBadge,
 } from "./presentation";
 
 export type DeepMessageState = {
@@ -92,9 +92,28 @@ function tidyCitations(text: string): string {
     "g"
   );
   return text
+    .replace(
+      /^\s*(?:#{1,6}\s*)?(?:\*\*)?(?:Partial data|Limited evidence|Data unavailable)(?:\*\*)?\s*(?:\r?\n)+/i,
+      ""
+    )
     .replace(wrapped, "$1")
     .replace(trailingDate, "$1")
+    .replace(/\s*【(?!\s*S\d{1,3}\s*】)[^】]{1,80}】/gi, "")
     .replace(/[ \t]+([.,;:])/g, "$1");
+}
+
+export function normalizeMarkdownLayout(text: string): string {
+  return text
+    .split("\n")
+    .map((line) =>
+      /\|\s*:?-{3,}/.test(line)
+        ? line.replace(
+            /\|\s+\|(?=\s*(?:\*{0,2}[A-Za-z0-9$]|:?-{3,}))/g,
+            "|\n|"
+          )
+        : line
+    )
+    .join("\n");
 }
 
 function MarkdownAnswer({
@@ -106,15 +125,33 @@ function MarkdownAnswer({
 }) {
   return (
     <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
       components={{
         a: ({ href, children }) => (
           <CitationChip href={href} allowedHrefs={citationUrls}>
             {children}
           </CitationChip>
         ),
+        table: ({ children }) => (
+          <div className="my-3 max-w-full overflow-x-auto">
+            <table className="w-full min-w-[30rem] border-collapse border border-zinc-300 text-left text-[0.8125rem] leading-snug dark:border-[0.5px] dark:border-zinc-800">
+              {children}
+            </table>
+          </div>
+        ),
+        th: ({ children }) => (
+          <th className="border border-zinc-300 px-2 py-2 font-semibold dark:border-[0.5px] dark:border-zinc-800">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => (
+          <td className="border border-zinc-300 px-2 py-2 align-top dark:border-[0.5px] dark:border-zinc-800">
+            {children}
+          </td>
+        ),
       }}
     >
-      {tidyCitations(text)}
+      {normalizeMarkdownLayout(tidyCitations(text))}
     </ReactMarkdown>
   );
 }
@@ -147,7 +184,6 @@ export function ChatMessage({
     deep?.status
   );
   const accentClass = presentationAccentClass(containerMode);
-  const badge = presentationBadge(containerMode);
   const canClarify = canSubmitClarification({
     presentationMode: message.presentationMode,
     choiceCount: message.clarificationChoices?.length ?? 0,
@@ -174,14 +210,6 @@ export function ChatMessage({
       >
         {message.sender === "ai" ? (
           <div className="space-y-2 text-sm leading-relaxed [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_h2]:mt-3 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_p]:my-1.5 [&_em]:italic [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5">
-            {badge && (
-              <div
-                className={`inline-flex rounded-full px-2 py-0.5 text-[0.7rem] font-medium ${badge.toneClass}`}
-                role="status"
-              >
-                {badge.label}
-              </div>
-            )}
             <MarkdownAnswer
               text={message.text}
               citationUrls={message.citationUrls}

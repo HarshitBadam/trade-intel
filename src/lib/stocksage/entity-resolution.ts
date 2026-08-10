@@ -7,7 +7,10 @@ import {
   type CanonicalGroup,
   type WebAlias,
 } from "./entity-catalog";
-import { isWithinOneEdit } from "./text-normalization";
+import {
+  isWithinOneEdit,
+  isWithinTwoEdits,
+} from "./text-normalization";
 import type { FinanceEntity } from "./types";
 
 function escaped(value: string): string {
@@ -197,7 +200,10 @@ export function resolveText(text: string): FinanceEntity[] {
               (candidate) =>
                 /^[a-z0-9]{6,}$/i.test(candidate) &&
                 candidate.toLowerCase() !== token &&
-                isWithinOneEdit(token, candidate.toLowerCase())
+                (isWithinOneEdit(token, candidate.toLowerCase()) ||
+                  (token.length >= 8 &&
+                    candidate.length >= 8 &&
+                    isWithinTwoEdits(token, candidate.toLowerCase())))
             )
             .map((): [string, WebAlias] => [
               entityId(alias.ticker, alias.name),

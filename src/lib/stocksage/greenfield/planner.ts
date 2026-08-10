@@ -1,7 +1,21 @@
 import { currentSession, previousSession, type MarketCalendar, type TemporalInterval } from "../temporal";
 import type { FinanceEntity } from "../types";
+import {
+  flattenObligationNeeds,
+  type AnswerObligation,
+  type AnswerObligationKind,
+  type AnswerObligationPublicationRole,
+  type AnswerObligationRelationalMode,
+  type AnswerObligationTemporalMeaning,
+} from "./answer-obligations";
 import type { CanonicalLedgerState } from "./conversation-ledger";
+import {
+  DEFAULT_SEC_FACT_CONCEPTS,
+  resolveMetricCapabilities,
+  type MetricCapabilityResolution,
+} from "./metric-capabilities";
 import type { SemanticInterpretation } from "./semantic-interpreter";
+import type { InformationNeed } from "./semantic-schema";
 
 export type GreenfieldToolKind =
   | "market_data"
@@ -64,7 +78,11 @@ export type GreenfieldExecutionPlan = {
   standaloneQuery: string;
   entities: readonly FinanceEntity[];
   intervals: readonly TemporalInterval[];
+  obligations: readonly AnswerObligation[];
+  /** Backward-compatible union for the current monolithic executor. */
   needs: readonly GreenfieldInformationNeed[];
+  /** Optional on legacy plans; populated by the v1 planner for diagnostics. */
+  metricResolutions?: readonly MetricCapabilityResolution[];
   answerDepth: "brief" | "standard" | "deep";
   comparison: boolean;
   causal: boolean;
@@ -86,18 +104,6 @@ const DOCUMENT_NEEDS = new Set([
   "source_check",
   "current_state",
 ]);
-
-const CONCEPT_BY_METRIC: Readonly<Record<string, readonly string[]>> = {
-  revenue: ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues"],
-  earnings: ["NetIncomeLoss", "EarningsPerShareDiluted"],
-  profit: ["NetIncomeLoss", "OperatingIncomeLoss"],
-  assets: ["Assets"],
-  liabilities: ["Liabilities"],
-  equity: ["StockholdersEquity"],
-  cash: ["CashAndCashEquivalentsAtCarryingValue"],
-  debt: ["LongTermDebtCurrent", "LongTermDebtNoncurrent"],
-  valuation: ["EntityPublicFloat", "CommonStocksIncludingAdditionalPaidInCapital"],
-};
 
 function uniqueEntities(values: readonly FinanceEntity[]): FinanceEntity[] {
   return [...new Map(values.map((entity) => [entity.id, entity])).values()];
@@ -147,40 +153,38 @@ function planIntervals(
 }
 
 function factConcepts(interpretation: SemanticInterpretation): string[] {
-  const requested = interpretation.semantic.metrics.flatMap((metric) => {
-    const name = metric.name.toLowerCase();
-    return Object.entries(CONCEPT_BY_METRIC).flatMap(([key, concepts]) =>
-      name.includes(key) ? concepts : []
-    );
-  });
+  if (interpretation.semantic.metrics.length === 0) {
+    return [...DEFAULT_SEC_FACT_CONCEPTS];
+  }
   return [
     ...new Set(
-      requested.length > 0
-        ? requested
-        : [
-            "RevenueFromContractWithCustomerExcludingAssessedTax",
-            "NetIncomeLoss",
-            "Assets",
-            "Liabilities",
-          ]
+      resolveMetricCapabilities(interpretation.semantic.metrics).flatMap(
+        (resolution) => resolution.requiredConcepts
+      )
     ),
   ];
 }
 
-function requestedKinds(interpretation: SemanticInterpretation): DocumentNeed["kinds"] {
+function requestedKinds(
+  needKinds: ReadonlySet<InformationNeed["kind"]>
+): DocumentNeed["kinds"] {
   const kinds = new Set<DocumentNeed["kinds"][number]>();
-  for (const need of interpretation.semantic.informationNeeds) {
-    if (need.kind === "fundamentals" || need.kind === "valuation") {
+  for (const needKind of needKinds) {
+    if (needKind === "fundamentals" || needKind === "valuation") {
       kinds.add("filing");
       kinds.add("transcript");
     }
-    if (need.kind === "cause" || need.kind === "catalyst" || need.kind === "risk") {
+    if (
+      needKind === "cause" ||
+      needKind === "catalyst" ||
+      needKind === "risk"
+    ) {
       kinds.add("news");
       kinds.add("press_release");
       kinds.add("filing");
       kinds.add("transcript");
     }
-    if (need.kind === "source_check" || need.kind === "current_state") {
+    if (needKind === "source_check" || needKind === "current_state") {
       kinds.add("news");
       kinds.add("web");
     }
@@ -202,60 +206,197 @@ function isCurrentAsk(
   return intervals.some((interval) => interval.source === "default");
 }
 
-function effectiveNeedKinds(
+type ObligationSourceNeed = Omit<InformationNeed, "id"> & {
+  id?: string;
+};
+
+function effectiveInformationNeeds(
   interpretation: SemanticInterpretation
-): Set<string> {
-  const kinds = new Set(
-    interpretation.semantic.informationNeeds.map((need) => need.kind)
-  );
+): ObligationSourceNeed[] {
+  const needs: ObligationSourceNeed[] = [
+    ...interpretation.semantic.informationNeeds,
+  ];
+  const hasExplicitNeeds = needs.length > 0;
+  const addImplied = (
+    kind: InformationNeed["kind"],
+    priority: InformationNeed["priority"] = "primary"
+  ) => {
+    if (needs.some((need) => need.kind === kind)) return;
+    needs.push({
+      kind,
+      question: interpretation.standaloneQuery,
+      priority,
+    });
+  };
+
   switch (interpretation.semantic.intent.kind) {
     case "entity_snapshot":
-      kinds.add("price_performance");
+      if (!hasExplicitNeeds) addImplied("price_performance");
       break;
     case "entity_comparison":
-      kinds.add("comparison");
+      if (!hasExplicitNeeds) addImplied("comparison");
+      break;
+    case "metric_lookup":
+      if (!hasExplicitNeeds) addImplied("fundamentals");
       break;
     case "causal_analysis":
-      kinds.add("price_performance");
-      kinds.add("cause");
+      addImplied("price_performance", "supporting");
+      addImplied("cause");
       break;
     case "outlook_research":
-      kinds.add("risk");
-      kinds.add("catalyst");
+      addImplied("risk");
+      addImplied("catalyst");
       break;
     case "concept_explanation":
-      kinds.add("definition");
+      addImplied("definition");
       break;
     default:
       break;
   }
-  return kinds;
+  return needs;
 }
 
-/**
- * Plans from validated semantic information needs. It never re-reads the raw
- * message with regexes and never chooses a provider based on a missing result.
- */
-export function planGreenfieldTurn(args: {
-  interpretation: SemanticInterpretation;
-  state: CanonicalLedgerState;
-  calendar: MarketCalendar;
-  now: Date;
-}): GreenfieldExecutionPlan {
-  const { interpretation, state, calendar, now } = args;
-  const entities = planEntities(interpretation, state);
-  const intervals = planIntervals(interpretation, calendar, now);
-  const kinds = effectiveNeedKinds(interpretation);
-  const needs: GreenfieldInformationNeed[] = [];
+function obligationKindFor(
+  needKind: InformationNeed["kind"]
+): AnswerObligationKind {
+  switch (needKind) {
+    case "definition":
+      return "define";
+    case "comparison":
+    case "ranking":
+      return "compare";
+    case "cause":
+      return "explain_cause";
+    case "risk":
+    case "catalyst":
+      return "assess_outlook";
+    case "listing_status":
+      return "verify_listing";
+    case "source_check":
+      return "verify_source";
+    default:
+      return "snapshot";
+  }
+}
 
-  if (kinds.has("definition")) {
+function publicationRolesFor(
+  needKind: InformationNeed["kind"]
+): readonly AnswerObligationPublicationRole[] {
+  if (
+    needKind === "current_state" ||
+    needKind === "fundamentals" ||
+    needKind === "valuation"
+  ) {
+    return ["deterministic", "narrative"];
+  }
+  return DOCUMENT_NEEDS.has(needKind)
+    ? ["narrative"]
+    : ["deterministic"];
+}
+
+function relationalModeFor(
+  interpretation: SemanticInterpretation,
+  kind: AnswerObligationKind,
+  entities: readonly FinanceEntity[]
+): AnswerObligationRelationalMode {
+  const mode = interpretation.semantic.comparison.kind;
+  if (mode !== "none") return mode;
+  return (kind === "compare" ||
+    interpretation.semantic.intent.kind === "entity_comparison") &&
+    entities.length > 1
+    ? "entity_vs_entity"
+    : "none";
+}
+
+function entitiesForRelationalMode(
+  interpretation: SemanticInterpretation,
+  entities: readonly FinanceEntity[],
+  mode: AnswerObligationRelationalMode
+): FinanceEntity[] {
+  if (mode !== "entity_vs_entity" && mode !== "entity_and_time") {
+    return [...entities];
+  }
+  const requestedMentionIds = new Set(
+    interpretation.semantic.comparison.entityMentionIds
+  );
+  if (requestedMentionIds.size === 0) return [...entities];
+  const requestedEntities = interpretation.grounding.entityMentions.flatMap(
+    (mention) =>
+      requestedMentionIds.has(mention.mentionId) && mention.entity
+        ? [mention.entity]
+        : []
+  );
+  return requestedEntities.length > 0
+    ? uniqueEntities(requestedEntities)
+    : [...entities];
+}
+
+function intervalsForRelationalMode(
+  interpretation: SemanticInterpretation,
+  intervals: readonly TemporalInterval[],
+  mode: AnswerObligationRelationalMode
+): TemporalInterval[] {
+  if (mode !== "time_vs_time" && mode !== "entity_and_time") {
+    return [...intervals];
+  }
+  const requestedSpecIds = new Set(
+    interpretation.semantic.comparison.temporalSpecIds
+  );
+  const scoped = interpretation.compiledTemporal
+    .filter((spec) => requestedSpecIds.has(spec.id))
+    .flatMap((spec) => spec.intervals);
+  return scoped.length > 0 ? scoped : [...intervals];
+}
+
+function temporalMeaningFor(
+  interpretation: SemanticInterpretation,
+  sourceTemporalSpecIds: readonly string[]
+): AnswerObligationTemporalMeaning {
+  const requested = new Set(sourceTemporalSpecIds);
+  const specs = interpretation.compiledTemporal.filter(
+    (spec) => requested.size === 0 || requested.has(spec.id)
+  );
+  if (specs.some((spec) => spec.kind === "comparison")) return "contrast";
+  if (specs.some((spec) => spec.kind === "range")) return "window";
+  return "snapshot";
+}
+
+function documentQueryFor(
+  obligation: Pick<AnswerObligation, "sourceNeedIds">,
+  interpretation: SemanticInterpretation
+): string {
+  const sourceIds = new Set(obligation.sourceNeedIds);
+  const questions = interpretation.semantic.informationNeeds
+    .filter((need) => sourceIds.has(need.id))
+    .map((need) => need.question);
+  return questions.length > 0
+    ? [...new Set(questions)].join("; ")
+    : interpretation.standaloneQuery;
+}
+
+function planNeedsForObligation(
+  obligation: Omit<AnswerObligation, "needs">,
+  interpretation: SemanticInterpretation
+): GreenfieldInformationNeed[] {
+  const needs: GreenfieldInformationNeed[] = [];
+  const sourceKinds = new Set(obligation.sourceNeedKinds);
+
+  if (
+    obligation.publicationRole === "deterministic" &&
+    obligation.kind === "define"
+  ) {
+    const sourceIds = new Set(obligation.sourceNeedIds);
     needs.push({
-      id: `concept:${interpretation.semantic.turnId}`,
+      id: `concept:${obligation.id}`,
       kind: "concept_knowledge",
       labels: [
         ...interpretation.semantic.metrics.map((metric) => metric.name),
         ...interpretation.semantic.informationNeeds
-          .filter((need) => need.kind === "definition")
+          .filter(
+            (need) =>
+              need.kind === "definition" &&
+              (sourceIds.size === 0 || sourceIds.has(need.id))
+          )
           .map((need) => need.question),
         ...(interpretation.semantic.topic.label
           ? [interpretation.semantic.topic.label]
@@ -264,18 +405,23 @@ export function planGreenfieldTurn(args: {
     });
   }
 
-  if ([...kinds].some((kind) => MARKET_NEEDS.has(kind))) {
-    const commonFetchStart = intervals
+  const needsMarketData =
+    obligation.publicationRole === "deterministic" &&
+    [...sourceKinds].some((kind) => MARKET_NEEDS.has(kind));
+  if (needsMarketData) {
+    const commonFetchStart = obligation.intervals
       .map((interval) =>
         previousSession(interval.startSession, interval.calendar)
       )
       .sort()[0];
-    const commonFetchEnd = intervals
+    const commonFetchEnd = obligation.intervals
       .map((interval) => interval.endSession)
       .sort()
       .at(-1);
-    for (const entity of entities.filter((item) => Boolean(item.ticker) && !item.private)) {
-      for (const interval of intervals) {
+    for (const entity of obligation.entities.filter(
+      (item) => Boolean(item.ticker) && !item.private
+    )) {
+      for (const interval of obligation.intervals) {
         needs.push({
           id: `market:${entity.id}:${interval.startSession}:${interval.endSession}`,
           kind: "market_data",
@@ -291,11 +437,12 @@ export function planGreenfieldTurn(args: {
   }
 
   if (
-    kinds.has("listing_status") ||
-    kinds.has("current_state") ||
-    needs.some((need) => need.kind === "market_data")
+    obligation.publicationRole === "deterministic" &&
+    (obligation.kind === "verify_listing" ||
+      sourceKinds.has("current_state") ||
+      needs.some((need) => need.kind === "market_data"))
   ) {
-    for (const entity of entities) {
+    for (const entity of obligation.entities) {
       needs.push({
         id: `security:${entity.id}`,
         kind: "security_master",
@@ -304,35 +451,181 @@ export function planGreenfieldTurn(args: {
     }
   }
 
-  if ([...kinds].some((kind) => FACT_NEEDS.has(kind))) {
+  if (
+    obligation.publicationRole === "deterministic" &&
+    [...sourceKinds].some((kind) => FACT_NEEDS.has(kind))
+  ) {
     const concepts = factConcepts(interpretation);
-    for (const entity of entities.filter(
-      (item) => item.market === "us" && Boolean(item.ticker) && !item.private
-    )) {
-      needs.push({
-        id: `facts:${entity.id}`,
-        kind: "company_facts",
-        entity,
-        concepts,
-      });
+    if (concepts.length > 0) {
+      for (const entity of obligation.entities.filter(
+        (item) => item.market === "us" && Boolean(item.ticker) && !item.private
+      )) {
+        needs.push({
+          id: `facts:${entity.id}`,
+          kind: "company_facts",
+          entity,
+          concepts,
+        });
+      }
     }
   }
 
-  if (
-    [...kinds].some((kind) => DOCUMENT_NEEDS.has(kind)) ||
-    interpretation.semantic.intent.kind === "outlook_research" ||
-    interpretation.semantic.intent.kind === "causal_analysis"
-  ) {
+  if (obligation.publicationRole === "narrative") {
     needs.push({
-      id: `documents:${interpretation.semantic.turnId}`,
+      id: `documents:${obligation.id}`,
       kind: "documents",
-      query: interpretation.standaloneQuery,
-      entityIds: entities.map((entity) => entity.id),
-      currentAsk: isCurrentAsk(interpretation, intervals),
-      kinds: requestedKinds(interpretation),
-      intervals,
+      query: documentQueryFor(obligation, interpretation),
+      entityIds: obligation.entities.map((entity) => entity.id),
+      currentAsk: isCurrentAsk(interpretation, obligation.intervals),
+      kinds: requestedKinds(sourceKinds),
+      intervals: obligation.intervals,
     });
   }
+
+  return needs;
+}
+
+type ObligationGroup = {
+  kind: AnswerObligationKind;
+  lane: string;
+  publicationRole: AnswerObligationPublicationRole;
+  sources: ObligationSourceNeed[];
+};
+
+function obligationLaneFor(
+  needKind: InformationNeed["kind"],
+  publicationRole: AnswerObligationPublicationRole
+): string {
+  if (publicationRole === "narrative") {
+    if (needKind === "current_state") return "current_documents";
+    if (needKind === "fundamentals" || needKind === "valuation") {
+      return "facts_documents";
+    }
+    if (needKind === "risk" || needKind === "catalyst") {
+      return "outlook_documents";
+    }
+    return `${needKind}_documents`;
+  }
+  if (needKind === "definition") return "concept";
+  if (needKind === "fundamentals" || needKind === "valuation") return "facts";
+  if (needKind === "listing_status") return "identity";
+  return "market";
+}
+
+/**
+ * Derives independently executable answer obligations from validated semantic
+ * v1 output. No raw-message matching or provider behavior is consulted.
+ */
+export function deriveAnswerObligations(args: {
+  interpretation: SemanticInterpretation;
+  entities: readonly FinanceEntity[];
+  intervals: readonly TemporalInterval[];
+}): AnswerObligation[] {
+  const { interpretation, entities, intervals } = args;
+  const groups = new Map<string, ObligationGroup>();
+  for (const source of effectiveInformationNeeds(interpretation)) {
+    const kind = obligationKindFor(source.kind);
+    for (const publicationRole of publicationRolesFor(source.kind)) {
+      const lane = obligationLaneFor(source.kind, publicationRole);
+      const key = `${kind}:${publicationRole}:${lane}`;
+      const group = groups.get(key) ?? {
+        kind,
+        lane,
+        publicationRole,
+        sources: [],
+      };
+      group.sources.push(source);
+      groups.set(key, group);
+    }
+  }
+
+  return [...groups.values()]
+    .sort(
+      (left, right) =>
+        Number(left.publicationRole === "narrative") -
+        Number(right.publicationRole === "narrative")
+    )
+    .map((group) => {
+      const relationalMode = relationalModeFor(
+        interpretation,
+        group.kind,
+        entities
+      );
+      const obligationEntities = entitiesForRelationalMode(
+        interpretation,
+        entities,
+        relationalMode
+      );
+      const obligationIntervals = intervalsForRelationalMode(
+        interpretation,
+        intervals,
+        relationalMode
+      );
+      const sourceTemporalSpecIds =
+        interpretation.semantic.comparison.temporalSpecIds.length > 0
+          ? [...interpretation.semantic.comparison.temporalSpecIds]
+          : interpretation.compiledTemporal.map((spec) => spec.id);
+      const suffix =
+        `${group.kind}:${group.publicationRole}:${group.lane}:` +
+        relationalMode;
+      const obligation = {
+        id: `obligation:${interpretation.semantic.turnId}:${suffix}`,
+        sectionId: `section:${interpretation.semantic.turnId}:${suffix}`,
+        kind: group.kind,
+        sourceNeedKinds: [
+          ...new Set(group.sources.map((source) => source.kind)),
+        ],
+        sourceNeedIds: [
+          ...new Set(
+            group.sources.flatMap((source) => (source.id ? [source.id] : []))
+          ),
+        ],
+        priority: group.sources.some(
+          (source) => source.priority === "primary"
+        )
+          ? ("primary" as const)
+          : ("supporting" as const),
+        entities: obligationEntities,
+        intervals: obligationIntervals,
+        temporalMeaning: temporalMeaningFor(
+          interpretation,
+          sourceTemporalSpecIds
+        ),
+        relationalMode,
+        sourceEntityMentionIds: [
+          ...interpretation.semantic.comparison.entityMentionIds,
+        ],
+        sourceTemporalSpecIds,
+        publicationRole: group.publicationRole,
+      };
+      return {
+        ...obligation,
+        needs: planNeedsForObligation(obligation, interpretation),
+      };
+    });
+}
+
+/**
+ * Plans from validated semantic information needs. It never re-reads the raw
+ * message with regexes and never chooses a provider based on a missing result.
+ */
+export function planGreenfieldTurn(args: {
+  interpretation: SemanticInterpretation;
+  state: CanonicalLedgerState;
+  calendar: MarketCalendar;
+  now: Date;
+}): GreenfieldExecutionPlan {
+  const { interpretation, state, calendar, now } = args;
+  const entities = planEntities(interpretation, state);
+  const intervals = planIntervals(interpretation, calendar, now);
+  const metricResolutions = resolveMetricCapabilities(
+    interpretation.semantic.metrics
+  );
+  const obligations = deriveAnswerObligations({
+    interpretation,
+    entities,
+    intervals,
+  });
 
   return {
     version: 1,
@@ -342,9 +635,31 @@ export function planGreenfieldTurn(args: {
     standaloneQuery: interpretation.standaloneQuery,
     entities,
     intervals,
-    needs,
+    obligations,
+    needs: flattenObligationNeeds(obligations),
+    metricResolutions,
     answerDepth: interpretation.semantic.answer.depth,
     comparison: interpretation.semantic.comparison.kind !== "none",
     causal: interpretation.semantic.intent.kind === "causal_analysis",
+  };
+}
+
+/**
+ * Produces the exact legacy-shaped plan the executor should run for one
+ * obligation. In particular, document retrieval receives only that
+ * obligation's entities, intervals and query.
+ */
+export function scopeGreenfieldPlanToObligation(
+  plan: GreenfieldExecutionPlan,
+  obligation: AnswerObligation
+): GreenfieldExecutionPlan {
+  return {
+    ...plan,
+    entities: obligation.entities,
+    intervals: obligation.intervals,
+    obligations: [obligation],
+    needs: obligation.needs,
+    comparison: obligation.relationalMode !== "none",
+    causal: obligation.kind === "explain_cause",
   };
 }

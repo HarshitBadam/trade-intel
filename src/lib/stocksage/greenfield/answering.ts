@@ -2,6 +2,10 @@ import type {
   EvidenceFact,
   ResearchEvidence,
 } from "./research";
+import {
+  canonicalInstrumentAliases,
+  instrumentAliasesOverlap,
+} from "./evidence-identity";
 
 export type AnswerDepth = "glance" | "standard" | "detailed" | "deep";
 export type UserDepthPreference =
@@ -274,6 +278,12 @@ export interface AdaptiveAnswerRequest extends DepthSelectionInput {
   composer?: InjectedComposer;
   alignment?: AnswerAlignment;
   unsupportedPolicy?: "remove" | "qualify";
+  /**
+   * Allows a cited prose claim over freshness-scoped document evidence to be
+   * explicitly qualified. Numeric and derived claims still require exact,
+   * reproducible fact references.
+   */
+  allowQualifiedNarrativeClaims?: boolean;
 }
 
 function evidenceMap(
@@ -516,6 +526,18 @@ function effectiveField(
   return factValue ?? evidence[field];
 }
 
+function effectiveInstrumentAliases(
+  evidence: ResearchEvidence,
+  references: readonly FactReference[]
+): string[] {
+  return canonicalInstrumentAliases([
+    effectiveField(evidence, references, "instrument"),
+    evidence.providerSymbol,
+    evidence.instrument,
+    ...(evidence.instrumentAliases ?? []),
+  ]);
+}
+
 function isLookAhead(
   evidence: ResearchEvidence,
   references: readonly FactReference[],
@@ -597,6 +619,12 @@ function qualification(text: string): string {
         .replace(/^[A-Z]/, (value) => value.toLowerCase())}`;
 }
 
+function containsMaterialNumericAssertion(text: string): boolean {
+  return /(?:[$€£¥]\s*\d|\b\d+(?:\.\d+)?\s*(?:%|percent|percentage points?|bps|basis points?|million|billion|trillion|shares?|dollars?|euros?|pounds?))/i.test(
+    text
+  );
+}
+
 function pushIssue(
   issues: VerificationIssue[],
   claim: ComposedClaim,
@@ -616,6 +644,7 @@ export function verifyComposedAnswer(args: {
   evidence: readonly ResearchEvidence[];
   alignment?: AnswerAlignment;
   unsupportedPolicy?: "remove" | "qualify";
+  allowQualifiedNarrativeClaims?: boolean;
 }): VerificationResult {
   const indexed = evidenceMap(args.evidence);
   const issues: VerificationIssue[] = [];
@@ -671,23 +700,21 @@ export function verifyComposedAnswer(args: {
       continue;
     }
 
+    const alignedAliases = canonicalInstrumentAliases(
+      args.alignment?.instruments ?? []
+    );
     const instrumentMismatch =
       (claim.instrument !== undefined &&
-        args.alignment?.instruments !== undefined &&
-        !args.alignment.instruments.includes(claim.instrument)) ||
+        alignedAliases.length > 0 &&
+        !instrumentAliasesOverlap([claim.instrument], alignedAliases)) ||
       cited.some((item) => {
-        const instrument = effectiveField(
-          item,
-          references,
-          "instrument"
-        );
+        const evidenceAliases = effectiveInstrumentAliases(item, references);
+        if (evidenceAliases.length === 0) return false;
         return (
           (claim.instrument !== undefined &&
-            instrument !== undefined &&
-            claim.instrument !== instrument) ||
-          (args.alignment?.instruments !== undefined &&
-            instrument !== undefined &&
-            !args.alignment.instruments.includes(instrument))
+            !instrumentAliasesOverlap([claim.instrument], evidenceAliases)) ||
+          (alignedAliases.length > 0 &&
+            !instrumentAliasesOverlap(evidenceAliases, alignedAliases))
         );
       });
     if (instrumentMismatch) {
@@ -737,7 +764,10 @@ export function verifyComposedAnswer(args: {
         args.alignment.periodStart,
         args.alignment.periodEnd
       );
-    const evidencePeriodMismatch = cited.some((item) =>
+    const exactPeriodEvidence = cited.filter(
+      (item) => (item.temporalSemantics ?? "exact_period") === "exact_period"
+    );
+    const evidencePeriodMismatch = exactPeriodEvidence.some((item) =>
       !periodsOverlap(
         claim.periodStart,
         claim.periodEnd,
@@ -745,7 +775,7 @@ export function verifyComposedAnswer(args: {
         effectiveField(item, references, "periodEnd")
       )
     );
-    const evidenceRequestMismatch = cited.some((item) =>
+    const evidenceRequestMismatch = exactPeriodEvidence.some((item) =>
       !periodsOverlap(
         effectiveField(item, references, "periodStart"),
         effectiveField(item, references, "periodEnd"),
@@ -789,10 +819,20 @@ export function verifyComposedAnswer(args: {
     }
 
     if (!directSupport(claim, cited, indexed)) {
+      const narrativeEvidence =
+        cited.length > 0 &&
+        cited.every((item) => item.temporalSemantics === "freshness");
       const canQualify =
         args.unsupportedPolicy === "qualify" &&
-        (kind === "inference" || kind === "opinion") &&
-        cited.length > 0;
+        cited.length > 0 &&
+        (kind === "inference" ||
+          kind === "opinion" ||
+          (args.allowQualifiedNarrativeClaims === true &&
+            narrativeEvidence &&
+            kind !== "derived" &&
+            !claim.calculation &&
+            references.length === 0 &&
+            !containsMaterialNumericAssertion(claim.text)));
       pushIssue(
         issues,
         claim,
@@ -880,6 +920,7 @@ export async function answerAdaptively(
     evidence,
     alignment: request.alignment,
     unsupportedPolicy: request.unsupportedPolicy,
+    allowQualifiedNarrativeClaims: request.allowQualifiedNarrativeClaims,
   });
   const text = [
     ...verification.claims.map((claim) =>

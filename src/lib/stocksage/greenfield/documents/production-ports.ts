@@ -67,10 +67,78 @@ function evidenceKind(
   return "web";
 }
 
+function normalizeEntityAlias(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function includesEntityAlias(text: string, alias: string): boolean {
+  const normalizedAlias = normalizeEntityAlias(alias);
+  if (normalizedAlias.length < 3) return false;
+  return ` ${normalizeEntityAlias(text)} `.includes(` ${normalizedAlias} `);
+}
+
+function includesTicker(text: string, ticker: string): boolean {
+  const value = ticker.trim();
+  if (!value) return false;
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `(?:^|[^\\p{L}\\p{N}])${escaped}(?=$|[^\\p{L}\\p{N}])`,
+    value.length > 2 ? "iu" : "u"
+  ).test(text);
+}
+
+function evidenceMetadataText(input: EvidenceInput): string {
+  return [
+    input.ticker,
+    input.event,
+    input.importance,
+    input.keyObservations,
+    input.sentiment,
+    input.sentimentReasoning,
+    ...(input.criteria ?? []),
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+}
+
+function confirmedEntityIds(
+  input: EvidenceInput,
+  entities: readonly FinanceEntity[]
+): string[] {
+  const providerIds = new Set(
+    (input.entityIds ?? []).map(normalizeEntityAlias).filter(Boolean)
+  );
+  const metadataText = evidenceMetadataText(input);
+  const searchableText = `${input.title} ${input.excerpt} ${metadataText}`;
+
+  return entities.flatMap((entity): string[] => {
+    const identifiers = [entity.id, entity.ticker, entity.name, entity.query]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map(normalizeEntityAlias);
+    const providerConfirmed = identifiers.some((id) => providerIds.has(id));
+    const tickerConfirmed =
+      Boolean(entity.ticker) &&
+      (normalizeEntityAlias(input.ticker ?? "") ===
+        normalizeEntityAlias(entity.ticker ?? "") ||
+        includesTicker(searchableText, entity.ticker ?? ""));
+    const nameConfirmed = [entity.name, entity.query].some((alias) =>
+      includesEntityAlias(searchableText, alias)
+    );
+    return providerConfirmed || tickerConfirmed || nameConfirmed
+      ? [entity.id]
+      : [];
+  });
+}
+
 function evidenceDocument(
   input: EvidenceInput,
   allowedKinds: readonly DocumentKind[],
-  fallbackEntityIds: readonly string[],
+  entities: readonly FinanceEntity[],
   now: Date
 ): NormalizedDocument | null {
   const url = safeSourceUrl(input.url);
@@ -81,10 +149,7 @@ function evidenceDocument(
   const publishedAt = input.publishedAt
     ? timestamp(input.publishedAt, fetchedAt)
     : undefined;
-  const entityIds =
-    input.entityIds && input.entityIds.length > 0
-      ? input.entityIds
-      : [...fallbackEntityIds];
+  const entityIds = confirmedEntityIds(input, entities);
   return {
     documentId: `${input.kind}:${digest(url)}`,
     kind: evidenceKind(input, allowedKinds),
@@ -160,7 +225,7 @@ function liveSearch(
         const document = evidenceDocument(
           item,
           query.filter?.kinds ?? input.kinds,
-          input.entities.map((entity) => entity.id),
+          input.entities,
           now
         );
         if (!document) return [];
@@ -293,7 +358,7 @@ export async function createProductionHybridDocumentPorts(
     const document = evidenceDocument(
       item,
       input.kinds,
-      input.entities.map((entity) => entity.id),
+      input.entities,
       now
     );
     return document ? [document] : [];

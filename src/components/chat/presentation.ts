@@ -9,55 +9,21 @@ import type { DeepMessageState } from "./ChatMessage";
 
 export type PresentationBadge = { label: string; toneClass: string };
 
-const BADGES: Partial<Record<ChatPresentationMode, PresentationBadge>> = {
-  clarification: {
-    label: "Needs one more detail",
-    toneClass: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  },
-  limited_evidence: {
-    label: "Partial data",
-    toneClass: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  },
-  no_evidence: {
-    label: "Data unavailable",
-    toneClass: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
-  },
-  deep_pending: {
-    label: "Researching deeper",
-    toneClass: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
-  },
-  deep_failed: {
-    label: "Research unavailable",
-    toneClass: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
-  },
-};
-
 /**
- * The small text badge for a presentation mode, or `null` when the mode is
- * either unset (legacy replies) or one that reads fine without extra copy
- * (`social`, `stable_finance`) — restrained means not every mode needs a label.
+ * Presentation modes remain available for behavior, accents, and telemetry,
+ * but user-facing status badges are deliberately disabled in every environment.
  */
 export function presentationBadge(
-  mode: ChatPresentationMode | undefined
+  _mode: ChatPresentationMode | undefined
 ): PresentationBadge | null {
-  if (!mode) return null;
-  return BADGES[mode] ?? null;
+  return null;
 }
 
-const ACCENTS: Partial<Record<ChatPresentationMode, string>> = {
-  clarification: "border-amber-400/70",
-  limited_evidence: "border-amber-400/50",
-  no_evidence: "border-rose-400/50",
-  deep_pending: "border-sky-400/50",
-  deep_failed: "border-rose-400/50",
-};
-
-/** Thin left-border accent color per mode; empty string when no accent applies. */
+/** Internal modes never alter the visible answer container. */
 export function presentationAccentClass(
-  mode: ChatPresentationMode | undefined
+  _mode: ChatPresentationMode | undefined
 ): string {
-  if (!mode) return "";
-  return ACCENTS[mode] ?? "";
+  return "";
 }
 
 /**

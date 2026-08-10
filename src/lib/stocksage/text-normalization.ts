@@ -39,3 +39,48 @@ export function isWithinOneEdit(left: string, right: string): boolean {
   }
   return true;
 }
+
+/**
+ * Bounded Damerau-Levenshtein matching for long, distinctive catalog aliases.
+ * This is intentionally separate from the one-edit safety matcher: entity
+ * recovery can tolerate two independent transpositions only when the catalog
+ * later proves the match is unique.
+ */
+export function isWithinTwoEdits(left: string, right: string): boolean {
+  if (Math.abs(left.length - right.length) > 2) return false;
+  const rows = left.length + 1;
+  const columns = right.length + 1;
+  const distance = Array.from({ length: rows }, () =>
+    Array<number>(columns).fill(0)
+  );
+  for (let row = 0; row < rows; row += 1) distance[row][0] = row;
+  for (let column = 0; column < columns; column += 1) {
+    distance[0][column] = column;
+  }
+  for (let row = 1; row < rows; row += 1) {
+    let rowMinimum = Number.POSITIVE_INFINITY;
+    for (let column = 1; column < columns; column += 1) {
+      const substitutionCost =
+        left[row - 1] === right[column - 1] ? 0 : 1;
+      distance[row][column] = Math.min(
+        distance[row - 1][column] + 1,
+        distance[row][column - 1] + 1,
+        distance[row - 1][column - 1] + substitutionCost
+      );
+      if (
+        row > 1 &&
+        column > 1 &&
+        left[row - 1] === right[column - 2] &&
+        left[row - 2] === right[column - 1]
+      ) {
+        distance[row][column] = Math.min(
+          distance[row][column],
+          distance[row - 2][column - 2] + 1
+        );
+      }
+      rowMinimum = Math.min(rowMinimum, distance[row][column]);
+    }
+    if (rowMinimum > 2) return false;
+  }
+  return distance[left.length][right.length] <= 2;
+}

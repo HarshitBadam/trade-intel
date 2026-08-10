@@ -25,6 +25,23 @@ export interface ResearchEvidence {
   retrievedAt: string;
   observedAt?: string;
   availableAt?: string;
+  /** Canonical issuer/entity identity, independent of any traded listing. */
+  subjectId?: string;
+  /** All canonical subjects when one document covers more than one entity. */
+  subjectIds?: readonly string[];
+  /** Canonical security-master identity when one is known. */
+  instrumentId?: string;
+  /** Provider-native symbol used to retrieve this evidence. */
+  providerSymbol?: string;
+  /** Equivalent provider/venue spellings such as MQG, MQG.AX, and ASX:MQG. */
+  instrumentAliases?: readonly string[];
+  /**
+   * `exact_period` participates in market-session alignment. Document
+   * `freshness` and stable `timeless` evidence retain availability checks but
+   * are not forced into an exact trading-session window.
+   */
+  temporalSemantics?: "exact_period" | "freshness" | "timeless";
+  /** Legacy provider symbol retained for existing composers and consumers. */
   instrument?: string;
   currency?: string;
   periodStart?: string;

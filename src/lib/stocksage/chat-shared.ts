@@ -3,6 +3,10 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { RequestBudget } from "./budget";
 import type { RetrievalProviders } from "./evidence/retrieve";
+import type {
+  GreenfieldDependencies,
+  GreenfieldReply,
+} from "./greenfield/engine";
 import type { SafetyClassifier } from "./safety-classifier";
 import { logStockSage } from "./telemetry";
 import type {
@@ -18,6 +22,17 @@ import type {
 export type ChatDependencies = {
   retrievalProviders?: RetrievalProviders;
   safetyClassifier?: SafetyClassifier;
+  /**
+   * Explicit per-request rollout override for tests and benchmarks. A v2
+   * conversation remains greenfield even when this asks for legacy.
+   */
+  engine?: "legacy" | "greenfield" | "simple";
+  /** Greenfield provider seams; production normally leaves this undefined. */
+  greenfield?: GreenfieldDependencies;
+  /** Test seam for Deep Research queue capability; production uses config. */
+  deepQueueReady?: boolean;
+  /** Per-request benchmark/diagnostic observer; never affects publication. */
+  onGreenfieldReply?: (reply: GreenfieldReply) => void;
   /**
    * Test-only observer for the authoritative, frozen turn. Kept per request
    * so concurrent tests cannot share mutable observation state.

@@ -1,5 +1,10 @@
-import type { FinanceEntity } from "../types";
 import type {
+  ConversationReferenceFrame,
+  ConversationTemporalAnchor,
+  FinanceEntity,
+} from "../types";
+import type {
+  CompiledTemporalSpec,
   GroundedGroupCandidate,
   SemanticGrounding,
   SemanticInterpretation,
@@ -54,6 +59,12 @@ export type CanonicalLedgerState = {
   ambiguities: readonly SemanticAmbiguity[];
   assumptions: readonly SemanticAssumption[];
   provenance: Readonly<Record<string, FieldProvenance>>;
+  /** Recent ordered referents. Earlier history remains in ledger entries. */
+  frames: readonly ConversationReferenceFrame[];
+  /** The referent for singular/plural inheritance on the next turn. */
+  focusEntityIds: readonly string[];
+  /** Compiled active temporal meaning, preserving comparison positions. */
+  activeTemporalAnchors: readonly ConversationTemporalAnchor[];
 };
 
 export type AppliedCorrection = {
@@ -75,6 +86,26 @@ export type ConversationLedgerEntry = {
 export type ConversationLedger = {
   version: 1;
   entries: readonly ConversationLedgerEntry[];
+  /**
+   * A bounded materialized starting point used when a public v1/v2 state is
+   * rehydrated. It is not a fabricated historical entry.
+   */
+  checkpoint?: ConversationLedgerCheckpoint;
+};
+
+export type ConversationLedgerCheckpoint = {
+  revision: number;
+  state: CanonicalLedgerState;
+  knownEntities: readonly FinanceEntity[];
+  recentTurnIds: readonly string[];
+  legacy: {
+    explicitEntitySet: readonly string[];
+    criteria: readonly string[];
+    horizon?: string;
+    jurisdiction?: string;
+    safetyRepliesUsed?: readonly string[];
+    pendingClarification?: string;
+  };
 };
 
 type WorkingState = {
@@ -89,6 +120,9 @@ type WorkingState = {
   ambiguities: SemanticAmbiguity[];
   assumptions: SemanticAssumption[];
   provenance: Record<string, FieldProvenance>;
+  frames: ConversationReferenceFrame[];
+  focusEntityIds: string[];
+  activeTemporalAnchors: ConversationTemporalAnchor[];
 };
 
 export function createConversationLedger(): ConversationLedger {
@@ -160,6 +194,21 @@ function clonePrevious(
     ambiguities: [...semantic.ambiguities],
     assumptions: [...previous.assumptions],
     provenance: { ...previous.provenance },
+    frames: previous.frames.map((frame) => ({
+      ...frame,
+      entityIds: [...frame.entityIds],
+      groups: frame.groups.map((group) => ({
+        ...group,
+        memberIds: [...group.memberIds],
+      })),
+      temporalSpecIds: [...frame.temporalSpecIds],
+      intervals: frame.intervals.map((interval) => ({ ...interval })),
+    })),
+    focusEntityIds: [...previous.focusEntityIds],
+    activeTemporalAnchors: previous.activeTemporalAnchors.map((anchor) => ({
+      ...anchor,
+      interval: { ...anchor.interval },
+    })),
   };
 }
 
@@ -179,6 +228,9 @@ function freshState(semantic: SemanticTurn): WorkingState {
     ambiguities: [...semantic.ambiguities],
     assumptions: [...semantic.assumptions],
     provenance: {},
+    frames: [],
+    focusEntityIds: [],
+    activeTemporalAnchors: [],
   };
 }
 
@@ -445,6 +497,9 @@ function resetTopicState(state: WorkingState, semantic: SemanticTurn): void {
   state.groups = [];
   state.metrics = [];
   state.temporal = [];
+  state.frames = [];
+  state.focusEntityIds = [];
+  state.activeTemporalAnchors = [];
   state.provenance = {};
 }
 
@@ -670,11 +725,229 @@ function applyCorrection(
   return { correction, status: "unresolved" };
 }
 
+function uniqueIds(values: readonly string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function compiledAnchors(
+  compiled: readonly CompiledTemporalSpec[]
+): ConversationTemporalAnchor[] {
+  return compiled
+    .flatMap((spec) =>
+      spec.intervals.map((interval, position) => ({
+        specId: spec.id,
+        position,
+        interval: { ...interval },
+      }))
+    )
+    .slice(0, 8);
+}
+
+function updateActiveTemporalAnchors(
+  state: WorkingState,
+  previous: CanonicalLedgerState | undefined,
+  compiled: readonly CompiledTemporalSpec[]
+): void {
+  const compiledBySpec = new Map<string, ConversationTemporalAnchor[]>();
+  for (const anchor of compiledAnchors(compiled)) {
+    const values = compiledBySpec.get(anchor.specId) ?? [];
+    values.push(anchor);
+    compiledBySpec.set(anchor.specId, values);
+  }
+  const previousBySpec = new Map<string, ConversationTemporalAnchor[]>();
+  for (const anchor of previous?.activeTemporalAnchors ?? []) {
+    const values = previousBySpec.get(anchor.specId) ?? [];
+    values.push({ ...anchor, interval: { ...anchor.interval } });
+    previousBySpec.set(anchor.specId, values);
+  }
+  state.activeTemporalAnchors = state.temporal
+    .flatMap(
+      (spec) => compiledBySpec.get(spec.id) ?? previousBySpec.get(spec.id) ?? []
+    )
+    .slice(0, 8);
+}
+
+function frameEntityOrder(
+  state: WorkingState,
+  interpretation: SemanticInterpretation
+): string[] {
+  const byMentionId = new Map(
+    interpretation.grounding.entityMentions.map((mention) => [
+      mention.mentionId,
+      mention.entity,
+    ])
+  );
+  const mentioned = interpretation.semantic.entities.mentions.flatMap(
+    (mention) => {
+      const entity = byMentionId.get(mention.mentionId);
+      return entity && mention.role !== "excluded" ? [entity.id] : [];
+    }
+  );
+  const groups = interpretation.grounding.groups.flatMap((group) =>
+    group.status === "grounded"
+      ? group.memberEntities.map((entity) => entity.id)
+      : []
+  );
+  const inherited = interpretation.grounding.inheritedEntities.map(
+    (entity) => entity.id
+  );
+  const activeIds = new Set(state.entities.map((entity) => entity.id));
+  return uniqueIds([...inherited, ...mentioned, ...groups])
+    .filter((id) => activeIds.has(id))
+    .concat(
+      state.entities
+        .map((entity) => entity.id)
+        .filter(
+          (id) =>
+            !uniqueIds([...inherited, ...mentioned, ...groups]).includes(id)
+        )
+    )
+    .slice(0, 12);
+}
+
+function turnFocusEntityIds(
+  state: WorkingState,
+  interpretation: SemanticInterpretation
+): string[] {
+  const activeIds = new Set(state.entities.map((entity) => entity.id));
+  const selectedGroups = interpretation.grounding.groups.filter(
+    (group) => group.status === "grounded"
+  );
+  const lastGroup = selectedGroups.at(-1);
+  if (lastGroup) {
+    const groupFocus = lastGroup.memberEntities
+      .map((entity) => entity.id)
+      .filter((id) => activeIds.has(id));
+    if (groupFocus.length > 0) return uniqueIds(groupFocus).slice(0, 12);
+  }
+  const mentioned = interpretation.semantic.entities.mentions.flatMap(
+    (mention) => {
+      if (mention.role === "excluded") return [];
+      const grounded = interpretation.grounding.entityMentions.find(
+        (item) => item.mentionId === mention.mentionId
+      )?.entity;
+      return grounded && activeIds.has(grounded.id) ? [grounded.id] : [];
+    }
+  );
+  if (mentioned.length > 0) return uniqueIds(mentioned).slice(0, 12);
+  const inherited = interpretation.grounding.inheritedEntities
+    .map((entity) => entity.id)
+    .filter((id) => activeIds.has(id));
+  return uniqueIds(
+    inherited.length > 0
+      ? inherited
+      : state.entities.map((entity) => entity.id)
+  ).slice(0, 12);
+}
+
+function shouldCreateFrame(interpretation: SemanticInterpretation): boolean {
+  const { semantic, grounding } = interpretation;
+  const explicitNamedEntity = semantic.entities.mentions.some((mention) =>
+    ["explicit", "category", "group_member"].includes(mention.reference)
+  );
+  const correctedScope = semantic.corrections.some(
+    (correction) =>
+      (correction.field === "entity" || correction.field === "group") &&
+      correction.operation !== "clarify"
+  );
+  const pluralTemporalReference =
+    semantic.temporal.specs.length > 0 &&
+    ["plural", "all_active"].includes(semantic.entities.inheritance.mode);
+  return (
+    semantic.comparison.kind !== "none" ||
+    grounding.groups.some((group) => group.status === "grounded") ||
+    explicitNamedEntity ||
+    correctedScope ||
+    pluralTemporalReference
+  );
+}
+
+function updateContinuityState(
+  state: WorkingState,
+  previous: CanonicalLedgerState | undefined,
+  interpretation: SemanticInterpretation
+): void {
+  updateActiveTemporalAnchors(
+    state,
+    previous,
+    interpretation.compiledTemporal
+  );
+  state.focusEntityIds = turnFocusEntityIds(state, interpretation);
+  if (!shouldCreateFrame(interpretation) || state.entities.length === 0) return;
+
+  const entityIds = frameEntityOrder(state, interpretation);
+  const groups = interpretation.grounding.groups
+    .filter(
+      (
+        group
+      ): group is GroundedGroupCandidate & {
+        selectedId: string;
+        status: "grounded";
+      } => group.status === "grounded" && Boolean(group.selectedId)
+    )
+    .map((group) => ({
+      id: group.selectedId,
+      qualification: group.mention,
+      memberIds: group.memberEntities
+        .map((entity) => entity.id)
+        .filter((id) => entityIds.includes(id))
+        .slice(0, 12),
+    }))
+    .filter((group) => group.memberIds.length > 0)
+    .slice(0, 4);
+  const requestedTemporalIds =
+    interpretation.semantic.comparison.temporalSpecIds.length > 0
+      ? interpretation.semantic.comparison.temporalSpecIds
+      : state.temporal.map((spec) => spec.id);
+  const temporalSpecIds = uniqueIds(requestedTemporalIds).slice(0, 8);
+  const temporalIdSet = new Set(temporalSpecIds);
+  const intervals = state.activeTemporalAnchors
+    .filter((anchor) => temporalIdSet.has(anchor.specId))
+    .map((anchor) => ({ ...anchor.interval }))
+    .slice(0, 8);
+  const frame: ConversationReferenceFrame = {
+    id: `frame:${interpretation.semantic.turnId}`.slice(0, 80),
+    kind:
+      interpretation.semantic.comparison.kind === "none"
+        ? "reference"
+        : "comparison",
+    entityIds,
+    groups,
+    temporalSpecIds,
+    intervals,
+  };
+  state.frames = [...state.frames, frame].slice(-4);
+}
+
 function freezeState(state: WorkingState): CanonicalLedgerState {
   const groups = state.groups.map((group) =>
     Object.freeze({
       ...group,
       memberIds: Object.freeze([...group.memberIds]),
+    })
+  );
+  const frames = state.frames.map((frame) =>
+    Object.freeze({
+      ...frame,
+      entityIds: Object.freeze([...frame.entityIds]),
+      groups: Object.freeze(
+        frame.groups.map((group) =>
+          Object.freeze({
+            ...group,
+            memberIds: Object.freeze([...group.memberIds]),
+          })
+        )
+      ),
+      temporalSpecIds: Object.freeze([...frame.temporalSpecIds]),
+      intervals: Object.freeze(
+        frame.intervals.map((interval) => Object.freeze({ ...interval }))
+      ),
+    })
+  );
+  const activeTemporalAnchors = state.activeTemporalAnchors.map((anchor) =>
+    Object.freeze({
+      ...anchor,
+      interval: Object.freeze({ ...anchor.interval }),
     })
   );
   return Object.freeze({
@@ -689,6 +962,9 @@ function freezeState(state: WorkingState): CanonicalLedgerState {
     ambiguities: Object.freeze([...state.ambiguities]),
     assumptions: Object.freeze([...state.assumptions]),
     provenance: Object.freeze({ ...state.provenance }),
+    frames: Object.freeze(frames),
+    focusEntityIds: Object.freeze([...state.focusEntityIds]),
+    activeTemporalAnchors: Object.freeze(activeTemporalAnchors),
   });
 }
 
@@ -701,7 +977,7 @@ export function appendConversationTurn(
     throw new Error(`Ledger already contains turn: ${semantic.turnId}`);
   }
 
-  const previous = ledger.entries.at(-1)?.state;
+  const previous = latestLedgerState(ledger);
   const startsFresh =
     !previous ||
     semantic.topic.mode === "pivot" ||
@@ -713,8 +989,13 @@ export function appendConversationTurn(
   const corrections = semantic.corrections.map((correction) =>
     applyCorrection(state, correction, interpretation)
   );
+  updateContinuityState(
+    state,
+    startsFresh ? undefined : previous,
+    interpretation
+  );
   const entry: ConversationLedgerEntry = Object.freeze({
-    sequence: ledger.entries.length,
+    sequence: (ledger.checkpoint?.revision ?? 0) + ledger.entries.length,
     turnId: semantic.turnId,
     userText: semantic.originalText,
     semantic,
@@ -726,13 +1007,14 @@ export function appendConversationTurn(
   return Object.freeze({
     version: 1 as const,
     entries: Object.freeze([...ledger.entries, entry]),
+    ...(ledger.checkpoint ? { checkpoint: ledger.checkpoint } : {}),
   });
 }
 
 export function latestLedgerState(
   ledger: ConversationLedger
 ): CanonicalLedgerState | undefined {
-  return ledger.entries.at(-1)?.state;
+  return ledger.entries.at(-1)?.state ?? ledger.checkpoint?.state;
 }
 
 export function ledgerInterpreterContext(
@@ -745,12 +1027,54 @@ export function ledgerInterpreterContext(
       activeGroups: [],
       activeTemporal: [],
       recentTurnIds: [],
+      knownEntities: [],
+      orderedEntities: [],
+      focusEntities: [],
     };
   }
+  const entityIndex = new Map(
+    [
+      ...(ledger.checkpoint?.knownEntities ?? []),
+      ...ledger.entries.flatMap((entry) => entry.state.entities),
+      ...state.entities,
+    ].map((entity) => [entity.id, entity])
+  );
+  const latestFrame = state.frames.at(-1);
+  const frameEntities = (latestFrame?.entityIds ?? [])
+    .map((id) => entityIndex.get(id))
+    .filter((entity): entity is FinanceEntity => Boolean(entity));
+  const focusEntities = state.focusEntityIds
+    .map((id) => entityIndex.get(id))
+    .filter((entity): entity is FinanceEntity => Boolean(entity));
+  const activeEntities =
+    frameEntities.length > 0
+      ? frameEntities
+      : focusEntities.length > 0
+        ? focusEntities
+        : [...state.entities];
+  const groups =
+    latestFrame
+      ? latestFrame.groups.map((frameGroup) => {
+          const canonical = state.groups.find(
+            (group) => group.id === frameGroup.id
+          );
+          return {
+            id: frameGroup.id,
+            label: canonical?.label ?? frameGroup.qualification,
+            memberIds: frameGroup.memberIds,
+          };
+        })
+      : state.groups;
   return {
-    activeEntities: state.entities,
-    activeGroups: state.groups,
+    activeEntities,
+    activeGroups: groups,
     activeTemporal: state.temporal,
-    recentTurnIds: ledger.entries.slice(-8).map((entry) => entry.turnId),
+    recentTurnIds: [
+      ...(ledger.checkpoint?.recentTurnIds ?? []),
+      ...ledger.entries.map((entry) => entry.turnId),
+    ].slice(-8),
+    knownEntities: [...entityIndex.values()].slice(-12),
+    orderedEntities: frameEntities.length >= 2 ? frameEntities : [],
+    focusEntities,
   };
 }

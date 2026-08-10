@@ -70,6 +70,7 @@ function requestPayload(request: SemanticModelRequest): {
   return JSON.parse(request.user) as {
     turnId: string;
     originalText: string;
+    semanticText: string;
     context: { activeEntities: { id: string }[] };
   };
 }
@@ -681,7 +682,10 @@ test("Tesla versus private StockX answers without clarification and listing foll
 
   assert.equal(followUp.kind, "answer");
   assert.notEqual(followUp.kind, "clarification");
-  assert.equal(followUp.trace.plan, undefined);
+  assert.deepEqual(
+    followUp.trace.plan?.obligations.map((obligation) => obligation.kind),
+    ["verify_listing"]
+  );
   assert.equal(marketCalls, marketBeforeFollowUp);
   assert.equal(securityCalls, securityBeforeFollowUp);
   assert.match(followUp.text, /Tesla is publicly traded as TSLA/i);

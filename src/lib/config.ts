@@ -2,6 +2,28 @@ import "server-only";
 
 export const isProd = process.env.NODE_ENV === "production";
 
+/**
+ * Greenfield remains opt-in until the live-path gate is approved. Unknown
+ * values deliberately collapse to legacy rather than creating another mode.
+ */
+export const STOCKSAGE_ENGINE: "legacy" | "greenfield" | "simple" =
+  process.env.STOCKSAGE_ENGINE === "greenfield"
+    ? "greenfield"
+    : process.env.STOCKSAGE_ENGINE === "simple" && !isProd
+      ? "simple"
+      : "legacy";
+
+function canaryPercentage(value: string | undefined): number {
+  if (value === undefined || value.trim() === "") return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : 0;
+}
+
+/** Sticky session canary; malformed/out-of-range values disable the canary. */
+export const STOCKSAGE_GREENFIELD_CANARY_PERCENT = canaryPercentage(
+  process.env.STOCKSAGE_GREENFIELD_CANARY_PERCENT
+);
+
 export const POLYGON_API_KEY = process.env.POLYGON_API_KEY;
 const rawPolygon = Boolean(POLYGON_API_KEY);
 
@@ -31,9 +53,18 @@ export const GROQ_CHAT_MODEL =
   process.env.GROQ_CHAT_MODEL ?? "qwen/qwen3.6-27b";
 export const GROQ_FALLBACK_MODEL =
   process.env.GROQ_FALLBACK_MODEL ?? "openai/gpt-oss-120b";
+export const GROQ_SEMANTIC_MODEL =
+  process.env.GROQ_SEMANTIC_MODEL ?? GROQ_CHAT_MODEL;
+export const GROQ_SEMANTIC_FALLBACK_MODEL =
+  process.env.GROQ_SEMANTIC_FALLBACK_MODEL ?? GROQ_ANALYSIS_MODEL;
 export const GROQ_SAFETY_MODEL =
   process.env.GROQ_SAFETY_MODEL ?? "openai/gpt-oss-safeguard-20b";
 const rawGroq = Boolean(GROQ_API_KEY);
+
+export const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
+export const CEREBRAS_MODEL =
+  process.env.CEREBRAS_MODEL ?? "gpt-oss-120b";
+export const hasCerebras = Boolean(CEREBRAS_API_KEY) && !isProd;
 // A rail that can false-positive needs an off switch that does not also take
 // chat synthesis down with it.
 const safetyClassifierOff =

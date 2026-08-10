@@ -1,9 +1,8 @@
 import "server-only";
 
 import { hasDeepResearch } from "@/lib/config";
-import {
-  type DeepResearchSnapshot,
-} from "./snapshot";
+import { detectCriteria } from "../conversation-attributes";
+import { type DeepResearchSnapshot } from "./snapshot";
 import { unsupportedFigures } from "../figures";
 import {
   firstPersonVerificationLimitation,
@@ -147,6 +146,65 @@ function snapshotContext(snapshot: DeepResearchSnapshot): {
   };
 }
 
+const SCOPE_CRITERIA: Readonly<Record<string, readonly string[]>> = {
+  define: [],
+  snapshot: ["performance"],
+  compare: ["performance"],
+  explain_cause: ["performance", "outlook"],
+  assess_outlook: ["outlook", "risk"],
+  verify_listing: [],
+  verify_source: ["outlook"],
+};
+
+function frozenResearchFocus(snapshot: DeepResearchSnapshot): {
+  question: string;
+  criteria: string[];
+  entityIds?: Set<string>;
+  intervals:
+    | Extract<DeepResearchSnapshot, { version: 2 }>["intervals"]
+    | undefined;
+} {
+  if (snapshot.version !== 2 || !snapshot.researchScope) {
+    return {
+      question: snapshot.question,
+      criteria: snapshot.criteria,
+      intervals: snapshot.version === 2 ? snapshot.intervals : undefined,
+    };
+  }
+  const obligations = snapshot.researchScope.obligations;
+  const question = obligations
+    .map((obligation) => obligation.query)
+    .join("; ")
+    .slice(0, 1200);
+  const detected = detectCriteria(question);
+  const criteria = [
+    ...new Set([
+      ...detected,
+      ...obligations.flatMap(
+        (obligation) => SCOPE_CRITERIA[obligation.kind] ?? []
+      ),
+    ]),
+  ].slice(0, 8);
+  const intervals = [
+    ...new Map(
+      obligations
+        .flatMap((obligation) => obligation.intervals)
+        .map((interval) => [
+          `${interval.calendar}:${interval.startSession}:${interval.endSession}`,
+          interval,
+        ])
+    ).values(),
+  ].slice(0, 8);
+  return {
+    question: question || snapshot.question,
+    criteria: criteria.length > 0 ? criteria : snapshot.criteria,
+    entityIds: new Set(
+      obligations.flatMap((obligation) => obligation.entityIds)
+    ),
+    intervals: intervals.length > 0 ? intervals : snapshot.intervals,
+  };
+}
+
 export async function executeDeepResearch(
   snapshot: DeepResearchSnapshot
 ): Promise<DeepResearchReply> {
@@ -160,9 +218,27 @@ export async function executeDeepResearch(
 
   let stage = "setup";
   try {
-    const { entities, state } = snapshotContext(snapshot);
+    const snapshotData = snapshotContext(snapshot);
+    const focus = frozenResearchFocus(snapshot);
+    const entities = focus.entityIds
+      ? snapshotData.entities.filter((entity) => focus.entityIds?.has(entity.id))
+      : snapshotData.entities;
+    if (entities.length === 0) {
+      return {
+        workId: snapshot.workId,
+        status: "failure",
+        text: "Research deeper requires a resolved company, index, or finance subject.",
+      };
+    }
+    const state: ConversationState = {
+      ...snapshotData.state,
+      entities,
+      explicitEntitySet: entities.map((entity) => entity.id),
+      criteria: focus.criteria,
+      intervals: focus.intervals,
+    };
     const route =
-      snapshot.version === 2
+      snapshot.version === 2 && !snapshot.researchScope
         ? snapshot.route
         : entities.length > 1
           ? "comparison"
@@ -170,14 +246,11 @@ export async function executeDeepResearch(
     const plan = planEvidence({
       route,
       depth: "deep",
-      message: snapshot.question,
+      message: focus.question,
       entities,
       state,
       asOf: snapshot.asOf,
-      intervals:
-        snapshot.version === 2
-          ? snapshot.intervals
-          : state.intervals,
+      intervals: focus.intervals,
     });
     stage = "retrieval";
     const context = await executeEvidencePlan({ plan, entities });
@@ -189,10 +262,12 @@ export async function executeDeepResearch(
         retryable: true,
       };
     }
-    const normalizedIntervals =
-      "intervals" in snapshot ? snapshot.intervals : [];
+    const normalizedIntervals = focus.intervals ?? [];
     const user = `ORIGINAL QUESTION
 ${snapshot.question}
+
+FROZEN RESEARCH SCOPE
+${focus.question}
 
 REGULAR ANSWER
 ${snapshot.regularAnswer}
@@ -210,7 +285,7 @@ ENTITIES
 ${entities.map((entity) => entity.ticker ?? entity.name).join(", ") || "none"}
 
 CRITERIA
-${snapshot.criteria.join(", ") || "not specified"}
+${focus.criteria.join(", ") || "not specified"}
 
 HORIZON
 ${normalizedIntervals.map(describeInterval).join("; ") || "not specified"}`;

@@ -56,6 +56,27 @@ const SnapshotIntervalSchema = z.object({
   raw: z.string().max(60).optional(),
 });
 
+const SnapshotObligationScopeSchema = z.object({
+  id: z.string().min(1).max(80),
+  kind: z.enum([
+    "define",
+    "snapshot",
+    "compare",
+    "explain_cause",
+    "assess_outlook",
+    "verify_listing",
+    "verify_source",
+  ]),
+  query: z.string().min(1).max(400),
+  entityIds: z.array(z.string().min(1).max(40)).min(1).max(12),
+  intervals: z.array(SnapshotIntervalSchema).max(8),
+});
+
+const SnapshotResearchScopeSchema = z.object({
+  version: z.literal(1),
+  obligations: z.array(SnapshotObligationScopeSchema).min(1).max(4),
+});
+
 const SnapshotV1Schema = z.object({
   version: z.literal(1),
   responseId: z.string().uuid(),
@@ -78,6 +99,7 @@ const SnapshotV1Schema = z.object({
 const SnapshotV2Schema = SnapshotV1Schema.omit({
   version: true,
   entities: true,
+  stateVersion: true,
 }).extend({
   version: z.literal(2),
   attemptId: z.string().uuid(),
@@ -88,6 +110,9 @@ const SnapshotV2Schema = SnapshotV1Schema.omit({
   groups: z.array(SnapshotGroupSchema).max(12),
   intervals: z.array(SnapshotIntervalSchema).min(1).max(8),
   calendar: z.enum(["US", "AU"]),
+  researchScope: SnapshotResearchScopeSchema.optional(),
+  /** Deep workers consume the frozen snapshot fields, not live state shape. */
+  stateVersion: z.union([z.literal(1), z.literal(2)]),
 });
 
 const SnapshotSchema = z.discriminatedUnion("version", [
@@ -98,6 +123,17 @@ const SnapshotSchema = z.discriminatedUnion("version", [
 export type DeepResearchSnapshotV1 = z.infer<typeof SnapshotV1Schema>;
 export type DeepResearchSnapshotV2 = z.infer<typeof SnapshotV2Schema>;
 export type DeepResearchSnapshot = z.infer<typeof SnapshotSchema>;
+export type DeepResearchObligationScope = z.infer<
+  typeof SnapshotObligationScopeSchema
+>;
+export type DeepResearchScope = z.infer<typeof SnapshotResearchScopeSchema>;
+export type DeepResearchSourceRef = Pick<
+  EvidenceSource,
+  "id" | "url" | "entityIds" | "criteria"
+> &
+  Partial<
+    Omit<EvidenceSource, "id" | "url" | "entityIds" | "criteria">
+  >;
 
 export type DeepResearchAttemptIdentity = {
   workId: string;
@@ -178,7 +214,7 @@ function canonicalSourceUrl(value: string): string | null {
 export function assessDeepResearchAvailability(args: {
   question: string;
   criteria: string[];
-  sources: EvidenceSource[];
+  sources: DeepResearchSourceRef[];
   entityIds?: string[];
 }): DeepResearchAvailability {
   const explicitCriteria = detectCriteria(args.question).filter((criterion) =>
@@ -191,7 +227,7 @@ export function assessDeepResearchAvailability(args: {
       )
     ),
   ];
-  const byUrl = new Map<string, EvidenceSource>();
+  const byUrl = new Map<string, DeepResearchSourceRef>();
   for (const source of args.sources) {
     const url = canonicalSourceUrl(source.url);
     if (url && !byUrl.has(url)) byUrl.set(url, source);
@@ -320,9 +356,11 @@ export function createDeepResearchOffer(args: {
   reply: ChatReply;
   entities: FinanceEntity[];
   state: ConversationState;
-  sources: EvidenceSource[];
+  sources: DeepResearchSourceRef[];
   asOf: string;
   eligible?: boolean;
+  /** Optional frozen greenfield narrative scope consumed by the queued worker. */
+  researchScope?: DeepResearchScope;
   /** Test seam for the mocked queue integration; production uses config. */
   queueReady?: boolean;
 }): { responseId: string; offer?: DeepResearchOffer } {
@@ -331,7 +369,8 @@ export function createDeepResearchOffer(args: {
     args.eligible === false ||
     !hasDeepResearch ||
     !(args.queueReady ?? hasDeepQueue) ||
-    !args.reply.text.trim()
+    !args.reply.text.trim() ||
+    args.entities.length === 0
   ) {
     return { responseId };
   }
@@ -354,6 +393,10 @@ export function createDeepResearchOffer(args: {
     state: args.state,
     asOf: args.asOf,
   });
+  const parsedScope = args.researchScope
+    ? SnapshotResearchScopeSchema.safeParse(args.researchScope)
+    : undefined;
+  const researchScope = parsedScope?.success ? parsedScope.data : undefined;
   const snapshot: DeepResearchSnapshotV2 = {
     version: 2,
     responseId,
@@ -372,6 +415,7 @@ export function createDeepResearchOffer(args: {
     jurisdiction: args.state.jurisdiction,
     intervals: frozen.intervals,
     calendar: frozen.calendar,
+    ...(researchScope ? { researchScope } : {}),
     asOf: args.asOf,
     stateVersion: args.state.version,
     stateRevision: args.state.revision,

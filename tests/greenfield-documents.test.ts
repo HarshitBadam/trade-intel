@@ -4,8 +4,10 @@ import test from "node:test";
 import {
   DurableCollectionDocumentStore,
   EvidenceLedger,
+  HeuristicReranker,
   InMemoryBm25LexicalIndex,
   InMemoryDocumentStore,
+  deduplicateHits,
   filterDocument,
   reciprocalRankFusion,
   retrieveDocumentsHybrid,
@@ -13,6 +15,7 @@ import {
   type DurableDocumentCollection,
   type DurableDocumentQuery,
   type DurableDocumentRecord,
+  type FusedRetrievalHit,
   type NormalizedDocument,
   type RetrievalHit,
 } from "../src/lib/stocksage/greenfield/documents";
@@ -42,6 +45,20 @@ function document(
       authorityScore: 0.7,
     },
     ...overrides,
+  };
+}
+
+function fusedHit(
+  item: NormalizedDocument,
+  fusedScore: number
+): FusedRetrievalHit {
+  return {
+    document: item,
+    channel: "lexical",
+    channels: ["lexical"],
+    score: fusedScore,
+    fusedScore,
+    componentScores: { lexical: fusedScore },
   };
 }
 
@@ -267,6 +284,105 @@ test("RRF rewards documents returned by lexical and semantic lanes", () => {
 
   assert.equal(fused[0]?.document.documentId, "shared");
   assert.deepEqual(new Set(fused[0]?.channels), new Set(["lexical", "semantic"]));
+});
+
+test("deduplication keeps distinct articles sharing one provider source id", () => {
+  const first = document("wire-first", {
+    title: "Acme reports quarterly revenue",
+    content: "Acme reported higher quarterly revenue.",
+    provenance: {
+      provider: "astra",
+      sourceId: "Example Wire",
+      sourceUrl: "https://wire.example.com/acme-quarterly-revenue",
+      publisher: "Example Wire",
+    },
+  });
+  const second = document("wire-second", {
+    title: "Acme launches a new product",
+    content: "Acme introduced a new product for enterprise customers.",
+    provenance: {
+      provider: "astra",
+      sourceId: "Example Wire",
+      sourceUrl: "https://wire.example.com/acme-product-launch",
+      publisher: "Example Wire",
+    },
+  });
+  const duplicate = document("wire-second-copy", {
+    title: "Syndicated Acme product launch",
+    content: "A separately fetched copy of the product launch.",
+    provenance: {
+      provider: "astra",
+      sourceId: "Example Wire",
+      sourceUrl:
+        "https://wire.example.com/acme-product-launch?utm_source=syndication",
+      publisher: "Example Wire",
+    },
+  });
+
+  const result = deduplicateHits([
+    fusedHit(first, 0.9),
+    fusedHit(second, 0.8),
+    fusedHit(duplicate, 0.7),
+  ]);
+
+  assert.deepEqual(
+    result.kept.map((hit) => hit.document.documentId),
+    ["wire-first", "wire-second"]
+  );
+  assert.equal(result.rejected.length, 1);
+  assert.equal(result.rejected[0]?.hit.document.documentId, "wire-second-copy");
+});
+
+test("heuristic reranking favors confirmed primary evidence and penalizes obvious noise", () => {
+  const filing = document("fresh-filing", {
+    kind: "filing",
+    title: "Acme quarterly filing revenue outlook",
+    content: "Acme reported revenue and raised its outlook.",
+    publishedAt: "2026-08-08T12:00:00.000Z",
+    fetchedAt: "2026-08-09T12:00:00.000Z",
+    provenance: {
+      provider: "filings",
+      sourceId: "filing-1",
+      sourceUrl: "https://filings.example.com/acme/quarterly",
+      authorityScore: 1,
+    },
+  });
+  const oldAnalysis = document("old-analysis", {
+    title: "Acme revenue outlook analysis",
+    content: "Analysts reviewed Acme revenue and its outlook.",
+    publishedAt: "2024-01-01T12:00:00.000Z",
+    fetchedAt: "2026-08-09T12:00:00.000Z",
+  });
+  const noisy = document("noisy-social", {
+    title: "Top 10 Acme stock price predictions!!",
+    content:
+      "Posted by a user. Join the discussion and subscribe to follow Acme revenue outlook.",
+    issuerIds: [],
+    instrumentIds: [],
+    publishedAt: "2026-08-09T10:00:00.000Z",
+    fetchedAt: "2026-08-09T12:00:00.000Z",
+    provenance: {
+      provider: "web",
+      sourceId: "community-post",
+      sourceUrl: "https://example.com/community/acme-stock",
+      authorityScore: 0.5,
+    },
+  });
+
+  const ranked = new HeuristicReranker().rerank(
+    "Acme revenue outlook",
+    [
+      fusedHit(noisy, 1),
+      fusedHit(oldAnalysis, 0.82),
+      fusedHit(filing, 0.72),
+    ],
+    3
+  );
+
+  assert.deepEqual(
+    ranked.map((hit) => hit.document.documentId),
+    ["fresh-filing", "old-analysis", "noisy-social"]
+  );
 });
 
 test("hybrid retrieval uses an optional semantic port without requiring it", async () => {

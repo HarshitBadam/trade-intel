@@ -403,10 +403,13 @@ export const SemanticTurnSchema = z
       value.comparison.kind === "entity_vs_entity" ||
       value.comparison.kind === "entity_and_time";
     const inheritedComparison =
-      ["plural", "ordered", "all_active"].includes(
-        value.entities.inheritance.mode
-      ) &&
-      value.entities.inheritance.entityIds.length >= 2;
+      value.entities.inheritance.mode !== "none" &&
+      value.comparison.entityMentionIds.length +
+        Math.max(
+          value.entities.inheritance.entityIds.length,
+          value.entities.inheritance.orderedPositions.length
+        ) >=
+        2;
     const inheritedGroupComparison =
       value.entities.inheritance.mode === "group" &&
       Boolean(value.entities.inheritance.groupId);

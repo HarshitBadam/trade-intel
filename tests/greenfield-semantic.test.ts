@@ -4,8 +4,13 @@ import test from "node:test";
 import {
   appendConversationTurn,
   createConversationLedger,
+  latestLedgerState,
   ledgerInterpreterContext,
 } from "../src/lib/stocksage/greenfield/conversation-ledger";
+import {
+  conversationStateFromLedger,
+  ledgerFromConversationState,
+} from "../src/lib/stocksage/greenfield/live-state";
 import {
   compileTemporalSpecs,
   createSemanticInterpreter,
@@ -834,6 +839,58 @@ test("grounding accepts a canonical group mention and drops unrelated model cand
   assert.deepEqual(groundSemanticTurn(spurious).groups, []);
 });
 
+test("explicit consultancy qualification switches canonical Big Four groups", () => {
+  const turn = semanticTurn(
+    "group-consultancy-switch",
+    "What about the Big Four consultancy firms?",
+    {
+      entities: {
+        mentions: [],
+        inheritance: {
+          mode: "none",
+          entityIds: [],
+          orderedPositions: [],
+          confidence: 0.8,
+        },
+        groupCandidates: [
+          {
+            mention: "Big Four",
+            candidateIds: ["australian-big-four"],
+            selectedId: "australian-big-four",
+            confidence: 0.8,
+            reason: "The model carried the prior bank group.",
+          },
+        ],
+        confidence: 0.8,
+      },
+    }
+  );
+  const grounded = groundSemanticTurn(turn, {
+    activeEntities: [],
+    activeGroups: [
+      {
+        id: "australian-big-four",
+        label: "the Australian Big Four banks",
+        memberIds: [
+          "ticker:CBA",
+          "ticker:NAB",
+          "ticker:ANZ",
+          "ticker:WBC",
+        ],
+      },
+    ],
+    activeTemporal: [],
+    recentTurnIds: ["prior-banks"],
+  });
+
+  assert.equal(grounded.groups.length, 1);
+  assert.equal(grounded.groups[0].selectedId, "professional-services-big-four");
+  assert.deepEqual(
+    grounded.groups[0].memberEntities.map((entity) => entity.name),
+    ["Deloitte", "PwC", "EY", "KPMG"]
+  );
+});
+
 test("append-only ledger applies corrections with provenance and temporal inheritance", () => {
   const first = semanticTurn("ledger-1", "Compare Apple and Microsoft in July", {
     intent: { kind: "entity_comparison", confidence: 0.99 },
@@ -964,6 +1021,54 @@ test("append-only ledger applies corrections with provenance and temporal inheri
     () => appendConversationTurn(afterSecond, interpretation(second, secondContext)),
     /already contains/
   );
+});
+
+test("rehydrated public state is a checkpoint for the next appended turn", () => {
+  const hydrated = ledgerFromConversationState({
+    version: 1,
+    revision: 4,
+    entities: [TESLA],
+    explicitEntitySet: [TESLA.id],
+    criteria: ["risk"],
+    focusEntityIds: [TESLA.id],
+    intervals: [
+      {
+        version: 1,
+        label: "last month",
+        kind: "range",
+        calendar: "US",
+        startSession: "2026-07-01",
+        endSession: "2026-07-31",
+        source: "explicit",
+      },
+    ],
+  });
+  const followUp = semanticTurn("checkpoint-follow-up", "What are its risks?", {
+    entities: {
+      mentions: [],
+      inheritance: {
+        mode: "singular",
+        entityIds: [TESLA.id],
+        orderedPositions: [],
+        confidence: 0.99,
+      },
+      groupCandidates: [],
+      confidence: 0.99,
+    },
+    temporal: { inherit: "active", specs: [], confidence: 0.99 },
+  });
+  const appended = appendConversationTurn(
+    hydrated,
+    interpretation(followUp, ledgerInterpreterContext(hydrated))
+  );
+
+  assert.equal(appended.entries[0].sequence, 4);
+  assert.equal(latestLedgerState(appended)?.entities[0]?.id, TESLA.id);
+  assert.deepEqual(
+    latestLedgerState(appended)?.temporal.map((spec) => spec.id),
+    ["legacy-temporal-1"]
+  );
+  assert.equal(conversationStateFromLedger(appended).revision, 5);
 });
 
 test("ledger group selection, topic pivots, and temporal inheritance are canonical", () => {
@@ -1169,6 +1274,38 @@ test("ordered typo later grounds to the latter active entity versus IXIC", () =>
   assert.equal(
     grounding.issues.some((issue) => issue.code === "entity_unresolved"),
     false
+  );
+});
+
+test("pronouns resolve from focus instead of the known entity bag", () => {
+  const context: SemanticInterpreterContext = {
+    activeEntities: [SPACEX, IXIC],
+    knownEntities: [TESLA, SPACEX, IXIC],
+    orderedEntities: [SPACEX, IXIC],
+    focusEntities: [SPACEX],
+    activeGroups: [],
+    activeTemporal: [],
+    recentTurnIds: ["pair-2"],
+  };
+  const turn = semanticTurn("focus-they", "How are they doing?", {
+    entities: {
+      mentions: [],
+      inheritance: {
+        mode: "plural",
+        entityIds: ["ticker:TSLA", "ticker:SPCX"],
+        orderedPositions: [],
+        confidence: 0.8,
+      },
+      groupCandidates: [],
+      confidence: 0.8,
+    },
+  });
+
+  assert.deepEqual(
+    groundSemanticTurn(turn, context).inheritedEntities.map(
+      (entity) => entity.ticker
+    ),
+    ["SPCX"]
   );
 });
 

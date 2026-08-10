@@ -1,7 +1,10 @@
 import "./no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detectCrisis } from "../src/lib/stocksage/crisis";
+import {
+  detectCrisis,
+  detectViolenceThreat,
+} from "../src/lib/stocksage/crisis";
 import { resolveConversationState } from "../src/lib/stocksage/entities";
 import { routeMessage } from "../src/lib/stocksage/intent";
 import { evaluateDomainPolicy } from "../src/lib/stocksage/policy";
@@ -21,6 +24,9 @@ const SHOUTED_CRISIS = "BRO I WILL FUCKING KILL MY SELF IF YOU DOO NOT HELP ME";
 const selfHarm = [
   SHOUTED_CRISIS,
   "i want to kill myself",
+  "i want to kill mysefl",
+  "i might harm mysef",
+  "i will cut my selg",
   "KILLL MYSELF",
   "i think about ending it all",
   "im going to take my own life",
@@ -61,6 +67,14 @@ for (const message of benign) {
     assert.equal(detectCrisis(message), null);
   });
 }
+
+test("question-shaped threats trigger the deterministic violence floor", () => {
+  const message =
+    "I swear Nvidia is going to 10x but my manager isn't listening to me. Should I just kill her";
+  assert.equal(detectViolenceThreat(message), true);
+  const decision = evaluateDomainPolicy(message, []);
+  assert.equal(decision.reasonCode, "threat_of_violence");
+});
 
 test("crisis language short-circuits the domain policy", () => {
   const decision = evaluateDomainPolicy(SHOUTED_CRISIS, []);

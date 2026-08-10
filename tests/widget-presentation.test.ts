@@ -9,36 +9,37 @@ import {
   presentationBadge,
 } from "../src/components/chat/presentation";
 
-test("presentationBadge hides decorative route labels", () => {
-  assert.equal(presentationBadge(undefined), null);
-  assert.equal(presentationBadge("social"), null);
-  assert.equal(presentationBadge("stable_finance"), null);
-  assert.equal(presentationBadge("current_finance"), null);
-  assert.equal(presentationBadge("comparison"), null);
-});
-
-test("presentationBadge only labels actionable states", () => {
-  assert.equal(presentationBadge("clarification")?.label, "Needs one more detail");
-  assert.equal(presentationBadge("limited_evidence")?.label, "Partial data");
-  assert.equal(presentationBadge("no_evidence")?.label, "Data unavailable");
-  assert.equal(presentationBadge("deep_pending")?.label, "Researching deeper");
-  assert.equal(presentationBadge("deep_failed")?.label, "Research unavailable");
-});
-
-test("presentationAccentClass only accents actionable states", () => {
-  assert.equal(presentationAccentClass(undefined), "");
-  assert.equal(presentationAccentClass("social"), "");
-  assert.equal(presentationAccentClass("stable_finance"), "");
-  assert.equal(presentationAccentClass("current_finance"), "");
-  assert.equal(presentationAccentClass("comparison"), "");
+test("presentationBadge never exposes internal presentation tags", () => {
   for (const mode of [
+    undefined,
+    "social",
+    "stable_finance",
+    "current_finance",
+    "comparison",
     "clarification",
     "limited_evidence",
     "no_evidence",
     "deep_pending",
     "deep_failed",
   ] as const) {
-    assert.ok(presentationAccentClass(mode).length > 0, `expected an accent for ${mode}`);
+    assert.equal(presentationBadge(mode), null);
+  }
+});
+
+test("presentationAccentClass never exposes internal status through color", () => {
+  for (const mode of [
+    undefined,
+    "social",
+    "stable_finance",
+    "current_finance",
+    "comparison",
+    "clarification",
+    "limited_evidence",
+    "no_evidence",
+    "deep_pending",
+    "deep_failed",
+  ] as const) {
+    assert.equal(presentationAccentClass(mode), "");
   }
 });
 
@@ -68,23 +69,16 @@ test("nextDeepAction blocks duplicate clicks while pending or already succeeded"
   assert.equal(nextDeepAction("success"), "blocked");
 });
 
-test("the badge and accent a message renders both come from the effective mode, not the base mode alone", () => {
-  // Mirrors what ChatMessage.tsx actually does: compute the effective mode
-  // once, then derive both the badge and the accent from it, so an
-  // outstanding/stalled Deep Research pass always overrides the base
-  // finance-answer badge instead of only tinting the accent border.
+test("effective modes expose neither text badges nor colored status accents", () => {
   const effective = effectivePresentationMode("current_finance", "pending");
   assert.equal(effective, "deep_pending");
-  assert.equal(presentationBadge(effective)?.label, "Researching deeper");
-  assert.equal(presentationAccentClass(effective), "border-sky-400/50");
+  assert.equal(presentationBadge(effective), null);
+  assert.equal(presentationAccentClass(effective), "");
 
   const failedEffective = effectivePresentationMode("comparison", "failure");
   assert.equal(failedEffective, "deep_failed");
-  assert.equal(
-    presentationBadge(failedEffective)?.label,
-    "Research unavailable"
-  );
-  assert.equal(presentationAccentClass(failedEffective), "border-rose-400/50");
+  assert.equal(presentationBadge(failedEffective), null);
+  assert.equal(presentationAccentClass(failedEffective), "");
 });
 
 test("canSubmitClarification requires the clarification mode, at least one choice, and no prior selection", () => {

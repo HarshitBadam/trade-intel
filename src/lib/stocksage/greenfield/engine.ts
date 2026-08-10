@@ -23,7 +23,20 @@ import {
   type HybridDocumentPorts,
   type HybridRetrievalResult,
 } from "./documents";
-import { detectCrisis, detectViolenceThreat, crisisResponse, VIOLENCE_THREAT_RESPONSE } from "../crisis";
+import { crisisResponse } from "../crisis";
+import { hardSafetyFloor } from "../policy";
+import {
+  beginInputSafetyCheck,
+  type SafetyClassifier,
+  type SafetyVerdict,
+} from "../safety-classifier";
+import {
+  budgetFor,
+  REGULAR_RETRIEVAL_CEILING_MS,
+  SYNTHESIS_MIN_ATTEMPT_MS,
+  withDeadline,
+  type RequestBudget,
+} from "../budget";
 import type { FinanceEntity } from "../types";
 import type { MarketCalendar, TemporalInterval } from "../temporal";
 import {
@@ -35,6 +48,7 @@ import {
 } from "./answering";
 import { defaultStructuredComposer } from "./composer";
 import { conceptEvidence, findFinanceConcept } from "./concepts";
+import type { AnswerObligation } from "./answer-obligations";
 import {
   appendConversationTurn,
   createConversationLedger,
@@ -51,12 +65,14 @@ import {
 } from "./semantic-interpreter";
 import {
   planGreenfieldTurn,
+  scopeGreenfieldPlanToObligation,
   type CompanyFactsNeed,
   type DocumentNeed,
   type GreenfieldExecutionPlan,
   type MarketDataNeed,
   type SecurityMasterNeed,
 } from "./planner";
+import { aliasesForListedEntity } from "./evidence-identity";
 import {
   createResearchPlan,
   runResearchPlan,
@@ -81,7 +97,42 @@ export type GreenfieldTrace = {
   evidence: readonly ResearchEvidence[];
   documentDiagnostics?: HybridRetrievalResult["diagnostics"];
   researchRun?: ResearchRunRecord;
+  failures: readonly {
+    needId: string;
+    error: string;
+    obligationId?: string;
+    phase?: "semantic" | "planning" | "research" | "composition" | "verification";
+  }[];
+  sectionDiagnostics?: readonly GreenfieldSectionDiagnostic[];
+  safety?: {
+    hardFloorReason?: string;
+    classifierAction?: SafetyVerdict["action"];
+  };
+};
+
+export type GreenfieldSectionStatus = "complete" | "partial" | "unavailable";
+
+export type GreenfieldSectionResult = {
+  sectionId: string;
+  obligationId: string;
+  kind: AnswerObligation["kind"];
+  publicationRole: AnswerObligation["publicationRole"];
+  status: GreenfieldSectionStatus;
+  text?: string;
+  evidence: readonly ResearchEvidence[];
   failures: readonly { needId: string; error: string }[];
+  answer?: AdaptiveAnswer;
+};
+
+export type GreenfieldSectionDiagnostic = {
+  sectionId: string;
+  obligationId: string;
+  status: GreenfieldSectionStatus;
+  evidenceIds: readonly string[];
+  failureCount: number;
+  verificationIssueCount?: number;
+  documentDiagnostics?: HybridRetrievalResult["diagnostics"];
+  researchRun?: ResearchRunRecord;
 };
 
 export type GreenfieldReply = {
@@ -94,6 +145,7 @@ export type GreenfieldReply = {
   text: string;
   ledger: ConversationLedger;
   answer?: AdaptiveAnswer;
+  sections?: readonly GreenfieldSectionResult[];
   trace: GreenfieldTrace;
 };
 
@@ -116,6 +168,8 @@ export type GreenfieldDependencies = {
   ) => Promise<SecCompanyFact[]>;
   secDependencies?: SecEdgarDependencies;
   documents?: HybridDocumentPorts;
+  safetyClassifier?: SafetyClassifier;
+  requestBudget?: RequestBudget;
   researchPersistence?: ResearchPersistence;
   researchSignal?: AbortSignal;
   onResearchProgress?: (
@@ -129,6 +183,29 @@ type ExecutionArtifacts = {
   researchRun?: ResearchRunRecord;
   failures: { needId: string; error: string }[];
 };
+
+type ExecutionMemo = Map<string, Promise<ResearchEvidence[]>>;
+
+type DeadlineResult<T> =
+  | { status: "complete"; value: T }
+  | { status: "deadline" };
+
+async function withinRequestBudget<T>(
+  promise: Promise<T>,
+  budget: RequestBudget | undefined,
+  ceilingMs?: number
+): Promise<DeadlineResult<T>> {
+  if (!budget) return { status: "complete", value: await promise };
+  const allowed = Math.min(
+    budget.publishableMs(),
+    ceilingMs ?? budget.publishableMs()
+  );
+  return withDeadline<DeadlineResult<T>>(
+    promise.then((value) => ({ status: "complete", value })),
+    allowed,
+    { status: "deadline" }
+  );
+}
 
 function calendarFor(entities: readonly FinanceEntity[]): MarketCalendar {
   const publicEntities = entities.filter((entity) => !entity.private);
@@ -176,6 +253,10 @@ function marketEvidence(
     baseline && baseline.close !== 0
       ? ((last.close - baseline.close) / Math.abs(baseline.close)) * 100
       : null;
+  const instrumentAliases = [
+    series.instrumentSymbol,
+    ...aliasesForListedEntity(need.entity),
+  ];
   const common = {
     instrument: series.instrumentSymbol,
     currency,
@@ -196,6 +277,11 @@ function marketEvidence(
     retrievedAt,
     observedAt: last.timestamp,
     availableAt: last.timestamp,
+    subjectId: need.entity.id,
+    subjectIds: [need.entity.id],
+    providerSymbol: series.instrumentSymbol,
+    instrumentAliases,
+    temporalSemantics: "exact_period",
     instrument: series.instrumentSymbol,
     currency,
     periodStart: need.interval.startSession,
@@ -244,6 +330,18 @@ function securityEvidence(
     excerpt: `${security.instrument.symbol} is a ${security.instrument.kind} instrument on ${security.instrument.venue} in ${security.instrument.currency}.`,
     retrievedAt,
     availableAt: provenance?.fetchedAt ?? retrievedAt,
+    subjectId: need.entity.id,
+    subjectIds: [
+      ...new Set([need.entity.id, security.issuer.issuerId].filter(Boolean)),
+    ],
+    instrumentId: security.instrument.instrumentId,
+    providerSymbol: security.instrument.symbol,
+    instrumentAliases: [
+      security.instrument.symbol,
+      security.identifiers.ticker,
+      ...aliasesForListedEntity(need.entity),
+    ],
+    temporalSemantics: "timeless",
     instrument: security.instrument.symbol,
     currency:
       security.instrument.currency === "NONE"
@@ -273,6 +371,9 @@ function privateCompanyEvidence(
     excerpt: `${need.entity.name} is privately held and has no public exchange listing.`,
     retrievedAt,
     availableAt: retrievedAt,
+    subjectId: need.entity.id,
+    subjectIds: [need.entity.id],
+    temporalSemantics: "timeless",
     quality: 1,
     supports: ["private-company-status", "listing-status"],
     facts: {
@@ -296,6 +397,11 @@ function companyFactEvidence(
     retrievedAt,
     observedAt: fact.periodEnd,
     availableAt: `${fact.filedAt}T23:59:59.999Z`,
+    subjectId: need.entity.id,
+    subjectIds: [need.entity.id],
+    providerSymbol: need.entity.ticker,
+    instrumentAliases: aliasesForListedEntity(need.entity),
+    temporalSemantics: "exact_period",
     instrument: need.entity.ticker,
     currency: fact.unit.length === 3 ? fact.unit : undefined,
     periodStart: fact.periodStart ?? fact.periodEnd,
@@ -317,6 +423,13 @@ function companyFactEvidence(
 }
 
 function documentEvidence(item: EvidenceItem): ResearchEvidence {
+  // Production document adapters currently place canonical entity IDs in
+  // both collections. They are subject identities here, never ticker aliases.
+  const subjectIds = [
+    ...new Set(
+      item.issuerIds.length > 0 ? item.issuerIds : item.instrumentIds
+    ),
+  ];
   return {
     id: item.evidenceId,
     sourceId: item.provenance.sourceId,
@@ -326,7 +439,9 @@ function documentEvidence(item: EvidenceItem): ResearchEvidence {
     retrievedAt: item.fetchedAt,
     observedAt: item.eventAt,
     availableAt: item.publishedAt ?? item.eventAt ?? item.fetchedAt,
-    instrument: item.instrumentIds.length === 1 ? item.instrumentIds[0] : undefined,
+    subjectId: subjectIds.length === 1 ? subjectIds[0] : undefined,
+    subjectIds,
+    temporalSemantics: "freshness",
     currency: item.currency,
     periodStart: item.eventAt?.slice(0, 10),
     periodEnd: item.eventAt?.slice(0, 10),
@@ -368,7 +483,8 @@ function documentFilter(need: DocumentNeed): {
 
 async function executePlan(
   plan: GreenfieldExecutionPlan,
-  dependencies: GreenfieldDependencies
+  dependencies: GreenfieldDependencies,
+  memo?: ExecutionMemo
 ): Promise<ExecutionArtifacts> {
   const failures: ExecutionArtifacts["failures"] = [];
   const retrievedAt = new Date().toISOString();
@@ -376,7 +492,8 @@ async function executePlan(
   const results = await Promise.all(
     plan.needs.map(async (need): Promise<ResearchEvidence[]> => {
       try {
-        if (need.kind === "market_data") {
+        const load = async (): Promise<ResearchEvidence[]> => {
+          if (need.kind === "market_data") {
           const run =
             dependencies.market ??
             ((item: MarketDataNeed, deps?: RangeBarDependencies) =>
@@ -393,8 +510,8 @@ async function executePlan(
                 deps
               ));
           const series = await run(need, dependencies.marketDependencies);
-          const evidence = marketEvidence(need, series, retrievedAt);
-          return evidence ? [evidence] : [];
+          const item = marketEvidence(need, series, retrievedAt);
+          return item ? [item] : [];
         }
         if (need.kind === "security_master") {
           const run =
@@ -432,7 +549,16 @@ async function executePlan(
         }
         if (need.kind === "concept_knowledge") {
           const concept = findFinanceConcept(need.labels);
-          return concept ? [conceptEvidence(concept, retrievedAt)] : [];
+          return concept
+            ? [
+                {
+                  ...conceptEvidence(concept, retrievedAt),
+                  subjectId: `concept:${concept.id}`,
+                  subjectIds: [`concept:${concept.id}`],
+                  temporalSemantics: "timeless",
+                },
+              ]
+            : [];
         }
         const documentPorts =
           dependencies.documents ??
@@ -458,6 +584,27 @@ async function executePlan(
         });
         documentDiagnostics = result.diagnostics;
         return result.items.map(documentEvidence);
+        };
+        const memoKey = `${need.kind}:${need.id}`;
+        const existing = memo?.get(memoKey);
+        const pending = existing ?? load();
+        if (!existing) memo?.set(memoKey, pending);
+        const result = await withinRequestBudget(
+          pending,
+          dependencies.requestBudget,
+          REGULAR_RETRIEVAL_CEILING_MS
+        );
+        if (result.status === "deadline") {
+          throw new Error("Request budget expired while retrieving this need");
+        }
+        const evidence = result.value;
+        if (evidence.length === 0) {
+          failures.push({
+            needId: need.id,
+            error: "No evidence returned for this need",
+          });
+        }
+        return evidence;
       } catch (error) {
         failures.push({ needId: need.id, error: errorText(error) });
         return [];
@@ -473,16 +620,21 @@ async function executePlan(
 
 async function executePlannedResearch(
   plan: GreenfieldExecutionPlan,
-  dependencies: GreenfieldDependencies
+  dependencies: GreenfieldDependencies,
+  memo?: ExecutionMemo
 ): Promise<ExecutionArtifacts> {
   if (plan.answerDepth !== "deep" || plan.needs.length === 0) {
-    return executePlan(plan, dependencies);
+    return executePlan(plan, dependencies, memo);
   }
   const failures: ExecutionArtifacts["failures"] = [];
   let documentDiagnostics: HybridRetrievalResult["diagnostics"] | undefined;
   const needById = new Map(plan.needs.map((need) => [need.id, need]));
+  const obligationKey =
+    plan.obligations.length === 1
+      ? plan.obligations[0].id.replace(/[^A-Za-z0-9_-]+/g, "-")
+      : "combined";
   const researchPlan = createResearchPlan({
-    id: `research:${plan.turnId}`,
+    id: `research:${plan.turnId}:${obligationKey}`,
     question: plan.standaloneQuery,
     depth: "deep",
     asOf: plan.asOf,
@@ -519,7 +671,8 @@ async function executePlannedResearch(
       if (!need) throw new Error(`Unknown research lane: ${lane.id}`);
       const result = await executePlan(
         { ...plan, needs: [need], answerDepth: "standard" },
-        dependencies
+        dependencies,
+        memo
       );
       failures.push(...result.failures);
       documentDiagnostics =
@@ -527,6 +680,16 @@ async function executePlannedResearch(
       return { evidence: result.evidence, cost: lane.estimatedCost ?? 1 };
     },
   });
+  if (record.state === "failed" || record.state === "cancelled") {
+    failures.push({
+      needId: researchPlan.id,
+      error:
+        record.error ??
+        (record.state === "cancelled"
+          ? "Research was cancelled before completion"
+          : "Research failed before completion"),
+    });
+  }
   return {
     evidence: record.evidence,
     documentDiagnostics,
@@ -539,9 +702,45 @@ function clarification(
   interpretation: SemanticInterpretation,
   hasActiveEntityContext: boolean
 ): string | null {
+  const hasAnswerableNeed =
+    interpretation.semantic.informationNeeds.length > 0 ||
+    [
+      "entity_snapshot",
+      "entity_comparison",
+      "metric_lookup",
+      "causal_analysis",
+      "concept_explanation",
+      "outlook_research",
+    ].includes(interpretation.semantic.intent.kind);
   const material = interpretation.semantic.ambiguities.filter(
     (ambiguity) => {
       if (!ambiguity.requiresClarification) return false;
+      // Open-ended wording such as "what's up" is a depth/metric choice, not
+      // a blocker. Publish the supported default section and let the user
+      // refine it on the next turn.
+      if (
+        hasAnswerableNeed &&
+        ["intent", "metric", "answer"].includes(ambiguity.field)
+      ) {
+        return false;
+      }
+      if (
+        ambiguity.field === "temporal" &&
+        (interpretation.compiledTemporal.length > 0 ||
+          interpretation.semantic.temporal.specs.length === 0)
+      ) {
+        return false;
+      }
+      if (
+        ambiguity.field === "comparison" &&
+        interpretation.semantic.comparison.kind !== "none" &&
+        (interpretation.grounding.entityMentions.some(
+          (mention) => mention.status === "grounded"
+        ) ||
+          interpretation.grounding.inheritedEntities.length > 0)
+      ) {
+        return false;
+      }
       if (ambiguity.field === "entity") {
         const unresolved = interpretation.grounding.issues.some(
           (issue) => issue.code === "entity_unresolved"
@@ -558,15 +757,9 @@ function clarification(
           return false;
         }
       }
-      if (
-        ambiguity.field === "group" &&
-        interpretation.grounding.groups.length > 0 &&
-        interpretation.grounding.groups.every(
-          (group) => group.status === "grounded"
-        )
-      ) {
-        return false;
-      }
+      // A model-declared material group fork remains material even if the
+      // bare phrase has a catalog default. Explicitly qualified group turns
+      // are grounded without producing this ambiguity.
       return true;
     }
   );
@@ -611,11 +804,7 @@ function atomicTask(
   evidence: readonly ResearchEvidence[]
 ): AtomicNumericTask | undefined {
   const market = evidence.filter((item) => item.id.startsWith("market:"));
-  if (
-    plan.comparison ||
-    market.length !== 1 ||
-    plan.needs.some((need) => need.kind === "documents")
-  ) {
+  if (plan.comparison || market.length !== 1) {
     return undefined;
   }
   const item = market[0];
@@ -641,18 +830,8 @@ function deterministicMarketComparison(
   plan: GreenfieldExecutionPlan,
   evidence: readonly ResearchEvidence[]
 ): ComposerDraft | null {
-  if (
-    !plan.comparison ||
-    plan.needs.some(
-      (need) =>
-        need.kind === "documents" ||
-        need.kind === "company_facts" ||
-        need.kind === "concept_knowledge"
-    )
-  ) {
-    return null;
-  }
-  const market = evidence.filter(
+  if (!plan.comparison) return null;
+  const allMarket = evidence.filter(
     (item) =>
       item.id.startsWith("market:") &&
       (typeof item.facts?.returnPct?.value === "number" ||
@@ -661,11 +840,24 @@ function deterministicMarketComparison(
   const privateCompanies = evidence.filter(
     (item) => item.facts?.private?.value === true
   );
-  if (market.length + privateCompanies.length < 2) return null;
+  if (allMarket.length + privateCompanies.length < 2) return null;
+  const crossEntity =
+    plan.obligations[0]?.relationalMode === "entity_vs_entity" ||
+    plan.obligations[0]?.relationalMode === "entity_and_time" ||
+    new Set(allMarket.map((item) => item.subjectId).filter(Boolean)).size > 1;
+  // Nominal prices are not comparable across different companies. Prefer the
+  // common-window return that the planner fetched for every listed entity.
+  const market = crossEntity
+    ? allMarket.filter(
+        (item) => typeof item.facts?.returnPct?.value === "number"
+      )
+    : allMarket;
+  if (market.length + privateCompanies.length === 0) return null;
   const rows = market.map((item) => {
     const rangeReturn =
-      item.periodStart !== item.periodEnd &&
-      typeof item.facts?.returnPct?.value === "number";
+      crossEntity ||
+      (item.periodStart !== item.periodEnd &&
+        typeof item.facts?.returnPct?.value === "number");
     const factKey = rangeReturn ? "returnPct" : "close";
     const value = item.facts?.[factKey]?.value as number;
     const unit = rangeReturn ? "%" : item.currency;
@@ -764,17 +956,312 @@ function deterministicListingStatus(
         entity.market === "au" ? `ASX:${entity.ticker}` : entity.ticker;
       return [`${entity.name} is publicly traded as ${symbol}.`];
     }
-    return [];
+    return [
+      `${entity.name} has no confirmed public exchange ticker in the current security catalog, so I won’t substitute unrelated market-price data.`,
+    ];
   });
   return lines.length > 0 ? lines.join("\n\n") : null;
+}
+
+function deterministicConceptDraft(
+  evidence: readonly ResearchEvidence[]
+): ComposerDraft | null {
+  const claims: ComposerDraft["claims"][number][] = [];
+  for (const item of evidence.filter((entry) =>
+    entry.id.startsWith("concept:")
+  )) {
+    for (const factKey of ["definition", "caveat"] as const) {
+      const value = item.facts?.[factKey]?.value;
+      if (typeof value !== "string" || !value.trim()) continue;
+      claims.push({
+        id: `${item.id}:${factKey}`,
+        kind: "factual",
+        text: value,
+        evidenceIds: [item.id],
+        factRefs: [{ evidenceId: item.id, factKey }],
+      });
+    }
+  }
+  return claims.length > 0 ? { claims } : null;
+}
+
+function deterministicPrivateStatusDraft(
+  evidence: readonly ResearchEvidence[]
+): ComposerDraft | null {
+  const claims = evidence
+    .filter((item) => item.facts?.private?.value === true)
+    .map((item, index): ComposerDraft["claims"][number] => ({
+      id: `private-company-${index + 1}`,
+      kind: "factual",
+      text: `${item.title?.replace(/ ownership status$/, "") ?? "The company"} is privately held, so it does not have a directly comparable public share price.`,
+      evidenceIds: [item.id],
+      factRefs: [{ evidenceId: item.id, factKey: "private" }],
+    }));
+  return claims.length > 0 ? { claims } : null;
+}
+
+function deterministicFactsDraft(
+  evidence: readonly ResearchEvidence[]
+): ComposerDraft | null {
+  const claims = evidence
+    .filter((item) => item.id.startsWith("fact:"))
+    .flatMap((item, index): ComposerDraft["claims"][number][] => {
+      const fact = item.facts?.value;
+      if (!fact) return [];
+      const suffix = [fact.unit, fact.periodEnd ? `for ${fact.periodEnd}` : ""]
+        .filter(Boolean)
+        .join(" ");
+      return [
+        {
+          id: `company-fact-${index + 1}`,
+          kind: "factual",
+          text: `${item.title ?? "Reported company fact"}: ${String(
+            fact.value
+          )}${suffix ? ` ${suffix}` : ""}.`,
+          evidenceIds: [item.id],
+          factRefs: [{ evidenceId: item.id, factKey: "value" }],
+          instrument: item.providerSymbol ?? item.instrument,
+          currency: fact.currency,
+          periodStart: fact.periodStart,
+          periodEnd: fact.periodEnd,
+        },
+      ];
+    });
+  return claims.length > 0 ? { claims } : null;
+}
+
+function alignmentForSection(
+  plan: GreenfieldExecutionPlan,
+  now: Date,
+  publicationRole: AnswerObligation["publicationRole"]
+) {
+  const instruments = [
+    ...new Set(plan.entities.flatMap(aliasesForListedEntity)),
+  ];
+  if (publicationRole === "narrative") {
+    return {
+      asOf: plan.asOf,
+      ...(instruments.length > 0 ? { instruments } : {}),
+    };
+  }
+  return {
+    asOf: historicalCutoff(plan.intervals, now),
+    ...(instruments.length > 0 ? { instruments } : {}),
+    periodStart: plan.intervals.map((item) => item.startSession).sort()[0],
+    periodEnd: plan.intervals.map((item) => item.endSession).sort().at(-1),
+  };
+}
+
+type ObligationExecution = {
+  section: GreenfieldSectionResult;
+  artifacts: ExecutionArtifacts;
+};
+
+function emptyArtifacts(): ExecutionArtifacts {
+  return { evidence: [], failures: [] };
+}
+
+function sectionStatus(
+  text: string | undefined,
+  artifacts: ExecutionArtifacts,
+  answer?: AdaptiveAnswer
+): GreenfieldSectionStatus {
+  if (!text?.trim()) return "unavailable";
+  return artifacts.failures.length > 0 ||
+    (answer?.verification.issues.length ?? 0) > 0
+    ? "partial"
+    : "complete";
+}
+
+async function executeObligation(
+  plan: GreenfieldExecutionPlan,
+  obligation: AnswerObligation,
+  dependencies: GreenfieldDependencies,
+  now: Date,
+  memo: ExecutionMemo
+): Promise<ObligationExecution> {
+  const scoped = scopeGreenfieldPlanToObligation(plan, obligation);
+  if (
+    obligation.publicationRole === "deterministic" &&
+    obligation.kind === "verify_listing"
+  ) {
+    const text = deterministicListingStatus(obligation.entities) ?? undefined;
+    const artifacts = emptyArtifacts();
+    const failures = text
+      ? []
+      : [
+          {
+            needId: `listing:${obligation.id}`,
+            error: "No canonical listing identity was available",
+          },
+        ];
+    artifacts.failures.push(...failures);
+    return {
+      artifacts,
+      section: {
+        sectionId: obligation.sectionId,
+        obligationId: obligation.id,
+        kind: obligation.kind,
+        publicationRole: obligation.publicationRole,
+        status: text ? "complete" : "unavailable",
+        text,
+        evidence: [],
+        failures,
+      },
+    };
+  }
+
+  let artifacts: ExecutionArtifacts;
+  try {
+    artifacts = await executePlannedResearch(scoped, dependencies, memo);
+  } catch (error) {
+    artifacts = {
+      evidence: [],
+      failures: [
+        {
+          needId: `research:${obligation.id}`,
+          error: errorText(error),
+        },
+      ],
+    };
+  }
+
+  let answer: AdaptiveAnswer | undefined;
+  let text: string | undefined;
+  if (obligation.publicationRole === "deterministic") {
+    const draft =
+      deterministicMarketComparison(scoped, artifacts.evidence) ??
+      deterministicConceptDraft(artifacts.evidence) ??
+      deterministicPrivateStatusDraft(artifacts.evidence) ??
+      deterministicFactsDraft(artifacts.evidence);
+    const numericTask =
+      draft === null ? atomicTask(scoped, artifacts.evidence) : undefined;
+    if (draft || numericTask) {
+      try {
+        answer = await answerAdaptively({
+          question: scoped.standaloneQuery,
+          preference:
+            scoped.answerDepth === "brief"
+              ? "glance"
+              : scoped.answerDepth === "deep"
+                ? "deep"
+                : "standard",
+          evidence: artifacts.evidence,
+          entityCount: scoped.entities.length,
+          comparison: scoped.comparison,
+          causal: scoped.causal,
+          multiStep: scoped.needs.length > 2,
+          requiresResearch: scoped.answerDepth === "deep",
+          numericTask,
+          composer: async () => draft as ComposerDraft,
+          alignment: alignmentForSection(scoped, now, "deterministic"),
+          unsupportedPolicy: "remove",
+        });
+        text = answer.text || undefined;
+      } catch (error) {
+        artifacts.failures.push({
+          needId: `deterministic:${obligation.id}`,
+          error: errorText(error),
+        });
+      }
+    }
+  } else if (artifacts.evidence.length > 0) {
+    try {
+      if (
+        dependencies.requestBudget &&
+        dependencies.requestBudget.publishableMs() < SYNTHESIS_MIN_ATTEMPT_MS
+      ) {
+        throw new Error("Request budget expired before narrative composition");
+      }
+      const composed = withinRequestBudget(
+        answerAdaptively({
+        question: scoped.standaloneQuery,
+        preference:
+          scoped.answerDepth === "brief"
+            ? "glance"
+            : scoped.answerDepth === "deep"
+              ? "deep"
+              : "standard",
+        evidence: artifacts.evidence,
+        entityCount: scoped.entities.length,
+        comparison: scoped.comparison,
+        causal: scoped.causal,
+        multiStep: scoped.needs.length > 2,
+        requiresResearch: scoped.answerDepth === "deep",
+        composer: dependencies.composer ?? defaultStructuredComposer,
+        alignment: alignmentForSection(scoped, now, "narrative"),
+        unsupportedPolicy: "qualify",
+        allowQualifiedNarrativeClaims: true,
+        }),
+        dependencies.requestBudget
+      );
+      const result = await composed;
+      if (result.status === "deadline") {
+        throw new Error("Request budget expired during narrative composition");
+      }
+      answer = result.value;
+      text = answer.text || undefined;
+    } catch (error) {
+      artifacts.failures.push({
+        needId: `composer:${obligation.id}`,
+        error: errorText(error),
+      });
+    }
+  }
+
+  if (!text && artifacts.evidence.length > 0 && artifacts.failures.length === 0) {
+    artifacts.failures.push({
+      needId: `verification:${obligation.id}`,
+      error: "Retrieved evidence did not support a publishable section",
+    });
+  }
+  const status = sectionStatus(text, artifacts, answer);
+  return {
+    artifacts,
+    section: {
+      sectionId: obligation.sectionId,
+      obligationId: obligation.id,
+      kind: obligation.kind,
+      publicationRole: obligation.publicationRole,
+      status,
+      text,
+      evidence: artifacts.evidence,
+      failures: artifacts.failures,
+      answer,
+    },
+  };
+}
+
+function classifierSafetyReply(
+  verdict: Exclude<SafetyVerdict, { action: "allow" }>,
+  ledger: ConversationLedger,
+  trace: GreenfieldTrace
+): GreenfieldReply {
+  return {
+    kind: verdict.action === "crisis" ? "safety_support" : "refused",
+    text:
+      verdict.action === "crisis"
+        ? crisisResponse(verdict.kind)
+        : "I can’t help with that. I can help analyze markets, companies, and investment risk.",
+    ledger,
+    trace: {
+      ...trace,
+      safety: { ...trace.safety, classifierAction: verdict.action },
+    },
+  };
 }
 
 export async function runGreenfieldTurn(
   request: GreenfieldRequest,
   dependencies: GreenfieldDependencies = {}
 ): Promise<GreenfieldReply> {
+  dependencies = {
+    ...dependencies,
+    requestBudget: dependencies.requestBudget ?? budgetFor("regular"),
+  };
   const message = request.message.trim();
   const ledger = request.ledger ?? createConversationLedger();
+  const priorContext = ledgerInterpreterContext(ledger);
   const turnId = randomUUID();
   const emptyTrace: GreenfieldTrace = {
     turnId,
@@ -782,62 +1269,107 @@ export async function runGreenfieldTurn(
     failures: [],
   };
 
-  const crisis = detectCrisis(message);
-  if (crisis) {
+  // This is the authoritative, model-independent boundary. Active ledger
+  // entities are available here, before semantic interpretation can run.
+  const floor = hardSafetyFloor(message, [...priorContext.activeEntities]);
+  if (floor?.response) {
+    const supportReasons = new Set([
+      "explicit_self_harm",
+      "acute_distress",
+      "threat_of_violence",
+      "high_stakes_finance",
+    ]);
     return {
-      kind: "safety_support",
-      text: crisisResponse(crisis),
+      kind: supportReasons.has(floor.reasonCode)
+        ? "safety_support"
+        : "refused",
+      text: floor.response,
       ledger,
-      trace: emptyTrace,
-    };
-  }
-  if (detectViolenceThreat(message)) {
-    return {
-      kind: "safety_support",
-      text: VIOLENCE_THREAT_RESPONSE,
-      ledger,
-      trace: emptyTrace,
+      trace: {
+        ...emptyTrace,
+        safety: { hardFloorReason: floor.reasonCode },
+      },
     };
   }
 
-  const priorContext = ledgerInterpreterContext(ledger);
+  // Start the optional model rail now so interpretation latency overlaps it,
+  // but join the verdict before any response is published.
+  const safety = beginInputSafetyCheck(message, dependencies.safetyClassifier);
   const provisionalCalendar = calendarFor(priorContext.activeEntities);
-  const interpreter = createSemanticInterpreter(dependencies.semanticModel);
-  const provisional = await interpreter({
-    turnId,
-    message,
-    now: request.now ?? new Date(),
-    calendar: provisionalCalendar,
-    context: priorContext,
-  });
-  const entities = [
-    ...provisional.grounding.entityMentions.flatMap((item) =>
-      item.entity ? [item.entity] : []
-    ),
-    ...provisional.grounding.inheritedEntities,
-    ...provisional.grounding.groups.flatMap((group) => group.memberEntities),
-  ];
-  const calendar = calendarFor(entities);
-  const compiledTemporal = compileTemporalSpecs(
-    provisional.semantic.temporal.specs.length > 0
-      ? provisional.semantic.temporal.specs
-      : provisional.semantic.temporal.inherit === "active"
-        ? priorContext.activeTemporal
-        : [],
-    { now: request.now ?? new Date(), calendar }
-  );
-  const interpretation: SemanticInterpretation = {
-    ...provisional,
-    compiledTemporal,
-    standaloneQuery: rewriteContextualQuery(
-      provisional.semantic,
-      provisional.grounding,
-      priorContext,
-      compiledTemporal
-    ),
-  };
+  let interpretation: SemanticInterpretation;
+  let calendar: MarketCalendar;
+  try {
+    const interpreter = createSemanticInterpreter(dependencies.semanticModel);
+    const provisional = await interpreter({
+      turnId,
+      message,
+      now: request.now ?? new Date(),
+      calendar: provisionalCalendar,
+      context: priorContext,
+    });
+    const entities = [
+      ...provisional.grounding.entityMentions.flatMap((item) =>
+        item.entity ? [item.entity] : []
+      ),
+      ...provisional.grounding.inheritedEntities,
+      ...provisional.grounding.groups.flatMap((group) => group.memberEntities),
+    ];
+    calendar = calendarFor(entities);
+    const compiledTemporal = compileTemporalSpecs(
+      provisional.semantic.temporal.specs.length > 0
+        ? provisional.semantic.temporal.specs
+        : provisional.semantic.temporal.inherit === "active"
+          ? priorContext.activeTemporal
+          : [],
+      { now: request.now ?? new Date(), calendar }
+    );
+    interpretation = {
+      ...provisional,
+      compiledTemporal,
+      standaloneQuery: rewriteContextualQuery(
+        provisional.semantic,
+        provisional.grounding,
+        priorContext,
+        compiledTemporal
+      ),
+    };
+  } catch (error) {
+    const verdict = await safety;
+    if (verdict.action !== "allow") {
+      return classifierSafetyReply(verdict, ledger, emptyTrace);
+    }
+    return {
+      kind: "unavailable",
+      text: "I couldn’t interpret that request reliably. Please try rephrasing it.",
+      ledger,
+      trace: {
+        ...emptyTrace,
+        failures: [
+          {
+            needId: "semantic_interpreter",
+            error: errorText(error),
+            phase: "semantic",
+          },
+        ],
+        safety: { classifierAction: "allow" },
+      },
+    };
+  }
+
+  const verdict = await safety;
+  if (verdict.action !== "allow") {
+    return classifierSafetyReply(verdict, ledger, {
+      ...emptyTrace,
+      interpretation,
+    });
+  }
+
   const nextLedger = appendConversationTurn(ledger, interpretation);
-  const traceBase = { ...emptyTrace, interpretation };
+  const traceBase: GreenfieldTrace = {
+    ...emptyTrace,
+    interpretation,
+    safety: { classifierAction: "allow" },
+  };
 
   const clarificationText = clarification(
     interpretation,
@@ -897,23 +1429,6 @@ export async function runGreenfieldTurn(
       trace: traceBase,
     };
   }
-  if (
-    interpretation.semantic.informationNeeds.some(
-      (need) => need.kind === "listing_status"
-    )
-  ) {
-    const listing = deterministicListingStatus(
-      latestLedgerState(nextLedger)?.entities ?? []
-    );
-    if (listing) {
-      return {
-        kind: "answer",
-        text: listing,
-        ledger: nextLedger,
-        trace: traceBase,
-      };
-    }
-  }
   if (interpretation.semantic.intent.kind === "high_stakes_finance") {
     return {
       kind: "safety_support",
@@ -924,80 +1439,120 @@ export async function runGreenfieldTurn(
   }
 
   const state = latestLedgerState(nextLedger);
-  if (!state) throw new Error("Greenfield ledger did not materialize a state");
-  const now = request.now ?? new Date();
-  const plan = planGreenfieldTurn({
-    interpretation,
-    state,
-    calendar,
-    now,
-  });
-  const artifacts = await executePlannedResearch(plan, dependencies);
-  const trace: GreenfieldTrace = {
-    ...traceBase,
-    plan,
-    evidence: artifacts.evidence,
-    documentDiagnostics: artifacts.documentDiagnostics,
-    researchRun: artifacts.researchRun,
-    failures: artifacts.failures,
-  };
-  if (artifacts.evidence.length === 0) {
+  if (!state) {
     return {
       kind: "unavailable",
-      text: unavailableText(plan, artifacts.failures),
+      text: "I couldn’t materialize the conversation context for this request.",
       ledger: nextLedger,
-      trace,
+      trace: {
+        ...traceBase,
+        failures: [
+          {
+            needId: "conversation_state",
+            error: "Greenfield ledger did not materialize a state",
+            phase: "planning",
+          },
+        ],
+      },
+    };
+  }
+  const now = request.now ?? new Date();
+  let plan: GreenfieldExecutionPlan;
+  try {
+    plan = planGreenfieldTurn({
+      interpretation,
+      state,
+      calendar,
+      now,
+    });
+  } catch (error) {
+    return {
+      kind: "unavailable",
+      text: "I understood the request, but couldn’t build a reliable evidence plan.",
+      ledger: nextLedger,
+      trace: {
+        ...traceBase,
+        failures: [
+          {
+            needId: "answer_plan",
+            error: errorText(error),
+            phase: "planning",
+          },
+        ],
+      },
     };
   }
 
-  const deterministicDraft = deterministicMarketComparison(
-    plan,
-    artifacts.evidence
+  const executionMemo: ExecutionMemo = new Map();
+  const executions = await Promise.all(
+    plan.obligations.map((obligation) =>
+      executeObligation(plan, obligation, dependencies, now, executionMemo)
+    )
   );
-  const answer = await answerAdaptively({
-    question: interpretation.standaloneQuery,
-    preference:
-      plan.answerDepth === "brief"
-        ? "glance"
-        : plan.answerDepth === "deep"
-          ? "deep"
-          : "standard",
-    evidence: artifacts.evidence,
-    entityCount: plan.entities.length,
-    comparison: plan.comparison,
-    causal: plan.causal,
-    multiStep: plan.needs.length > 2,
-    requiresResearch: plan.answerDepth === "deep",
-    numericTask:
-      ["entity_snapshot", "metric_lookup"].includes(
-        interpretation.semantic.intent.kind
-      )
-        ? atomicTask(plan, artifacts.evidence)
-        : undefined,
-    composer:
-      deterministicDraft !== null
-        ? async () => deterministicDraft
-        : dependencies.composer ?? defaultStructuredComposer,
-    alignment: {
-      asOf: historicalCutoff(plan.intervals, now),
-      instruments: plan.entities.flatMap((entity) => {
-        if (!entity.ticker) return [];
-        return entity.market === "au"
-          ? [entity.ticker, `ASX:${entity.ticker}`]
-          : [entity.ticker];
-      }),
-      periodStart: plan.intervals.map((item) => item.startSession).sort()[0],
-      periodEnd: plan.intervals.map((item) => item.endSession).sort().at(-1),
-    },
-    unsupportedPolicy: "qualify",
-  });
+  const sections = executions.map((execution) => execution.section);
+  const evidence = [
+    ...new Map(
+      executions
+        .flatMap((execution) => execution.artifacts.evidence)
+        .map((item) => [item.id, item])
+    ).values(),
+  ];
+  const failures: GreenfieldTrace["failures"] = executions.flatMap(
+    ({ section, artifacts }) =>
+      artifacts.failures.map((failure) => ({
+        ...failure,
+        obligationId: section.obligationId,
+        phase: failure.needId.startsWith("composer:")
+          ? ("composition" as const)
+          : failure.needId.startsWith("verification:")
+            ? ("verification" as const)
+            : ("research" as const),
+      }))
+  );
+  const sectionDiagnostics: GreenfieldSectionDiagnostic[] = executions.map(
+    ({ section, artifacts }) => ({
+      sectionId: section.sectionId,
+      obligationId: section.obligationId,
+      status: section.status,
+      evidenceIds: artifacts.evidence.map((item) => item.id),
+      failureCount: artifacts.failures.length,
+      verificationIssueCount: section.answer?.verification.issues.length,
+      documentDiagnostics: artifacts.documentDiagnostics,
+      researchRun: artifacts.researchRun,
+    })
+  );
+  const trace: GreenfieldTrace = {
+    ...traceBase,
+    plan,
+    evidence,
+    documentDiagnostics: executions.find(
+      (execution) => execution.artifacts.documentDiagnostics !== undefined
+    )?.artifacts.documentDiagnostics,
+    researchRun: executions.find(
+      (execution) => execution.artifacts.researchRun !== undefined
+    )?.artifacts.researchRun,
+    failures,
+    sectionDiagnostics,
+  };
+  const published = sections.filter((section) => Boolean(section.text?.trim()));
+  const text = published
+    .map((section) => section.text?.trim())
+    .filter((item): item is string => Boolean(item))
+    .join("\n\n");
+  const answer = published
+    .map((section) => section.answer)
+    .find((item): item is AdaptiveAnswer => item !== undefined);
   return {
-    kind: answer.text ? "answer" : "unavailable",
+    kind: text ? "answer" : "unavailable",
     text:
-      answer.text ||
-      "The retrieved evidence did not support a publishable answer. No unsupported claim was substituted.",
+      text ||
+      unavailableText(
+        plan,
+        failures.map(({ needId, error }) => ({ needId, error }))
+      ),
     ledger: nextLedger,
     answer,
+    sections,
     trace,
   };
 }

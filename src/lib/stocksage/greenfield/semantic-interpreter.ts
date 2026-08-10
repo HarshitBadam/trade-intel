@@ -1,15 +1,19 @@
-import { GROQ_CHAT_MODEL, GROQ_FALLBACK_MODEL } from "@/lib/config";
+import {
+  GROQ_SEMANTIC_FALLBACK_MODEL,
+  GROQ_SEMANTIC_MODEL,
+} from "@/lib/config";
 import { groqChatJSON, groqErrorSummary } from "@/lib/groq";
 import { CANONICAL_GROUPS, WEB_ALIASES } from "../entity-catalog";
 import { normalizeOrderedReference } from "../entity-state-helpers";
 import { resolveEntityHints } from "../entity-hints";
-import { groupMembers } from "../entity-resolution";
+import { groupMembers, resolveGroupRefs, resolveText } from "../entity-resolution";
 import { isWithinOneEdit } from "../text-normalization";
 import {
   addDays,
   currentSession,
   isTradingSession,
   previousSession,
+  resolveTemporalContext,
   type MarketCalendar,
   type TemporalInterval,
 } from "../temporal";
@@ -22,10 +26,7 @@ import {
   type TemporalSpec,
   type TemporalValue,
 } from "./semantic-schema";
-import {
-  expandSemanticExtraction,
-  SEMANTIC_EXTRACTION_JSON_SCHEMA,
-} from "./semantic-wire";
+import { expandSemanticExtraction } from "./semantic-wire";
 
 export type SemanticInterpreterContext = {
   activeEntities: readonly FinanceEntity[];
@@ -36,6 +37,12 @@ export type SemanticInterpreterContext = {
   }[];
   activeTemporal: readonly TemporalSpec[];
   recentTurnIds: readonly string[];
+  /** Bounded entity catalog available for ID lookup, not pronoun resolution. */
+  knownEntities?: readonly FinanceEntity[];
+  /** Latest ordered frame used only for former/latter/first/second. */
+  orderedEntities?: readonly FinanceEntity[];
+  /** Latest discourse focus used for singular/plural pronouns. */
+  focusEntities?: readonly FinanceEntity[];
 };
 
 export type SemanticInterpretationInput = {
@@ -114,6 +121,9 @@ const EMPTY_CONTEXT: SemanticInterpreterContext = {
   activeGroups: [],
   activeTemporal: [],
   recentTurnIds: [],
+  knownEntities: [],
+  orderedEntities: [],
+  focusEntities: [],
 };
 
 const SEMANTIC_SYSTEM_PROMPT = `You are StockSage's meaning extractor.
@@ -123,11 +133,43 @@ fact. Natural-language matching is your job; deterministic code will validate
 and ground your structured output.
 Interpret semanticText when it differs from originalText; it contains only
 deterministic typo normalization for contextual references.
+catalogEntityCandidates contains entities resolved by deterministic catalog
+matching, including bounded typo recovery. Treat an exact single candidate as
+authoritative identity; do not ask the user to clarify that company spelling.
 
 Return the compact extraction schema exactly. needs is an array of need-kind
 enums, not prose. entities.mentions contains the user's entity references;
 deterministic code creates IDs and confidence fields. inheritance has mode,
 sourceTurnId, entityIds, orderedPositions, and groupId.
+The required top-level shape is:
+{intent,needs,entities:{mentions,inheritance,groupCandidates},comparison,
+metrics,temporal:{inherit,specs},answer:{depth,format},topic:{mode,label},
+ambiguities,assumptions,corrections}.
+Use this exact empty baseline and replace only values or array contents:
+{"intent":"entity_snapshot","needs":[],"entities":{"mentions":[],
+"inheritance":{"mode":"none","sourceTurnId":null,"entityIds":[],
+"orderedPositions":[],"groupId":null},"groupCandidates":[]},"comparison":"none",
+"metrics":[],"temporal":{"inherit":"none","specs":[]},"answer":
+{"depth":"standard","format":"prose"},"topic":{"mode":"continue","label":null},
+"ambiguities":[],"assumptions":[],"corrections":[]}
+Each entity mention has exactly surface, canonicalName, ticker, listing,
+reference, role, issuerOrInstrument. reference is explicit, pronoun, ordered,
+category, or group_member; role is primary, comparison, excluded, or
+replacement; issuerOrInstrument is issuer, instrument, or unknown. Never put
+an entity ID in reference. Each group candidate has exactly mention,
+candidateIds, selectedId, reason. inheritance.mode is none, singular, plural,
+ordered, group, or all_active. comparison is none, entity_vs_entity,
+time_vs_time, or entity_and_time. Each metric has name, operation, unit;
+operation is level, absolute_change, percentage_change, growth, ratio, rank, or
+qualitative.
+Each ambiguity has field, reason, candidates, requiresClarification. Each
+assumption has key, field, value, reason. Each correction has field, operation,
+targetId, replacementId, value. answer.depth is brief, standard, or deep and
+answer.format is prose, bullets, table, timeline, or side_by_side. topic.mode
+is continue, pivot, or reset. ambiguity and assumption field is intent, entity,
+group, metric, temporal, comparison, or answer. A temporal spec label must
+preserve the non-empty user phrase and source is explicit, inherited, or
+default.
 intent is exactly one of social, capability, entity_snapshot,
 entity_comparison, metric_lookup, causal_analysis, concept_explanation,
 outlook_research, correction, clarification, high_stakes_finance, prohibited,
@@ -135,6 +177,8 @@ safety_support, out_of_scope.
 needs entries are exactly definition, current_state, price_performance,
 fundamentals, valuation, risk, catalyst, cause, ranking, comparison,
 listing_status, or source_check.
+Ordinary "how is [company] doing" language is an entity snapshot requiring
+current_state and price_performance, not a request for a definition.
 Questions about whether an entity is public, listed, tradable, or available on
 an exchange require listing_status.
 Use inheritance.mode "none" when explicit entity mentions fully identify the
@@ -170,14 +214,26 @@ function modelUserPayload(
   input: SemanticInterpretationInput,
   context: SemanticInterpreterContext
 ): string {
-  const semanticText = normalizeOrderedReference(
+  const orderedEntities = context.orderedEntities ?? context.activeEntities;
+  const catalogEntityCandidates = resolveText(input.message).map((entity) => ({
+    id: entity.id,
+    name: entity.name,
+    ticker: entity.ticker,
+    market: entity.market,
+  }));
+  const normalizedReference = normalizeOrderedReference(
     input.message,
-    context.activeEntities.length >= 2
+    orderedEntities.length >= 2
   );
+  const semanticText =
+    catalogEntityCandidates.length === 1
+      ? `${normalizedReference} [catalog identity: ${catalogEntityCandidates[0].name}${catalogEntityCandidates[0].ticker ? ` (${catalogEntityCandidates[0].ticker})` : ""}]`
+      : normalizedReference;
   return JSON.stringify({
     turnId: input.turnId,
     originalText: input.message,
     semanticText,
+    catalogEntityCandidates,
     context: {
       temporalReference: {
         currentInstant: input.now.toISOString(),
@@ -190,34 +246,230 @@ function modelUserPayload(
         ticker: entity.ticker,
         market: entity.market,
       })),
+      orderedEntities: orderedEntities.map((entity) => ({
+        id: entity.id,
+        name: entity.name,
+        ticker: entity.ticker,
+      })),
+      focusEntityIds: (context.focusEntities ?? []).map((entity) => entity.id),
       activeGroups: context.activeGroups,
       activeTemporal: context.activeTemporal,
       recentTurnIds: context.recentTurnIds,
       canonicalGroupCandidates: CANONICAL_GROUPS.map((group) => ({
         id: group.id,
         label: group.label,
-        members: group.members,
+        memberIds: group.members,
       })),
     },
   });
 }
 
-export const groqSemanticJsonModel: SemanticJsonModel = async (request) => {
-  const payload = JSON.parse(request.user) as {
-    turnId: string;
-    originalText: string;
+const SEMANTIC_PROVIDER_SHAPE: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    intent: { type: "string" },
+    needs: { type: "array", items: { type: "string" } },
+    entities: { type: "object" },
+    comparison: { type: "string" },
+    metrics: { type: "array" },
+    temporal: { type: "object" },
+    answer: { type: "object" },
+    topic: { type: "object" },
+    ambiguities: { type: "array" },
+    assumptions: { type: "array" },
+    corrections: { type: "array" },
+  },
+  required: [
+    "intent",
+    "needs",
+    "entities",
+    "comparison",
+    "metrics",
+    "temporal",
+    "answer",
+    "topic",
+    "ambiguities",
+    "assumptions",
+    "corrections",
+  ],
+};
+
+type ProductionSemanticPayload = {
+  turnId: string;
+  originalText: string;
+  context?: {
+    temporalReference?: {
+      currentInstant?: string;
+      marketCalendar?: MarketCalendar;
+    };
+    activeEntities?: {
+      id: string;
+      name: string;
+      ticker?: string;
+      market?: FinanceEntity["market"];
+    }[];
+    focusEntityIds?: string[];
+    recentTurnIds?: string[];
   };
+};
+
+function deterministicContextualTurn(
+  payload: ProductionSemanticPayload
+): SemanticTurn | null {
+  const message = payload.originalText.trim();
+  const active = payload.context?.activeEntities ?? [];
+  if (
+    active.length === 0 ||
+    resolveText(message).length > 0 ||
+    resolveGroupRefs(message).length > 0
+  ) {
+    return null;
+  }
+  const calendar = payload.context?.temporalReference?.marketCalendar ?? "US";
+  const currentInstant = payload.context?.temporalReference?.currentInstant;
+  const temporal = resolveTemporalContext({
+    message,
+    calendar,
+    ...(currentInstant ? { now: new Date(currentInstant) } : {}),
+  });
+  const contextualReference =
+    /\b(?:it|its|they|their|them|those|these|both|former|latter|first|second|what about|how about)\b/i.test(
+      message
+    );
+  if (temporal.status !== "resolved" && !contextualReference) return null;
+  if (temporal.status === "invalid") return null;
+  const intervals = temporal.status === "resolved" ? temporal.intervals : [];
+  const comparisonPhrase =
+    /\b(?:vs\.?|versus|compared\s+(?:with|to)|against)\b/i.test(message);
+  const temporalContrast = comparisonPhrase && intervals.length >= 2;
+  const temporalSpecs: TemporalSpec[] =
+    temporalContrast
+      ? [
+          {
+            id: "time-context-comparison",
+            kind: "comparison",
+            label: intervals.map((interval) => interval.label).join(" versus "),
+            left: {
+              kind: "point",
+              label: intervals[0].label,
+              value: { type: "absolute", date: intervals[0].endSession },
+            },
+            right: {
+              kind: "point",
+              label: intervals[1].label,
+              value: { type: "absolute", date: intervals[1].endSession },
+            },
+            source: "explicit",
+            confidence: 0.99,
+          },
+        ]
+      : intervals.map((interval, index) =>
+          interval.startSession === interval.endSession
+            ? {
+                id: `time-context-${index + 1}`,
+                kind: "point" as const,
+                label: interval.label,
+                value: {
+                  type: "absolute" as const,
+                  date: interval.endSession,
+                },
+                source: "explicit" as const,
+                confidence: 0.99,
+              }
+            : {
+                id: `time-context-${index + 1}`,
+                kind: "range" as const,
+                label: interval.label,
+                start: {
+                  type: "absolute" as const,
+                  date: interval.startSession,
+                },
+                end: {
+                  type: "absolute" as const,
+                  date: interval.endSession,
+                },
+                source: "explicit" as const,
+                confidence: 0.99,
+              }
+        );
+  const activeIds = active.map((entity) => entity.id);
+  const comparisonKind =
+    temporalContrast && activeIds.length > 1
+      ? "entity_and_time"
+      : temporalContrast
+        ? "time_vs_time"
+        : activeIds.length > 1
+          ? "entity_vs_entity"
+          : "none";
+  return SemanticTurnSchema.parse({
+    version: 1,
+    turnId: payload.turnId,
+    originalText: message,
+    intent: {
+      kind:
+        comparisonKind === "none" ? "entity_snapshot" : "entity_comparison",
+      confidence: 0.99,
+    },
+    informationNeeds: [
+      {
+        id: "need-context-performance",
+        kind: "price_performance",
+        question: "Retrieve performance for the active conversation subjects",
+        priority: "primary",
+      },
+    ],
+    entities: {
+      mentions: [],
+      inheritance: {
+        mode: activeIds.length === 1 ? "singular" : "plural",
+        sourceTurnId: payload.context?.recentTurnIds?.at(-1),
+        entityIds: activeIds,
+        orderedPositions: [],
+        confidence: 0.99,
+      },
+      groupCandidates: [],
+      confidence: 0.99,
+    },
+    comparison: {
+      kind: comparisonKind,
+      entityMentionIds: [],
+      temporalSpecIds: temporalSpecs.map((spec) => spec.id),
+      confidence: 0.99,
+    },
+    metrics: [],
+    temporal: {
+      inherit: temporalSpecs.length > 0 ? "none" : "active",
+      specs: temporalSpecs,
+      confidence: 0.99,
+    },
+    answer: {
+      depth: "standard",
+      format: comparisonKind === "none" ? "prose" : "side_by_side",
+      confidence: 0.99,
+    },
+    topic: { mode: "continue", confidence: 0.99 },
+    ambiguities: [],
+    assumptions: [],
+    corrections: [],
+    confidence: 0.99,
+  });
+}
+
+export const groqSemanticJsonModel: SemanticJsonModel = async (request) => {
+  const payload = JSON.parse(request.user) as ProductionSemanticPayload;
+  const contextual = deterministicContextualTurn(payload);
+  if (contextual) return contextual;
   const interpret = async (model: string) => {
     const raw = await groqChatJSON({
       model,
       system: request.system,
       user: request.user,
       temperature: 0,
-      maxTokens: 1_500,
+      maxTokens: 900,
       jsonSchema: {
-        name: "semantic_extraction",
-        schema: SEMANTIC_EXTRACTION_JSON_SCHEMA,
-        strict: true,
+        name: "semantic_extraction_shape",
+        schema: SEMANTIC_PROVIDER_SHAPE,
+        strict: false,
       },
     });
     return expandSemanticExtraction({
@@ -227,18 +479,31 @@ export const groqSemanticJsonModel: SemanticJsonModel = async (request) => {
     });
   };
   try {
-    return await interpret(GROQ_CHAT_MODEL);
+    return await interpret(GROQ_SEMANTIC_MODEL);
   } catch (error) {
     const summary = groqErrorSummary(error);
     if (
-      GROQ_FALLBACK_MODEL === GROQ_CHAT_MODEL ||
+      GROQ_SEMANTIC_FALLBACK_MODEL === GROQ_SEMANTIC_MODEL ||
       (summary.status !== undefined &&
         summary.status !== 429 &&
         summary.status < 500)
     ) {
       throw error;
     }
-    return interpret(GROQ_FALLBACK_MODEL);
+    try {
+      return await interpret(GROQ_SEMANTIC_FALLBACK_MODEL);
+    } catch (fallbackError) {
+      const primaryMessage =
+        error instanceof Error ? error.message : String(error);
+      const fallbackMessage =
+        fallbackError instanceof Error
+          ? fallbackError.message
+          : String(fallbackError);
+      throw new Error(
+        `Primary semantic model failed: ${primaryMessage.slice(0, 500)}; ` +
+          `fallback failed: ${fallbackMessage.slice(0, 500)}`
+      );
+    }
   }
 };
 
@@ -263,9 +528,16 @@ function groundEntityMentions(
   semantic: SemanticTurn,
   context: SemanticInterpreterContext
 ): GroundedEntityMention[] {
+  const orderedEntities = context.orderedEntities ?? context.activeEntities;
+  const knownEntities = uniqueEntities([
+    ...(context.knownEntities ?? []),
+    ...context.activeEntities,
+    ...orderedEntities,
+    ...(context.focusEntities ?? []),
+  ]);
   const normalizedMessage = normalizeOrderedReference(
     semantic.originalText,
-    context.activeEntities.length >= 2
+    orderedEntities.length >= 2
   ).toLowerCase();
   let orderedIndex = 0;
   return semantic.entities.mentions.map((mention) => {
@@ -280,7 +552,7 @@ function groundEntityMentions(
       );
     if (
       (mention.reference === "ordered" || orderedSurface) &&
-      context.activeEntities.length > 0
+      orderedEntities.length > 0
     ) {
       const requested =
         semantic.entities.inheritance.orderedPositions[orderedIndex];
@@ -291,14 +563,14 @@ function groundEntityMentions(
           : requested === "second"
             ? 1
             : requested === "latter"
-              ? context.activeEntities.length - 1
+              ? orderedEntities.length - 1
               : /\b(?:latter|second)\b/.test(normalizedMessage)
-                ? context.activeEntities.length - 1
+                ? orderedEntities.length - 1
                 : /\b(?:former|first)\b/.test(normalizedMessage)
                   ? 0
                   : -1;
       const ordered =
-        position >= 0 ? context.activeEntities[position] : undefined;
+        position >= 0 ? orderedEntities[position] : undefined;
       return {
         mentionId: mention.mentionId,
         status: ordered ? ("grounded" as const) : ("unresolved" as const),
@@ -313,10 +585,15 @@ function groundEntityMentions(
           ticker: mention.ticker,
         },
       ],
-      [...context.activeEntities]
+      knownEntities
     )[0];
+    const explicitUnlistedEntity =
+      entity?.market === "web" &&
+      mention.reference === "explicit" &&
+      normalizedPhrase(mention.surface).length >= 4 &&
+      phrasesOverlap(mention.surface, semantic.originalText);
     const grounded =
-      entity && isCatalogGrounded(entity, context.activeEntities)
+      entity && (isCatalogGrounded(entity, knownEntities) || explicitUnlistedEntity)
         ? entity
         : undefined;
     return {
@@ -399,6 +676,34 @@ function relevantGroupCandidates(semantic: SemanticTurn): GroupCandidate[] {
   );
 }
 
+/**
+ * Explicitly qualified catalog matches are authoritative. This reuses the
+ * shared canonical resolver, including its professional-services qualifier
+ * logic, instead of relying on model memory or benchmark-specific branches.
+ */
+function groupCandidatesForGrounding(semantic: SemanticTurn): GroupCandidate[] {
+  const modelCandidates = relevantGroupCandidates(semantic);
+  const explicitGroups = resolveGroupRefs(semantic.originalText);
+  if (explicitGroups.length === 0) return modelCandidates;
+  return explicitGroups.map((group) => {
+    const modelCandidate = modelCandidates.find(
+      (candidate) =>
+        candidate.selectedId === group.id ||
+        candidate.candidateIds.includes(group.id)
+    );
+    return {
+      mention:
+        semantic.originalText.match(group.aliases)?.[0] ??
+        modelCandidate?.mention ??
+        group.label,
+      candidateIds: [group.id],
+      selectedId: group.id,
+      confidence: Math.max(0.99, modelCandidate?.confidence ?? 0),
+      reason: "Explicit qualification matched the canonical group catalog.",
+    };
+  });
+}
+
 function inheritedEntities(
   semantic: SemanticTurn,
   context: SemanticInterpreterContext,
@@ -407,25 +712,50 @@ function inheritedEntities(
   const inheritance = semantic.entities.inheritance;
   if (inheritance.mode === "none") return [];
 
-  const byId = new Map(
-    context.activeEntities.map((entity) => [entity.id, entity])
-  );
+  const knownEntities = uniqueEntities([
+    ...(context.knownEntities ?? []),
+    ...context.activeEntities,
+    ...(context.orderedEntities ?? []),
+    ...(context.focusEntities ?? []),
+  ]);
+  const focus =
+    context.focusEntities && context.focusEntities.length > 0
+      ? context.focusEntities
+      : context.activeEntities;
+  const ordered =
+    context.orderedEntities && context.orderedEntities.length > 0
+      ? context.orderedEntities
+      : context.activeEntities;
   if (inheritance.entityIds.length > 0) {
+    const requestedGroup = context.activeGroups.find(
+      (group) => group.id === inheritance.groupId
+    );
+    const groupIds = new Set(requestedGroup?.memberIds ?? []);
+    const scoped =
+      inheritance.mode === "singular" || inheritance.mode === "plural"
+        ? focus
+        : inheritance.mode === "ordered" ||
+            inheritance.mode === "all_active"
+          ? ordered
+          : inheritance.mode === "group" && requestedGroup
+            ? knownEntities.filter((entity) => groupIds.has(entity.id))
+            : context.activeEntities;
+    const scopedById = new Map(scoped.map((entity) => [entity.id, entity]));
     return uniqueEntities(
       inheritance.entityIds
-        .map((id) => byId.get(id))
+        .map((id) => scopedById.get(id))
         .filter((entity): entity is FinanceEntity => Boolean(entity))
     );
   }
 
   if (inheritance.mode === "singular") {
-    return context.activeEntities.slice(-1);
+    return focus.slice(-1);
   }
-  if (
-    inheritance.mode === "plural" ||
-    inheritance.mode === "all_active"
-  ) {
-    return [...context.activeEntities];
+  if (inheritance.mode === "plural") {
+    return [...focus];
+  }
+  if (inheritance.mode === "all_active") {
+    return [...ordered];
   }
   if (inheritance.mode === "ordered") {
     const positions = inheritance.orderedPositions.map((position) =>
@@ -433,11 +763,11 @@ function inheritedEntities(
         ? 0
         : position === "second"
           ? 1
-          : context.activeEntities.length - 1
+          : ordered.length - 1
     );
     return uniqueEntities(
       positions
-        .map((position) => context.activeEntities[position])
+        .map((position) => ordered[position])
         .filter((entity): entity is FinanceEntity => Boolean(entity))
     );
   }
@@ -448,7 +778,7 @@ function inheritedEntities(
   );
   if (priorGroup) {
     const memberIds = new Set(priorGroup.memberIds);
-    return context.activeEntities.filter((entity) => memberIds.has(entity.id));
+    return knownEntities.filter((entity) => memberIds.has(entity.id));
   }
   return uniqueEntities(
     currentGroups
@@ -466,7 +796,7 @@ export function groundSemanticTurn(
   context: SemanticInterpreterContext = EMPTY_CONTEXT
 ): SemanticGrounding {
   const entityMentions = groundEntityMentions(semantic, context);
-  const groups = groundGroups(relevantGroupCandidates(semantic));
+  const groups = groundGroups(groupCandidatesForGrounding(semantic));
   const inherited = inheritedEntities(semantic, context, groups);
   const issues: SemanticValidationIssue[] = [];
 
@@ -789,6 +1119,110 @@ export function rewriteContextualQuery(
   return parts.join(". ");
 }
 
+function reconcileContextualInheritance(
+  semantic: SemanticTurn,
+  context: SemanticInterpreterContext
+): SemanticTurn {
+  const orderedEntities = context.orderedEntities ?? context.activeEntities;
+  const normalizedReference = normalizeOrderedReference(
+    semantic.originalText,
+    orderedEntities.length >= 2
+  );
+  const orderedPosition = /\b(?:former|first)\b/i.test(normalizedReference)
+    ? "former"
+    : /\b(?:latter|second)\b/i.test(normalizedReference)
+      ? "latter"
+      : undefined;
+  if (
+    orderedPosition &&
+    orderedEntities.length >= 2 &&
+    semantic.entities.inheritance.mode === "none"
+  ) {
+    const selected =
+      orderedPosition === "former"
+        ? orderedEntities[0]
+        : orderedEntities[orderedEntities.length - 1];
+    const relationRequested =
+      /\b(?:against|vs\.?|versus|compared\s+to|compare)\b/i.test(
+        normalizedReference
+      ) && semantic.entities.mentions.some((mention) => mention.role !== "excluded");
+    return SemanticTurnSchema.parse({
+      ...semantic,
+      intent: relationRequested
+        ? { kind: "entity_comparison", confidence: 0.99 }
+        : semantic.intent,
+      informationNeeds:
+        relationRequested &&
+        !semantic.informationNeeds.some(
+          (need) => need.kind === "price_performance"
+        )
+          ? [
+              ...semantic.informationNeeds,
+              {
+                id: "need-context-comparison",
+                kind: "price_performance",
+                question: "Compare performance for the referenced entities",
+                priority: "primary",
+              },
+            ]
+          : semantic.informationNeeds,
+      entities: {
+        ...semantic.entities,
+        inheritance: {
+          ...semantic.entities.inheritance,
+          mode: "ordered",
+          sourceTurnId: context.recentTurnIds.at(-1),
+          entityIds: selected ? [selected.id] : [],
+          orderedPositions: [orderedPosition],
+        },
+      },
+      comparison: relationRequested
+        ? {
+            ...semantic.comparison,
+            kind: "entity_vs_entity",
+            entityMentionIds: semantic.entities.mentions
+              .filter((mention) => mention.role !== "excluded")
+              .map((mention) => mention.mentionId),
+          }
+        : semantic.comparison,
+    });
+  }
+  const hasExplicitSubject = semantic.entities.mentions.some(
+    (mention) => mention.role !== "excluded"
+  );
+  if (
+    hasExplicitSubject ||
+    semantic.entities.inheritance.mode !== "none" ||
+    semantic.entities.groupCandidates.length > 0
+  ) {
+    return semantic;
+  }
+  const referencesContext =
+    semantic.temporal.specs.length > 0 ||
+    /\b(?:it|its|they|their|them|former|latter|first|second|what about|how about)\b/i.test(
+      semantic.originalText
+    );
+  if (!referencesContext) return semantic;
+  const focus =
+    context.focusEntities && context.focusEntities.length > 0
+      ? context.focusEntities
+      : context.activeEntities;
+  if (focus.length === 0) return semantic;
+  return SemanticTurnSchema.parse({
+    ...semantic,
+    entities: {
+      ...semantic.entities,
+      inheritance: {
+        ...semantic.entities.inheritance,
+        mode: focus.length === 1 ? "singular" : "plural",
+        sourceTurnId: context.recentTurnIds.at(-1),
+        entityIds: focus.map((entity) => entity.id),
+        orderedPositions: [],
+      },
+    },
+  });
+}
+
 export function createSemanticInterpreter(
   model: SemanticJsonModel = groqSemanticJsonModel
 ): (input: SemanticInterpretationInput) => Promise<SemanticInterpretation> {
@@ -798,7 +1232,10 @@ export function createSemanticInterpreter(
       system: SEMANTIC_SYSTEM_PROMPT,
       user: modelUserPayload(input, context),
     });
-    const semantic = SemanticTurnSchema.parse(raw);
+    const semantic = reconcileContextualInheritance(
+      SemanticTurnSchema.parse(raw),
+      context
+    );
     if (semantic.turnId !== input.turnId) {
       throw new Error("Semantic model changed turnId");
     }

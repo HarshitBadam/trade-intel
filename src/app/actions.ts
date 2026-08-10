@@ -12,14 +12,6 @@ import { logStockSage } from "@/lib/stocksage/telemetry";
 import { parseChatRequest } from "@/lib/stocksage/types";
 import type { ChatReply } from "@/lib/stocksage/types";
 
-export type { DeepResearchJob } from "@/lib/stocksage/deep/queue";
-export type {
-  ChatReply,
-  ChatRequest,
-  ChatTurn,
-  DeepResearchReply,
-} from "@/lib/stocksage/types";
-
 export async function getSummary(request: unknown): Promise<ChatReply> {
   const startedAt = Date.now();
   const parsed = parseChatRequest(request);

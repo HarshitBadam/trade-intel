@@ -177,6 +177,105 @@ test("v1 snapshots remain accepted until expiry and retries issue new v2 work", 
   );
 });
 
+test("v2 obligation scope is signed, bounded, and preserved on retry", async () => {
+  process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET = SNAPSHOT_SECRET;
+  process.env.GROQ_API_KEY = "test-groq-key";
+  process.env.TAVILY_API_KEY = "test-tavily-key";
+  const {
+    createDeepResearchOffer,
+    parseDeepResearchSnapshot,
+    reissueDeepResearchSnapshot,
+  } = await import("../src/lib/stocksage/deep/snapshot");
+  const interval = {
+    version: 1 as const,
+    label: "this quarter",
+    kind: "range" as const,
+    calendar: "US" as const,
+    startSession: "2026-07-01",
+    endSession: "2026-08-10",
+    source: "explicit" as const,
+  };
+  const entity = {
+    id: "ticker:AAPL",
+    name: "Apple",
+    query: "Apple AAPL",
+    ticker: "AAPL",
+    market: "us" as const,
+  };
+  const created = createDeepResearchOffer({
+    question: "Research Apple's outlook.",
+    reply: { text: "The regular answer is limited.", live: false },
+    entities: [entity],
+    state: {
+      version: 2,
+      revision: 2,
+      entities: [entity],
+      explicitEntitySet: [entity.id],
+      criteria: [],
+      focusEntityIds: [entity.id],
+      intervals: [interval],
+      frames: [],
+      activeTemporalAnchors: [],
+    },
+    sources: [],
+    asOf: new Date().toISOString(),
+    queueReady: true,
+    researchScope: {
+      version: 1,
+      obligations: [
+        {
+          id: "obligation:outlook",
+          kind: "assess_outlook",
+          query: "Apple risks and outlook this quarter",
+          entityIds: [entity.id],
+          intervals: [interval],
+        },
+      ],
+    },
+  });
+  assert.ok(created.offer);
+  const parsed = parseDeepResearchSnapshot(created.offer?.token);
+  assert.equal(parsed?.version, 2);
+  assert.equal(
+    parsed?.version === 2
+      ? parsed.researchScope?.obligations[0].kind
+      : undefined,
+    "assess_outlook"
+  );
+  const retried = reissueDeepResearchSnapshot(parsed!);
+  assert.deepEqual(
+    retried.snapshot.researchScope,
+    parsed?.version === 2 ? parsed.researchScope : undefined
+  );
+  const reparsed = parseDeepResearchSnapshot(retried.token);
+  assert.deepEqual(
+    reparsed?.version === 2 ? reparsed.researchScope : undefined,
+    retried.snapshot.researchScope
+  );
+});
+
+test("Deep Research rejects an unresolved no-subject scope", async () => {
+  const { createDeepResearchOffer } = await import(
+    "../src/lib/stocksage/deep/snapshot"
+  );
+  const created = createDeepResearchOffer({
+    question: "Research this more deeply.",
+    reply: { text: "Please identify a company or index.", live: false },
+    entities: [],
+    state: {
+      version: 1,
+      revision: 0,
+      entities: [],
+      explicitEntitySet: [],
+      criteria: ["risk"],
+    },
+    sources: [],
+    asOf: new Date().toISOString(),
+    queueReady: true,
+  });
+  assert.equal(created.offer, undefined);
+});
+
 test("deep pre-flight keeps a quote-only offer available for broader retrieval", async () => {
   process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET =
     "test-only-snapshot-secret-with-sufficient-length";

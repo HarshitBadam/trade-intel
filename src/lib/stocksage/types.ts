@@ -99,8 +99,40 @@ export type NamedGroupRef = {
   namedAtRevision: number;
 };
 
-export type ConversationState = {
-  version: 1;
+export type ConversationFrameGroupRef = {
+  /** Canonical group catalog ID. */
+  id: string;
+  /** The explicit qualification that selected the group on this turn. */
+  qualification: string;
+  /** Ordered members represented by this side of the frame. */
+  memberIds: readonly string[];
+};
+
+/**
+ * A bounded, ordered referent captured by the greenfield engine. Entity order
+ * is semantic order, not the order of the accumulated entity catalog.
+ */
+export type ConversationReferenceFrame = {
+  id: string;
+  kind: "comparison" | "reference";
+  entityIds: readonly string[];
+  groups: readonly ConversationFrameGroupRef[];
+  temporalSpecIds: readonly string[];
+  /** Compiled intervals in the same order as the referenced temporal specs. */
+  intervals: readonly TemporalInterval[];
+};
+
+/**
+ * One compiled temporal anchor. Comparison specs intentionally produce two
+ * entries with distinct positions so point-vs-point meaning is not collapsed.
+ */
+export type ConversationTemporalAnchor = {
+  specId: string;
+  position: number;
+  interval: TemporalInterval;
+};
+
+type ConversationStateFields = {
   revision: number;
   entities: FinanceEntity[];
   explicitEntitySet: string[];
@@ -117,6 +149,23 @@ export type ConversationState = {
   intervals?: TemporalInterval[];
   pendingClarification?: string;
 };
+
+export type ConversationStateV1 = ConversationStateFields & {
+  version: 1;
+};
+
+/**
+ * Public state for a sticky greenfield session. It is a bounded projection of
+ * the internal append-only ledger, never a serialized ledger.
+ */
+export type ConversationStateV2 = ConversationStateFields & {
+  version: 2;
+  focusEntityIds: string[];
+  frames: ConversationReferenceFrame[];
+  activeTemporalAnchors: ConversationTemporalAnchor[];
+};
+
+export type ConversationState = ConversationStateV1 | ConversationStateV2;
 
 export type SourceKind = "astra" | "tavily";
 
@@ -363,8 +412,7 @@ const IntervalSchema = z.object({
   raw: z.string().max(60).optional(),
 });
 
-const ConversationStateSchema = z.object({
-  version: z.literal(1),
+const ConversationStateFieldsSchema = z.object({
   revision: z.number().int().min(0).max(10_000),
   entities: z.array(EntitySchema).max(12),
   explicitEntitySet: z.array(z.string().min(1).max(40)).max(12),
@@ -374,9 +422,46 @@ const ConversationStateSchema = z.object({
   safetyRepliesUsed: z.array(z.string().min(1).max(60)).max(24).optional(),
   groups: z.array(GroupSchema).max(4).optional(),
   focusEntityIds: z.array(z.string().min(1).max(40)).max(12).optional(),
-  intervals: z.array(IntervalSchema).max(4).optional(),
+  intervals: z.array(IntervalSchema).max(8).optional(),
   pendingClarification: z.string().max(300).optional(),
 });
+
+const FrameGroupSchema = z.object({
+  id: z.string().min(1).max(60),
+  qualification: z.string().min(1).max(120),
+  memberIds: z.array(z.string().min(1).max(40)).max(12),
+});
+
+const ReferenceFrameSchema = z.object({
+  id: z.string().min(1).max(80),
+  kind: z.enum(["comparison", "reference"]),
+  entityIds: z.array(z.string().min(1).max(40)).max(12),
+  groups: z.array(FrameGroupSchema).max(4),
+  temporalSpecIds: z.array(z.string().min(1).max(80)).max(8),
+  intervals: z.array(IntervalSchema).max(8),
+});
+
+const TemporalAnchorSchema = z.object({
+  specId: z.string().min(1).max(80),
+  position: z.number().int().min(0).max(7),
+  interval: IntervalSchema,
+});
+
+const ConversationStateV1Schema = ConversationStateFieldsSchema.extend({
+  version: z.literal(1),
+});
+
+const ConversationStateV2Schema = ConversationStateFieldsSchema.extend({
+  version: z.literal(2),
+  focusEntityIds: z.array(z.string().min(1).max(40)).max(12),
+  frames: z.array(ReferenceFrameSchema).max(4),
+  activeTemporalAnchors: z.array(TemporalAnchorSchema).max(8),
+});
+
+const ConversationStateSchema = z.discriminatedUnion("version", [
+  ConversationStateV1Schema,
+  ConversationStateV2Schema,
+]);
 
 type ParseResult =
   | { ok: true; value: ChatRequest }

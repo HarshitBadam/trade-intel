@@ -1,9 +1,14 @@
 import "server-only";
 
-import { GROQ_API_KEY, hasGroq } from "@/lib/config";
+import {
+  CEREBRAS_API_KEY,
+  GROQ_API_KEY,
+  hasCerebras,
+  hasGroq,
+} from "@/lib/config";
 import { parseFencedJson } from "@/lib/llm-json";
 
-export type LlmVendor = "groq";
+export type LlmVendor = "groq" | "cerebras";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -16,10 +21,14 @@ const ENDPOINTS: Record<LlmVendor, { url: string; key: () => string | undefined 
     url: "https://api.groq.com/openai/v1/chat/completions",
     key: () => GROQ_API_KEY,
   },
+  cerebras: {
+    url: "https://api.cerebras.ai/v1/chat/completions",
+    key: () => CEREBRAS_API_KEY,
+  },
 };
 
-export function hasVendor(_vendor: LlmVendor): boolean {
-  return hasGroq;
+export function hasVendor(vendor: LlmVendor): boolean {
+  return vendor === "cerebras" ? hasCerebras : hasGroq;
 }
 
 export type LlmMessage = {
@@ -116,6 +125,11 @@ function retryAfterMs(response: Response): number {
 
 // Groq-hosted gpt-oss and Qwen models need explicit reasoning controls.
 function reasoningParams(args: LlmChatArgs): Record<string, unknown> {
+  if (args.vendor === "cerebras") {
+    return /\bgpt-oss\b/.test(args.model)
+      ? { reasoning_effort: "low" }
+      : {};
+  }
   if (/\bqwen\b/.test(args.model)) {
     return { reasoning_effort: "none", include_reasoning: false };
   }
