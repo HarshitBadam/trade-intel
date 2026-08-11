@@ -60,7 +60,7 @@ function BrandLogo({ className }: { className?: string }) {
 
 export function LoginForm() {
   return (
-    <div className="w-full rounded-2xl bg-white p-7 shadow-[0_4px_10px_-2px_rgba(15,23,42,0.08),0_20px_44px_-16px_rgba(15,23,42,0.24)] dark:border dark:border-white/10 dark:bg-white/[0.04] dark:shadow-xl dark:backdrop-blur-xl sm:p-8">
+    <div className="w-full rounded-2xl bg-white p-7 shadow-[0_4px_10px_-2px_rgba(15,23,42,0.08),0_20px_44px_-16px_rgba(15,23,42,0.24)] dark:bg-white/[0.04] dark:shadow-xl dark:ring-1 dark:ring-inset dark:ring-white/10 dark:backdrop-blur-xl sm:p-8">
       <div className="flex items-center gap-2.5">
         <span className="inline-flex size-8 items-center justify-center rounded-lg bg-white text-foreground ring-1 ring-inset ring-transparent shadow-[0_0_5px_rgba(0,0,0,0.14)] dark:bg-white/10 dark:text-foreground">
           <BrandLogo className="size-[18px]" />

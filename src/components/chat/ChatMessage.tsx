@@ -134,18 +134,18 @@ function MarkdownAnswer({
         ),
         table: ({ children }) => (
           <div className="my-3 max-w-full overflow-x-auto">
-            <table className="w-full min-w-[30rem] border-collapse border border-zinc-300 text-left text-[0.8125rem] leading-snug dark:border-[0.5px] dark:border-zinc-800">
+            <table className="w-full min-w-[30rem] border-collapse border border-zinc-300 text-left text-[0.8125rem] leading-snug dark:border-zinc-800/50">
               {children}
             </table>
           </div>
         ),
         th: ({ children }) => (
-          <th className="border border-zinc-300 px-2 py-2 font-semibold dark:border-[0.5px] dark:border-zinc-800">
+          <th className="border border-zinc-300 px-2 py-2 font-semibold dark:border-zinc-800/50">
             {children}
           </th>
         ),
         td: ({ children }) => (
-          <td className="border border-zinc-300 px-2 py-2 align-top dark:border-[0.5px] dark:border-zinc-800">
+          <td className="border border-zinc-300 px-2 py-2 align-top dark:border-zinc-800/50">
             {children}
           </td>
         ),

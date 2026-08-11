@@ -71,23 +71,6 @@
 @property --sidebar-border { syntax: "<color>"; inherits: true; initial-value: oklch(0.929 0.013 255.508); }
 @property --sidebar-ring { syntax: "<color>"; inherits: true; initial-value: oklch(0.704 0.04 256.788); }
 
-@media (prefers-reduced-motion: no-preference) {
-  :root {
-    transition: --background 0.45s ease, --foreground 0.45s ease,
-      --card 0.45s ease, --card-foreground 0.45s ease, --popover 0.45s ease,
-      --popover-foreground 0.45s ease, --primary 0.45s ease,
-      --primary-foreground 0.45s ease, --secondary 0.45s ease,
-      --secondary-foreground 0.45s ease, --muted 0.45s ease,
-      --muted-foreground 0.45s ease, --accent 0.45s ease,
-      --accent-foreground 0.45s ease, --destructive 0.45s ease,
-      --border 0.45s ease, --input 0.45s ease, --ring 0.45s ease,
-      --sidebar 0.45s ease, --sidebar-foreground 0.45s ease,
-      --sidebar-primary 0.45s ease, --sidebar-primary-foreground 0.45s ease,
-      --sidebar-accent 0.45s ease, --sidebar-accent-foreground 0.45s ease,
-      --sidebar-border 0.45s ease, --sidebar-ring 0.45s ease;
-  }
-}
-
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);

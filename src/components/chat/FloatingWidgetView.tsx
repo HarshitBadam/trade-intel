@@ -1,9 +1,10 @@
 import type {
   Dispatch,
+  ReactNode,
   RefObject,
   SetStateAction,
 } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useIsPresent } from "framer-motion";
 import { ArrowUp, X } from "lucide-react";
 import { LegalDialog } from "@/components/legal/LegalModal";
 import type { ClarificationChoice } from "@/lib/stocksage/types";
@@ -31,6 +32,34 @@ type FloatingWidgetViewProps = {
   showLegal: boolean;
   setShowLegal: Dispatch<SetStateAction<boolean>>;
 };
+
+function ExitSafeOverlay({
+  children,
+  onClick,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  const isPresent = useIsPresent();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={{
+        pointerEvents: isPresent ? "auto" : "none",
+        backdropFilter: isPresent ? undefined : "none",
+        WebkitBackdropFilter: isPresent ? undefined : "none",
+      }}
+      aria-hidden={isPresent ? undefined : true}
+      className="fixed inset-0 z-50 bg-black/30 backdrop-blur-xl"
+      onClick={onClick}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
 export function FloatingWidgetView({
   isExpanded,
@@ -69,13 +98,7 @@ export function FloatingWidgetView({
       )}
       <AnimatePresence>
         {isExpanded && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/30 backdrop-blur-xl"
-            onClick={handleClose}
-          >
+          <ExitSafeOverlay onClick={handleClose}>
             <motion.div
               ref={dialogRef}
               initial={{
@@ -203,7 +226,7 @@ export function FloatingWidgetView({
                 </div>
               </div>
             </motion.div>
-          </motion.div>
+          </ExitSafeOverlay>
         )}
       </AnimatePresence>
       <LegalDialog open={showLegal} onClose={() => setShowLegal(false)} />
