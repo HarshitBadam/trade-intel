@@ -64,6 +64,14 @@ type ChatCompletion = {
   choices?: { message?: { content?: string } }[];
 };
 
+async function completionContent(response: Response): Promise<string | undefined> {
+  const data = (await response.json()) as ChatCompletion;
+  const content = data.choices?.[0]?.message?.content;
+  return typeof content === "string" && content.trim() !== ""
+    ? content
+    : undefined;
+}
+
 export class LlmRequestError extends Error {
   vendor?: LlmVendor;
   status?: number;
@@ -225,14 +233,30 @@ async function llmChatRaw(args: LlmChatArgs, jsonMode: boolean): Promise<string>
     );
   }
 
-  const data = (await response.json()) as ChatCompletion;
-  const content = data.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || content.trim() === "") {
-    throw new LlmRequestError(`${args.vendor} returned an empty completion`, {
-      vendor: args.vendor,
-    });
+  const content = await completionContent(response);
+  if (content) return content;
+
+  // Some OpenAI-compatible providers occasionally return a successful response
+  // whose reasoning consumed the completion budget before any visible content.
+  // Treat that as transient once, rather than surfacing an internal transport
+  // failure to the user.
+  await sleep(100);
+  const retry = await postChatCompletion(args, jsonMode);
+  if (!retry.ok) {
+    throw new LlmRequestError(
+      `${args.vendor} empty-completion retry failed with ${retry.status}`,
+      {
+        vendor: args.vendor,
+        status: retry.status,
+        retryAfterMs: retry.status === 429 ? retryAfterMs(retry) : undefined,
+      }
+    );
   }
-  return content;
+  const retriedContent = await completionContent(retry);
+  if (retriedContent) return retriedContent;
+  throw new LlmRequestError(`${args.vendor} returned an empty completion`, {
+    vendor: args.vendor,
+  });
 }
 
 export function shouldTripLlmCircuit(error: unknown): boolean {

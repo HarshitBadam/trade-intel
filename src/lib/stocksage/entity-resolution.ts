@@ -38,7 +38,9 @@ export function fromAlias(alias: WebAlias): FinanceEntity {
     name: alias.name,
     query: alias.query,
     ticker: alias.ticker,
-    market: alias.market ?? "web",
+    market:
+      alias.market ??
+      (alias.ticker && isInUniverse(alias.ticker) ? "us" : "web"),
     jurisdiction: alias.jurisdiction,
     ...(alias.private ? { private: true } : {}),
   };

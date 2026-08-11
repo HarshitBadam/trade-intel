@@ -50,6 +50,10 @@ const SESSION_OPEN_MINUTES: Record<MarketCalendar, number> = {
   US: 9 * 60 + 30,
   AU: 10 * 60,
 };
+const SESSION_CLOSE_MINUTES: Record<MarketCalendar, number> = {
+  US: 16 * 60,
+  AU: 16 * 60,
+};
 
 type ZonedNow = { date: string; minutes: number };
 
@@ -233,6 +237,21 @@ export function currentSession(calendar: MarketCalendar, now = new Date()): stri
   if (
     isTradingSession(local.date, calendar) &&
     local.minutes >= SESSION_OPEN_MINUTES[calendar]
+  ) {
+    return local.date;
+  }
+  return sessionOnOrBefore(addDays(local.date, -1), calendar);
+}
+
+/** Latest session whose official close has already occurred. */
+export function latestCompletedSession(
+  calendar: MarketCalendar,
+  now = new Date()
+): string {
+  const local = zonedNow(now, calendar);
+  if (
+    isTradingSession(local.date, calendar) &&
+    local.minutes >= SESSION_CLOSE_MINUTES[calendar]
   ) {
     return local.date;
   }

@@ -6,6 +6,7 @@ import {
   defaultInterval,
   describeInterval,
   isTradingSession,
+  latestCompletedSession,
   mergeContrastIntervals,
   parseIntervals,
   previousSession,
@@ -29,6 +30,15 @@ test("a session only counts once its local open has passed", () => {
   // 09:45, after the bell.
   const postOpen = new Date("2026-07-27T13:45:00.000Z");
   assert.equal(currentSession("US", postOpen), "2026-07-27");
+});
+
+test("closing-price evidence excludes an in-progress daily session", () => {
+  const beforeAsxClose = new Date("2026-08-11T05:52:00.000Z");
+  assert.equal(latestCompletedSession("AU", beforeAsxClose), "2026-08-10");
+  const afterAsxClose = new Date("2026-08-11T06:05:00.000Z");
+  assert.equal(latestCompletedSession("AU", afterAsxClose), "2026-08-11");
+  const beforeUsOpen = new Date("2026-08-11T08:00:00.000Z");
+  assert.equal(latestCompletedSession("US", beforeUsOpen), "2026-08-10");
 });
 
 test("weekends roll back to the prior trading session", () => {
