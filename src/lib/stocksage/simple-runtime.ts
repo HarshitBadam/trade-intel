@@ -416,6 +416,7 @@ export function polishSimpleAnswerStyle(text: string): string {
       "[$1]"
     )
     .replace(/\s*【[^】]{1,80}】/g, "")
+    .replace(/[–−](?=\s*\d)/g, "-")
     .replace(/\s*[—–]\s*/g, ", ")
     .replace(/\s*·\s*/g, ", ")
     .replace(/;\s*/g, ". ")

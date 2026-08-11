@@ -67,6 +67,7 @@ export function FloatingWidget({
   const [inputValue, setInputValue] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [showLegal, setShowLegal] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -97,15 +98,17 @@ export function FloatingWidget({
   }, []);
 
   const handleOpen = useCallback(() => {
+    if (isClosing) return;
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
     if (onOpen) onOpen();
     else setIsExpandedInternal(true);
-  }, [onOpen]);
+  }, [isClosing, onOpen]);
 
   const handleClose = useCallback(() => {
+    setIsClosing(true);
     if (onClose) onClose();
     setIsExpandedInternal(false);
     requestAnimationFrame(() => previousFocusRef.current?.focus());
@@ -404,8 +407,10 @@ export function FloatingWidget({
   return (
     <FloatingWidgetView
       isExpanded={isExpanded}
+      isClosing={isClosing}
       handleOpen={handleOpen}
       handleClose={handleClose}
+      handleExitComplete={() => setIsClosing(false)}
       dialogRef={dialogRef}
       messages={messages}
       runResearch={runResearch}

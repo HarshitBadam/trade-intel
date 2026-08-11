@@ -1,9 +1,15 @@
 import type {
   Dispatch,
+  ReactNode,
   RefObject,
   SetStateAction,
 } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import {
+  AnimatePresence,
+  LayoutGroup,
+  motion,
+  useIsPresent,
+} from "framer-motion";
 import { ArrowUp, X } from "lucide-react";
 import { LegalDialog } from "@/components/legal/LegalModal";
 import type { ClarificationChoice } from "@/lib/stocksage/types";
@@ -15,8 +21,10 @@ import styles from "./FloatingWidget.module.css";
 
 type FloatingWidgetViewProps = {
   isExpanded: boolean;
+  isClosing: boolean;
   handleOpen: () => void;
   handleClose: () => void;
+  handleExitComplete: () => void;
   dialogRef: RefObject<HTMLDivElement | null>;
   messages: ChatMessageModel[];
   runResearch: (messageId: string) => void;
@@ -32,10 +40,44 @@ type FloatingWidgetViewProps = {
   setShowLegal: Dispatch<SetStateAction<boolean>>;
 };
 
+function ExitSafeOverlay({
+  children,
+  onClick,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  const isPresent = useIsPresent();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{
+        opacity: 1,
+        transition: { duration: 0.15 },
+      }}
+      exit={{
+        opacity: 0,
+        transition: { delay: 0.32, duration: 0.15 },
+      }}
+      style={{
+        pointerEvents: isPresent ? "auto" : "none",
+      }}
+      aria-hidden={isPresent ? undefined : true}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-xl"
+      onClick={onClick}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 export function FloatingWidgetView({
   isExpanded,
+  isClosing,
   handleOpen,
   handleClose,
+  handleExitComplete,
   dialogRef,
   messages,
   runResearch,
@@ -51,63 +93,76 @@ export function FloatingWidgetView({
   setShowLegal,
 }: FloatingWidgetViewProps) {
   return (
-    <>
+    <LayoutGroup id="stocksage-widget">
       {!isExpanded && (
         <div className="pointer-events-auto fixed bottom-6 right-6 z-10">
-          <button
+          <motion.button
+            layoutId="stocksage-panel"
+            style={{ willChange: "transform, opacity" }}
+            transition={{
+              layout: {
+                type: "spring",
+                damping: 26,
+                stiffness: 170,
+                mass: 0.8,
+              },
+            }}
             type="button"
+            disabled={isClosing}
             onClick={handleOpen}
-            className="glass-card w-[200px] rounded-lg border border-border bg-card p-4 text-left text-card-foreground shadow-lg transition-shadow hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="glass-card w-[200px] rounded-lg border border-border bg-card p-4 text-left text-card-foreground shadow-lg transition-shadow hover:shadow-xl disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-haspopup="dialog"
           >
             <h3 className="mb-2 font-semibold">StockSage</h3>
             <div className="text-sm text-muted-foreground">
               Talk through a market question
             </div>
-          </button>
+          </motion.button>
         </div>
       )}
-      <AnimatePresence>
+      <AnimatePresence initial={false} onExitComplete={handleExitComplete}>
         {isExpanded && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/30 backdrop-blur-xl"
-            onClick={handleClose}
-          >
+          <ExitSafeOverlay onClick={handleClose}>
             <motion.div
+              layoutId="stocksage-panel"
               ref={dialogRef}
-              initial={{
-                width: "200px",
-                height: "76px",
-                position: "absolute",
-                bottom: "24px",
-                right: "24px",
-              }}
+              initial={{ opacity: 0 }}
               animate={{
+                opacity: 1,
+                transition: { duration: 0.16 },
+              }}
+              transition={{
+                layout: {
+                  type: "spring",
+                  damping: 26,
+                  stiffness: 170,
+                  mass: 0.8,
+                },
+              }}
+              style={{
                 width: "calc(100% - 24px)",
-                height: "calc(100dvh - 24px)",
-                position: "absolute",
-                bottom: "12px",
-                right: "12px",
+                height: "calc(100% - 24px)",
+                willChange: "transform, opacity",
               }}
-              exit={{
-                width: "200px",
-                height: "76px",
-                position: "absolute",
-                bottom: "24px",
-                right: "24px",
-              }}
-              transition={{ type: "spring", damping: 25, stiffness: 120 }}
-              className="absolute max-w-7xl origin-bottom-right overflow-hidden rounded-xl border border-white/50 bg-white/80 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-card/85"
+              className="max-w-7xl shrink-0 origin-bottom-right overflow-hidden rounded-xl border border-white/50 bg-white/80 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-card/85"
               onClick={(event) => event.stopPropagation()}
               role="dialog"
               aria-modal="true"
               aria-labelledby="stocksage-title"
               aria-describedby="stocksage-description"
             >
-              <div
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                  transition: {
+                    delay: 0.2,
+                    duration: 0.28,
+                    ease: [0.22, 1, 0.36, 1],
+                  },
+                }}
+                exit={{ opacity: 0, transition: { duration: 0.1 } }}
                 className="flex h-full flex-col p-3 sm:p-6"
                 style={{
                   paddingBottom:
@@ -201,12 +256,12 @@ export function FloatingWidgetView({
                     </button>
                   </p>
                 </div>
-              </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
+          </ExitSafeOverlay>
         )}
       </AnimatePresence>
       <LegalDialog open={showLegal} onClose={() => setShowLegal(false)} />
-    </>
+    </LayoutGroup>
   );
 }

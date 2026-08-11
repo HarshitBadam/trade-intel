@@ -31,6 +31,13 @@ test("removes disallowed decorative punctuation from simple answers", () => {
   );
 });
 
+test("preserves en dashes used as negative numeric signs", () => {
+  assert.equal(
+    polishSimpleAnswerStyle("| AAPL | –0.28% |\n| GOOG | −5.33% |"),
+    "| AAPL | -0.28% |\n| GOOG | -5.33% |"
+  );
+});
+
 test("adds a matching citation marker to sourced table rows", () => {
   const sources: EvidenceSource[] = [
     {
