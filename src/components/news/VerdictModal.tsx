@@ -44,23 +44,18 @@ function formatAnalyzedAt(iso?: string): string | null {
   });
 }
 
-function meterColor(score: number): string {
-  if (score > 0.05) return "bg-green-600 dark:bg-green-500";
-  if (score < -0.05) return "bg-red-700 dark:bg-red-500";
-  return "bg-gray-400 dark:bg-gray-500";
-}
-
 function ScoreMeter({ score }: { score: number }) {
   const clamped = Math.max(-1, Math.min(1, score));
   const position = ((clamped + 1) / 2) * 100;
   return (
-    <div className="space-y-1.5">
-      <div className="relative h-2 overflow-hidden rounded-full bg-muted">
-        <div
-          className={`absolute inset-y-0 left-0 rounded-full ${meterColor(score)}`}
-          style={{ width: `${position}%` }}
-        />
-        <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
+    <div className="space-y-1.5 pt-1">
+      <div className="relative h-2">
+        <div className="absolute inset-0 overflow-hidden rounded-full bg-muted">
+          <div
+            className="absolute inset-y-0 left-0 rounded-full bg-foreground"
+            style={{ width: `${position}%` }}
+          />
+        </div>
         <div
           className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-foreground shadow"
           style={{ left: `${position}%` }}
