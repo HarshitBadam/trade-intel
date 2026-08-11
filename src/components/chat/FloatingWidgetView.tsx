@@ -64,7 +64,7 @@ function ExitSafeOverlay({
         pointerEvents: isPresent ? "auto" : "none",
       }}
       aria-hidden={isPresent ? undefined : true}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-xl"
+      className="pointer-events-auto absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-xl"
       onClick={onClick}
     >
       {children}
@@ -94,43 +94,15 @@ export function FloatingWidgetView({
 }: FloatingWidgetViewProps) {
   return (
     <LayoutGroup id="stocksage-widget">
-      {!isExpanded && (
-        <div className="pointer-events-auto fixed bottom-6 right-6 z-10">
-          <motion.button
-            layoutId="stocksage-panel"
-            style={{ willChange: "transform, opacity" }}
-            transition={{
-              layout: {
-                type: "spring",
-                damping: 26,
-                stiffness: 170,
-                mass: 0.8,
-              },
-            }}
-            type="button"
-            disabled={isClosing}
-            onClick={handleOpen}
-            className="glass-card w-[200px] rounded-lg border border-border bg-card p-4 text-left text-card-foreground shadow-lg transition-shadow hover:shadow-xl disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-haspopup="dialog"
-          >
-            <h3 className="mb-2 font-semibold">StockSage</h3>
-            <div className="text-sm text-muted-foreground">
-              Talk through a market question
-            </div>
-          </motion.button>
-        </div>
-      )}
-      <AnimatePresence initial={false} onExitComplete={handleExitComplete}>
-        {isExpanded && (
-          <ExitSafeOverlay onClick={handleClose}>
-            <motion.div
+      <motion.div
+        layoutRoot
+        className="pointer-events-none fixed inset-0 z-50"
+      >
+        {!isExpanded && (
+          <div className="pointer-events-auto absolute bottom-6 right-6">
+            <motion.button
               layoutId="stocksage-panel"
-              ref={dialogRef}
-              initial={{ opacity: 0 }}
-              animate={{
-                opacity: 1,
-                transition: { duration: 0.16 },
-              }}
+              style={{ willChange: "transform, opacity" }}
               transition={{
                 layout: {
                   type: "spring",
@@ -139,37 +111,69 @@ export function FloatingWidgetView({
                   mass: 0.8,
                 },
               }}
-              style={{
-                width: "calc(100% - 24px)",
-                height: "calc(100% - 24px)",
-                willChange: "transform, opacity",
-              }}
-              className="max-w-7xl shrink-0 origin-bottom-right overflow-hidden rounded-xl border border-white/50 bg-white/80 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-card/85"
-              onClick={(event) => event.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="stocksage-title"
-              aria-describedby="stocksage-description"
+              type="button"
+              disabled={isClosing}
+              onClick={handleOpen}
+              className="glass-card w-[200px] rounded-lg border border-border bg-card p-4 text-left text-card-foreground shadow-lg transition-shadow hover:shadow-xl disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-haspopup="dialog"
             >
+              <h3 className="mb-2 font-semibold">StockSage</h3>
+              <div className="text-sm text-muted-foreground">
+                Talk through a market question
+              </div>
+            </motion.button>
+          </div>
+        )}
+        <AnimatePresence initial={false} onExitComplete={handleExitComplete}>
+          {isExpanded && (
+            <ExitSafeOverlay onClick={handleClose}>
               <motion.div
-                initial={{ opacity: 0, y: 6 }}
+                layoutId="stocksage-panel"
+                ref={dialogRef}
+                initial={{ opacity: 0 }}
                 animate={{
                   opacity: 1,
-                  y: 0,
-                  transition: {
-                    delay: 0.2,
-                    duration: 0.28,
-                    ease: [0.22, 1, 0.36, 1],
+                  transition: { duration: 0.16 },
+                }}
+                transition={{
+                  layout: {
+                    type: "spring",
+                    damping: 26,
+                    stiffness: 170,
+                    mass: 0.8,
                   },
                 }}
-                exit={{ opacity: 0, transition: { duration: 0.1 } }}
-                className="flex h-full flex-col p-3 sm:p-6"
                 style={{
-                  paddingBottom:
-                    "max(0.75rem, env(safe-area-inset-bottom))",
+                  width: "calc(100% - 24px)",
+                  height: "calc(100% - 24px)",
+                  willChange: "transform, opacity",
                 }}
+                className="max-w-7xl shrink-0 origin-bottom-right overflow-hidden rounded-xl border border-white/50 bg-white/80 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-card/85"
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="stocksage-title"
+                aria-describedby="stocksage-description"
               >
-                <div className="mx-auto flex h-full w-full max-w-7xl flex-col">
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{
+                    opacity: 1,
+                    y: 0,
+                    transition: {
+                      delay: 0.2,
+                      duration: 0.28,
+                      ease: [0.22, 1, 0.36, 1],
+                    },
+                  }}
+                  exit={{ opacity: 0, transition: { duration: 0.1 } }}
+                  className="flex h-full flex-col p-3 sm:p-6"
+                  style={{
+                    paddingBottom:
+                      "max(0.75rem, env(safe-area-inset-bottom))",
+                  }}
+                >
+                  <div className="mx-auto flex h-full w-full max-w-7xl flex-col">
                   <div className="mb-4 flex items-center justify-between">
                     <div>
                       <h2 id="stocksage-title" className="text-xl font-bold">
@@ -255,12 +259,13 @@ export function FloatingWidgetView({
                       Terms &amp; Privacy
                     </button>
                   </p>
-                </div>
+                  </div>
+                </motion.div>
               </motion.div>
-            </motion.div>
-          </ExitSafeOverlay>
-        )}
-      </AnimatePresence>
+            </ExitSafeOverlay>
+          )}
+        </AnimatePresence>
+      </motion.div>
       <LegalDialog open={showLegal} onClose={() => setShowLegal(false)} />
     </LayoutGroup>
   );
