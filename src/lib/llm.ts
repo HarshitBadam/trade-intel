@@ -9,6 +9,7 @@ import {
 import { parseFencedJson } from "@/lib/llm-json";
 
 export type LlmVendor = "groq" | "cerebras";
+export type LlmReasoningEffort = "none" | "low" | "medium" | "high";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -44,6 +45,7 @@ export type LlmChatArgs = {
   messages?: LlmMessage[];
   maxTokens?: number;
   temperature?: number;
+  reasoningEffort?: LlmReasoningEffort;
   timeoutMs?: number;
   jsonSchema?: {
     name: string;
@@ -135,14 +137,17 @@ function retryAfterMs(response: Response): number {
 function reasoningParams(args: LlmChatArgs): Record<string, unknown> {
   if (args.vendor === "cerebras") {
     return /\bgpt-oss\b/.test(args.model)
-      ? { reasoning_effort: "low" }
+      ? { reasoning_effort: args.reasoningEffort ?? "low" }
       : {};
   }
   if (/\bqwen\b/.test(args.model)) {
     return { reasoning_effort: "none", include_reasoning: false };
   }
   if (!/\bgpt-oss\b/.test(args.model)) return {};
-  return { reasoning_effort: "low", include_reasoning: false };
+  return {
+    reasoning_effort: args.reasoningEffort ?? "low",
+    include_reasoning: false,
+  };
 }
 
 async function postChatCompletion(
