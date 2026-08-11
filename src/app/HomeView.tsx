@@ -171,37 +171,39 @@ export default function HomeView({ initial }: HomeViewProps) {
       <SearchBar />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="md:col-span-2 lg:col-span-2">
-          <div className="mb-4 space-y-3">
-            <div className="text-xl font-bold">Trending Now</div>
-            <div onMouseOver={handleChipHover}>
-              <StockChips
-                selectedStockId={selectedStockId}
-                onStockSelect={(id) => setSelectedStockId(id ?? 1)}
-              />
-            </div>
-          </div>
-          <div className="cursor-pointer" onClick={handleStockClick}>
-            <StockGraph
-              key={currentStock.id}
-              companyName={currentStock.companyName}
-              stockPrice={stockPrice}
-              priceChange={priceChange}
-              percentChange={percentChange}
-              chartData={chartData}
-              intradayData={intradayData}
-              weekData={weekData}
-              fineData={fineData}
-              hasShuffle={false}
+        <div className="space-y-3 md:col-span-2 lg:col-span-2">
+          <div className="text-xl font-bold">Trending Now</div>
+          <div onMouseOver={handleChipHover}>
+            <StockChips
+              selectedStockId={selectedStockId}
+              onStockSelect={(id) => setSelectedStockId(id ?? 1)}
             />
           </div>
+        </div>
+
+        <div
+          className="cursor-pointer md:col-span-2 lg:col-span-2"
+          onClick={handleStockClick}
+        >
+          <StockGraph
+            key={currentStock.id}
+            companyName={currentStock.companyName}
+            stockPrice={stockPrice}
+            priceChange={priceChange}
+            percentChange={percentChange}
+            chartData={chartData}
+            intradayData={intradayData}
+            weekData={weekData}
+            fineData={fineData}
+            hasShuffle={false}
+          />
         </div>
 
         <div className="flex flex-col gap-6">
           <Overview title="Top Sentiment Shifts" shifts={shiftRows} />
           <button
             type="button"
-            className="glass-card flex h-1/2 w-full flex-col items-start justify-center rounded-lg bg-card p-4 text-left shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="glass-card flex min-h-36 flex-1 w-full flex-col items-start justify-center rounded-lg bg-card p-4 text-left shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={handleWidgetOpen}
             aria-haspopup="dialog"
           >

@@ -34,6 +34,34 @@
   }
 }
 
+::view-transition-old(root) {
+  animation: theme-fade-out var(--theme-transition-duration) var(--theme-transition-easing) both;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  animation: theme-fade-in var(--theme-transition-duration) var(--theme-transition-easing) both;
+  mix-blend-mode: normal;
+}
+
+html.theme-fallback-transition,
+html.theme-fallback-transition body,
+html.theme-fallback-transition body *,
+html.theme-fallback-transition body *::before,
+html.theme-fallback-transition body *::after {
+  transition-property:
+    color,
+    background-color,
+    border-color,
+    outline-color,
+    text-decoration-color,
+    fill,
+    stroke,
+    box-shadow;
+  transition-duration: var(--theme-transition-duration);
+  transition-timing-function: var(--theme-transition-easing);
+}
+
 .theme-toggle .tt-svg {
   overflow: visible;
 }
@@ -73,6 +101,17 @@
   transform: translateX(-9.32px);
 }
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+  html.theme-fallback-transition,
+  html.theme-fallback-transition body,
+  html.theme-fallback-transition body *,
+  html.theme-fallback-transition body *::before,
+  html.theme-fallback-transition body *::after {
+    transition: none;
+  }
   .theme-toggle.tt-ready .tt-disk,
   .theme-toggle.tt-ready .tt-rays,
   .theme-toggle.tt-ready .tt-bite {
@@ -96,6 +135,9 @@ body::after {
     radial-gradient(42% 40% at 88% 8%, rgba(79, 70, 229, 0.18), transparent 72%),
     radial-gradient(52% 50% at 80% 94%, rgba(168, 85, 247, 0.16), transparent 72%),
     radial-gradient(46% 46% at 28% 90%, rgba(67, 56, 160, 0.2), transparent 72%);
+}
+.theme-fallback-transition body::after {
+  transition: opacity var(--theme-transition-duration) var(--theme-transition-easing);
 }
 .dark body::after {
   opacity: 1;

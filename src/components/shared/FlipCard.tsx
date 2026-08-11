@@ -41,6 +41,13 @@ export function FlipCard({ front, back }: FlipCardProps) {
         .flip-back {
           transform: rotateY(180deg);
         }
+        /* Safari flattens 3D descendants while capturing a View Transition.
+           Explicitly omit the hidden face from the theme snapshots so both
+           card states cannot be composited on top of each other. */
+        :global(.theme-view-transitioning) .flip-inner:not(.is-flipped) .flip-back,
+        :global(.theme-view-transitioning) .flip-inner.is-flipped .flip-front {
+          visibility: hidden;
+        }
         /* Root cause of the dark-mode flip glitch: a backdrop-filter on a face's
            content breaks WebKit/Safari's 3D backface culling, so the hidden
            (price) face isn't culled and, because the popularity face is

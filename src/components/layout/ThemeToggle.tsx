@@ -2,15 +2,63 @@
 
 import { useEffect, useState } from "react";
 
+const THEME_TRANSITION_MS = 420;
+let fallbackTimer: number | undefined;
+
+type ThemeViewTransition = {
+  finished: Promise<unknown>;
+};
+
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => void) => ThemeViewTransition;
+};
+
+function transitionToTheme(nextDark: boolean, afterChange: () => void) {
+  const root = document.documentElement;
+  const update = () => {
+    root.classList.toggle("dark", nextDark);
+    afterChange();
+  };
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    update();
+    return;
+  }
+
+  const transitionDocument = document as ViewTransitionDocument;
+  if (transitionDocument.startViewTransition) {
+    root.classList.add("theme-view-transitioning");
+    void root.offsetWidth;
+    try {
+      const transition = transitionDocument.startViewTransition(update);
+      const clearTransitionState = () =>
+        root.classList.remove("theme-view-transitioning");
+      void transition.finished.then(clearTransitionState, clearTransitionState);
+      return;
+    } catch {
+      root.classList.remove("theme-view-transitioning");
+    }
+  }
+
+  window.clearTimeout(fallbackTimer);
+  root.classList.add("theme-fallback-transition");
+  void root.offsetWidth;
+  update();
+  fallbackTimer = window.setTimeout(() => {
+    root.classList.remove("theme-fallback-transition");
+  }, THEME_TRANSITION_MS);
+}
+
 export function ThemeToggle() {
   const [isDark, setIsDark] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setIsDark(document.documentElement.classList.contains("dark"));
+    const root = document.documentElement;
+    setIsDark(root.classList.contains("dark"));
     setMounted(true);
-    // Enable the icon transitions on the next frame so mounting doesn't animate.
+    // Enable the icon transition after the initial theme has painted.
     const id = requestAnimationFrame(() => setReady(true));
 
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -18,13 +66,15 @@ export function ThemeToggle() {
       try {
         if (localStorage.getItem("theme")) return;
       } catch {}
-      document.documentElement.classList.toggle("dark", e.matches);
-      setIsDark(e.matches);
+      transitionToTheme(e.matches, () => setIsDark(e.matches));
     };
     mql.addEventListener("change", onSystemChange);
 
     return () => {
       cancelAnimationFrame(id);
+      window.clearTimeout(fallbackTimer);
+      root.classList.remove("theme-view-transitioning");
+      root.classList.remove("theme-fallback-transition");
       mql.removeEventListener("change", onSystemChange);
     };
   }, []);
@@ -32,16 +82,17 @@ export function ThemeToggle() {
   const toggle = () => {
     const root = document.documentElement;
     const next = !root.classList.contains("dark");
-    root.classList.toggle("dark", next);
-    try {
-      const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      if (next === systemDark) {
-        localStorage.removeItem("theme");
-      } else {
-        localStorage.setItem("theme", next ? "dark" : "light");
-      }
-    } catch {}
-    setIsDark(next);
+    transitionToTheme(next, () => {
+      try {
+        const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        if (next === systemDark) {
+          localStorage.removeItem("theme");
+        } else {
+          localStorage.setItem("theme", next ? "dark" : "light");
+        }
+      } catch {}
+      setIsDark(next);
+    });
   };
 
   return (

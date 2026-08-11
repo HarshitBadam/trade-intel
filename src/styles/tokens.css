@@ -73,6 +73,8 @@
 
 :root {
   --radius: 0.625rem;
+  --theme-transition-duration: 420ms;
+  --theme-transition-easing: cubic-bezier(0.4, 0, 0.2, 1);
   --background: oklch(1 0 0);
   --foreground: oklch(0.129 0.042 264.695);
   --card: oklch(1 0 0);
