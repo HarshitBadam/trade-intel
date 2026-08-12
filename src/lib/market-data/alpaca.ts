@@ -235,6 +235,77 @@ export type AlpacaSnapshot = {
   prevDailyBar?: AlpacaBarLite;
 };
 
+export type AlpacaMarketMover = {
+  symbol: string;
+  price: number;
+  change: number;
+  percentChange: number;
+};
+
+export type AlpacaMarketMovers = {
+  gainers: AlpacaMarketMover[];
+  losers: AlpacaMarketMover[];
+  lastUpdated?: string;
+};
+
+export async function getAlpacaMarketMovers(
+  top = 5
+): Promise<AlpacaMarketMovers> {
+  const limit = Math.max(1, Math.min(50, Math.trunc(top)));
+  const res = await alpacaFetch(
+    `/v1beta1/screener/stocks/movers?top=${limit}`
+  );
+  if (!res.ok) {
+    throw new Error(`alpaca market movers failed: ${res.status}`);
+  }
+  const data = (await res.json()) as {
+    gainers?: Array<{
+      symbol?: unknown;
+      price?: unknown;
+      change?: unknown;
+      percent_change?: unknown;
+    }>;
+    losers?: Array<{
+      symbol?: unknown;
+      price?: unknown;
+      change?: unknown;
+      percent_change?: unknown;
+    }>;
+    last_updated?: unknown;
+  };
+  const normalize = (
+    rows: typeof data.gainers
+  ): AlpacaMarketMover[] =>
+    (rows ?? []).flatMap((row) => {
+      if (
+        typeof row.symbol !== "string" ||
+        typeof row.price !== "number" ||
+        typeof row.change !== "number" ||
+        typeof row.percent_change !== "number" ||
+        !Number.isFinite(row.price) ||
+        !Number.isFinite(row.change) ||
+        !Number.isFinite(row.percent_change)
+      ) {
+        return [];
+      }
+      return [
+        {
+          symbol: row.symbol.toUpperCase(),
+          price: row.price,
+          change: row.change,
+          percentChange: row.percent_change,
+        },
+      ];
+    });
+  return {
+    gainers: normalize(data.gainers),
+    losers: normalize(data.losers),
+    ...(typeof data.last_updated === "string"
+      ? { lastUpdated: data.last_updated }
+      : {}),
+  };
+}
+
 export async function getAlpacaSnapshots(
   symbols: string[]
 ): Promise<Record<string, AlpacaSnapshot>> {

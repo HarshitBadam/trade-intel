@@ -7,6 +7,7 @@ import type {
   GreenfieldDependencies,
   GreenfieldReply,
 } from "./greenfield/engine";
+import type { SimpleRuntimeDependencies } from "./simple-runtime";
 import type { SafetyClassifier } from "./safety-classifier";
 import { logStockSage } from "./telemetry";
 import type {
@@ -29,6 +30,8 @@ export type ChatDependencies = {
   engine?: "legacy" | "greenfield" | "simple";
   /** Greenfield provider seams; production normally leaves this undefined. */
   greenfield?: GreenfieldDependencies;
+  /** Simple-runtime provider/model seams; production normally leaves this undefined. */
+  simple?: SimpleRuntimeDependencies;
   /** Test seam for Deep Research queue capability; production uses config. */
   deepQueueReady?: boolean;
   /** Per-request benchmark/diagnostic observer; never affects publication. */

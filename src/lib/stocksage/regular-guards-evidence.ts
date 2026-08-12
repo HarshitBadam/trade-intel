@@ -168,7 +168,7 @@ export function proxyMisrepresentation(
           : quote.ticker === "DJI"
             ? ["dow jones industrial average", "dow jones", "dow", "dji"]
             : quote.ticker === "AXJO"
-              ? ["all ordinaries", "all ords", "asx 200", "asx", "axjo"]
+              ? ["s&p/asx 200", "asx 200", "asx", "axjo"]
               : [entity.name.toLowerCase(), quote.ticker.toLowerCase()];
     const offending = units.find((sentence) => {
       if (!performanceFigure.test(sentence) || !PERFORMANCE_CLAIM.test(sentence)) {

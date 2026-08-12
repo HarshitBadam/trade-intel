@@ -128,7 +128,6 @@ const STOOQ_INDEX_SYMBOLS: Record<string, string> = {
   IXIC: "^ndq",
   DJI: "^dji",
   RUT: "^rut",
-  AXJO: "^aor",
 };
 
 const YAHOO_INDEX_SYMBOLS: Record<string, string> = {
@@ -491,6 +490,7 @@ export function routeBarProviders(
 ): Array<"alpaca" | "polygon" | "yahoo" | "stooq"> {
   if (request.venue === "ASX") return ["yahoo"];
   if (request.venue === "INDEX") {
+    if (request.ticker === "AXJO") return ["yahoo"];
     return request.granularity === "1Day" ? ["stooq", "yahoo"] : ["yahoo"];
   }
   if (request.venue === "US") {

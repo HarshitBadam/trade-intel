@@ -38,7 +38,8 @@ test("engine and answer cannot reclassify a frozen turn", () => {
 });
 
 test("router is the sole production caller of policy classification", () => {
-  const allowed = new Set(["policy.ts", "router.ts"]);
+  // The opt-in, non-production simple engine keeps its own narrow safety gate.
+  const allowed = new Set(["policy.ts", "router.ts", "simple-runtime.ts"]);
   for (const file of readdirSync(ROOT)) {
     if (!file.endsWith(".ts") || allowed.has(file)) continue;
     const text = source(file);

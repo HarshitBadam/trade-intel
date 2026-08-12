@@ -69,6 +69,7 @@ test("engine selection is legacy by default, overrideable, canaried, and v2-stic
   assert.equal(selectStockSageEngine(request), "legacy");
   assert.equal(selectStockSageEngine(request, { engine: "greenfield" }), "greenfield");
   assert.equal(selectStockSageEngine(request, { engine: "legacy" }), "legacy");
+  assert.equal(selectStockSageEngine(request, { engine: "simple" }), "simple");
   assert.equal(isGreenfieldCanarySession("session-a", 0), false);
   assert.equal(isGreenfieldCanarySession("session-a", 100), true);
   assert.equal(

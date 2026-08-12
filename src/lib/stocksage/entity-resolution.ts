@@ -172,7 +172,7 @@ export function resolveText(text: string): FinanceEntity[] {
   const webTickers = new Set<string>();
 
   if (ASX_INDEX_CONTEXT.test(clean) && !/\basx\s*:/i.test(clean)) {
-    const index = WEB_ALIASES.find((alias) => alias.name === "All Ordinaries");
+    const index = WEB_ALIASES.find((alias) => alias.ticker === "AXJO");
     if (index) addEntity(output, seen, fromAlias(index));
   }
 

@@ -39,9 +39,9 @@ export function selectStockSageEngine(
   request: ChatRequest,
   dependencies: Pick<ChatDependencies, "engine"> = {}
 ): StockSageEngine {
+  if (request.state?.version === 2) return "greenfield";
   if (dependencies.engine) return dependencies.engine;
   if (STOCKSAGE_ENGINE === "simple") return "simple";
-  if (request.state?.version === 2) return "greenfield";
   if (STOCKSAGE_ENGINE === "greenfield") return "greenfield";
   return isGreenfieldCanarySession(request.sessionId) ? "greenfield" : "legacy";
 }
@@ -59,7 +59,9 @@ export async function answerChat(
   dependencies: ChatDependencies = {}
 ): Promise<ChatReply> {
   const engine = selectStockSageEngine(request, dependencies);
-  if (engine === "simple") return runSimpleChatAdapter(request);
+  if (engine === "simple") {
+    return runSimpleChatAdapter(request, dependencies.simple);
+  }
   if (engine === "greenfield") {
     return runGreenfieldChatAdapter(request, dependencies);
   }

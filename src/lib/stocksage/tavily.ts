@@ -46,17 +46,38 @@ function outlet(url: string): string {
   }
 }
 
-export async function searchTavily(
+function validPublicUrl(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export type TavilySearchStatus = "ok" | "no_results" | "unavailable";
+
+export type TavilySearchResult = {
+  status: TavilySearchStatus;
+  evidence: EvidenceInput[];
+  reason?: string;
+};
+
+export async function searchTavilyDetailed(
   query: EvidenceQuery
-): Promise<EvidenceInput[]> {
-  if (
-    query.provider !== "tavily" ||
-    !hasTavily ||
-    !TAVILY_API_KEY ||
-    (await isOpen("tavily")) ||
-    (await isCoolingDown("tavily"))
-  ) {
-    return [];
+): Promise<TavilySearchResult> {
+  if (query.provider !== "tavily") {
+    return { status: "unavailable", evidence: [], reason: "wrong_provider" };
+  }
+  if (!hasTavily || !TAVILY_API_KEY) {
+    return { status: "unavailable", evidence: [], reason: "not_configured" };
+  }
+  if (await isOpen("tavily")) {
+    return { status: "unavailable", evidence: [], reason: "circuit_open" };
+  }
+  if (await isCoolingDown("tavily")) {
+    return { status: "unavailable", evidence: [], reason: "cooldown" };
   }
 
   try {
@@ -87,22 +108,34 @@ export async function searchTavily(
     if (!parsed.success) throw new Error("Tavily returned an invalid response");
     await recordSuccess("tavily");
     const retrievedAt = new Date().toISOString();
-    return parsed.data.results.slice(0, query.limit).map((result) => {
-      const url = result.url ?? "";
-      return {
-        kind: "tavily" as const,
-        title: result.title ?? "",
-        outlet: outlet(url),
-        publishedAt: result.published_date,
-        url,
-        excerpt: result.content ?? "",
-        score: result.score,
-        entityIds: query.entityIds,
-        criteria: query.criteria,
-        retrievedAt,
-        queryId: query.id,
-      };
-    });
+    const evidence = parsed.data.results
+      .filter(
+        (
+          result
+        ): result is typeof result & { url: string } =>
+          validPublicUrl(result.url)
+      )
+      .slice(0, query.limit)
+      .map((result) => {
+        const url = result.url;
+        return {
+          kind: "tavily" as const,
+          title: result.title ?? "",
+          outlet: outlet(url),
+          publishedAt: result.published_date,
+          url,
+          excerpt: result.content ?? "",
+          score: result.score,
+          entityIds: query.entityIds,
+          criteria: query.criteria,
+          retrievedAt,
+          queryId: query.id,
+        };
+      });
+    return {
+      status: evidence.length > 0 ? "ok" : "no_results",
+      evidence,
+    };
   } catch (error) {
     if (error instanceof TavilyHttpError && error.status === 432) {
       await Promise.all([
@@ -124,6 +157,21 @@ export async function searchTavily(
               : "unknown",
       })}`
     );
-    return [];
+    return {
+      status: "unavailable",
+      evidence: [],
+      reason:
+        error instanceof TavilyHttpError
+          ? `http_${error.status}`
+          : error instanceof Error
+            ? error.name
+            : "unknown",
+    };
   }
+}
+
+export async function searchTavily(
+  query: EvidenceQuery
+): Promise<EvidenceInput[]> {
+  return (await searchTavilyDetailed(query)).evidence;
 }
