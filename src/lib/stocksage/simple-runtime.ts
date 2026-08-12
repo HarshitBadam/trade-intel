@@ -2,9 +2,21 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { cerebrasChatJSON, cerebrasChatText } from "@/lib/cerebras";
-import { CEREBRAS_MODEL } from "@/lib/config";
-import { llmErrorSummary } from "@/lib/llm";
+import {
+  CEREBRAS_MODEL,
+  GROQ_CHAT_MODEL,
+  STOCKSAGE_SIMPLE_MODEL,
+  STOCKSAGE_SIMPLE_PROVIDER,
+} from "@/lib/config";
+import {
+  hasVendor,
+  LlmRequestError,
+  llmChatJSON,
+  llmChatText,
+  llmErrorSummary,
+  type LlmChatArgs,
+  type LlmVendor,
+} from "@/lib/llm";
 import {
   getBarsForRange,
   type RangeBarSeries,
@@ -98,6 +110,93 @@ export type FocusedNewsBundle = {
   evidence: EvidenceInput[];
   outcomes: FocusedNewsOutcome[];
 };
+
+type SimpleLlmChatArgs = Omit<LlmChatArgs, "vendor" | "model">;
+
+type SimpleLlmTarget = {
+  vendor: LlmVendor;
+  model: string;
+};
+
+const SIMPLE_PRIMARY_LLM: SimpleLlmTarget = {
+  vendor: STOCKSAGE_SIMPLE_PROVIDER,
+  model: STOCKSAGE_SIMPLE_MODEL,
+};
+
+const SIMPLE_FALLBACK_LLM: SimpleLlmTarget =
+  STOCKSAGE_SIMPLE_PROVIDER === "groq"
+    ? { vendor: "cerebras", model: CEREBRAS_MODEL }
+    : { vendor: "groq", model: GROQ_CHAT_MODEL };
+
+export function shouldFallbackSimpleLlm(error: unknown): boolean {
+  if (!(error instanceof LlmRequestError)) return false;
+  return (
+    error.status === undefined || error.status === 429 || error.status >= 500
+  );
+}
+
+async function runSimpleLlmRequest<T>(
+  request: (target: SimpleLlmTarget) => Promise<T>
+): Promise<T> {
+  const primaryAvailable = hasVendor(SIMPLE_PRIMARY_LLM.vendor);
+  const fallbackAvailable = hasVendor(SIMPLE_FALLBACK_LLM.vendor);
+  if (!primaryAvailable) {
+    if (fallbackAvailable) {
+      console.warn(
+        "[stocksage]",
+        JSON.stringify({
+          event: "simple_llm_fallback",
+          from: SIMPLE_PRIMARY_LLM.vendor,
+          to: SIMPLE_FALLBACK_LLM.vendor,
+          reason: "primary_unavailable",
+        })
+      );
+      return request(SIMPLE_FALLBACK_LLM);
+    }
+    throw new LlmRequestError(
+      `${SIMPLE_PRIMARY_LLM.vendor} is not available for StockSage`,
+      { vendor: SIMPLE_PRIMARY_LLM.vendor }
+    );
+  }
+
+  try {
+    return await request(SIMPLE_PRIMARY_LLM);
+  } catch (error) {
+    if (!fallbackAvailable || !shouldFallbackSimpleLlm(error)) throw error;
+    console.warn(
+      "[stocksage]",
+      JSON.stringify({
+        event: "simple_llm_fallback",
+        from: SIMPLE_PRIMARY_LLM.vendor,
+        to: SIMPLE_FALLBACK_LLM.vendor,
+        ...llmErrorSummary(error),
+      })
+    );
+    return request(SIMPLE_FALLBACK_LLM);
+  }
+}
+
+function simpleLlmChatJSON<T = unknown>(
+  args: SimpleLlmChatArgs
+): Promise<T> {
+  return runSimpleLlmRequest((target) =>
+    llmChatJSON<T>({
+      ...args,
+      vendor: target.vendor,
+      model: target.model,
+    })
+  );
+}
+
+function simpleLlmChatText(args: SimpleLlmChatArgs): Promise<string> {
+  return runSimpleLlmRequest((target) =>
+    llmChatText({
+      ...args,
+      vendor: target.vendor,
+      model: target.model,
+    })
+  );
+}
 
 const IsoDateSchema = z
   .string()
@@ -320,8 +419,7 @@ async function extractEvidencePlan(
   request: ChatRequest,
   now = new Date()
 ): Promise<SimpleEvidencePlan> {
-  const raw = await cerebrasChatJSON<unknown>({
-    model: CEREBRAS_MODEL,
+  const raw = await simpleLlmChatJSON<unknown>({
     maxTokens: 800,
     temperature: 0,
     timeoutMs: 12_000,
@@ -380,8 +478,7 @@ export async function refineRankingRequests(
   now = new Date()
 ): Promise<RefinedRankingRequest[]> {
   if (seed.length === 0) return [];
-  const raw = await cerebrasChatJSON<unknown>({
-    model: CEREBRAS_MODEL,
+  const raw = await simpleLlmChatJSON<unknown>({
     maxTokens: 600,
     temperature: 0,
     reasoningEffort: "low",
@@ -521,8 +618,7 @@ async function repairListingRelativePrices(
   }[],
   now = new Date()
 ): Promise<SubjectDatePair[]> {
-  const raw = await cerebrasChatJSON<unknown>({
-    model: CEREBRAS_MODEL,
+  const raw = await simpleLlmChatJSON<unknown>({
     maxTokens: 600,
     temperature: 0,
     reasoningEffort: "low",
@@ -1064,8 +1160,7 @@ export function buildSimpleCompositionPayload(
 }
 
 async function composeAnswer(args: SimpleComposeArgs): Promise<string> {
-  return cerebrasChatText({
-    model: CEREBRAS_MODEL,
+  return simpleLlmChatText({
     maxTokens: 3_000,
     temperature: 0.3,
     reasoningEffort: "medium",

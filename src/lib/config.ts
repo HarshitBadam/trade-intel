@@ -9,7 +9,7 @@ export const isProd = process.env.NODE_ENV === "production";
 export const STOCKSAGE_ENGINE: "legacy" | "greenfield" | "simple" =
   process.env.STOCKSAGE_ENGINE === "greenfield"
     ? "greenfield"
-    : process.env.STOCKSAGE_ENGINE === "simple" && !isProd
+    : process.env.STOCKSAGE_ENGINE === "simple"
       ? "simple"
       : "legacy";
 
@@ -64,7 +64,27 @@ const rawGroq = Boolean(GROQ_API_KEY);
 export const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
 export const CEREBRAS_MODEL =
   process.env.CEREBRAS_MODEL ?? "gpt-oss-120b";
-export const hasCerebras = Boolean(CEREBRAS_API_KEY) && !isProd;
+const rawCerebras = Boolean(CEREBRAS_API_KEY);
+
+export type StockSageSimpleProvider = "groq" | "cerebras";
+
+export function resolveSimpleLlmConfig(
+  provider = process.env.STOCKSAGE_SIMPLE_PROVIDER,
+  model = process.env.STOCKSAGE_SIMPLE_MODEL
+): { provider: StockSageSimpleProvider; model: string } {
+  const selectedProvider: StockSageSimpleProvider =
+    provider?.trim().toLowerCase() === "groq" ? "groq" : "cerebras";
+  return {
+    provider: selectedProvider,
+    model:
+      model?.trim() ||
+      (selectedProvider === "groq" ? GROQ_CHAT_MODEL : CEREBRAS_MODEL),
+  };
+}
+
+const simpleLlm = resolveSimpleLlmConfig();
+export const STOCKSAGE_SIMPLE_PROVIDER = simpleLlm.provider;
+export const STOCKSAGE_SIMPLE_MODEL = simpleLlm.model;
 // A rail that can false-positive needs an off switch that does not also take
 // chat synthesis down with it.
 const safetyClassifierOff =
@@ -93,6 +113,7 @@ export const hasAlpaca = rawAlpaca && liveAllowed;
 export const hasFinnhub = rawFinnhub && liveAllowed;
 export const hasAstra = rawAstra && liveAllowed;
 export const hasGroq = rawGroq && liveAllowed;
+export const hasCerebras = rawCerebras && liveAllowed;
 export const hasSafetyClassifier = hasGroq && !safetyClassifierOff;
 // StockSage synthesis resolves only the direct Groq primary/fallback pair.
 export const hasAnySynthesisLlm = hasGroq;
@@ -112,6 +133,7 @@ if (
     rawFinnhub ||
     rawAstra ||
     rawGroq ||
+    rawCerebras ||
     rawTavily) &&
   !enforceAuth
 ) {
