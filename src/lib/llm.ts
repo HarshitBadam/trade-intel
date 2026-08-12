@@ -13,7 +13,9 @@ export type LlmReasoningEffort = "none" | "low" | "medium" | "high";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
-const MAX_RETRY_WAIT_MS = 5_000;
+const MAX_LLM_RETRIES = 2;
+const MAX_TOTAL_RETRY_WAIT_MS = 10_000;
+const DEFAULT_RATE_LIMIT_RETRY_MS = 2_000;
 
 const DEFAULT_TEMPERATURE = 0.2;
 
@@ -129,7 +131,7 @@ function retryAfterMs(response: Response): number {
   return (
     durationMs(response.headers.get("retry-after")) ??
     durationMs(response.headers.get("x-ratelimit-reset-tokens")) ??
-    MAX_RETRY_WAIT_MS
+    DEFAULT_RATE_LIMIT_RETRY_MS
   );
 }
 
@@ -193,35 +195,38 @@ async function postChatCompletion(
 }
 
 async function llmChatRaw(args: LlmChatArgs, jsonMode: boolean): Promise<string> {
-  let response: Response;
-  try {
-    response = await postChatCompletion(args, jsonMode);
-  } catch (error) {
-    if (error instanceof LlmRequestError) throw error;
-    throw new LlmRequestError(`${args.vendor} request did not complete`, {
-      vendor: args.vendor,
-      cause: error,
-    });
-  }
-
-  if (response.status === 429 || response.status >= 500) {
-    const waitMs =
+  let response: Response | undefined;
+  let totalRetryWaitMs = 0;
+  for (let attempt = 0; attempt <= MAX_LLM_RETRIES; attempt += 1) {
+    try {
+      response = await postChatCompletion(args, jsonMode);
+    } catch (error) {
+      if (error instanceof LlmRequestError) throw error;
+      throw new LlmRequestError(`${args.vendor} request did not complete`, {
+        vendor: args.vendor,
+        cause: error,
+      });
+    }
+    const retryableStatus = response.status === 429 || response.status >= 500;
+    if (!retryableStatus || attempt === MAX_LLM_RETRIES) break;
+    const baseWaitMs =
       response.status === 429
         ? retryAfterMs(response)
-        : 250 + Math.round(Math.random() * 250);
-    if (waitMs <= MAX_RETRY_WAIT_MS) {
-      await sleep(waitMs + Math.round(Math.random() * 150));
-      try {
-        response = await postChatCompletion(args, jsonMode);
-      } catch (error) {
-        throw new LlmRequestError(`${args.vendor} retry did not complete`, {
-          vendor: args.vendor,
-          cause: error,
-          status: response.status,
-          retryAfterMs: waitMs,
-        });
-      }
+        : 250 * 2 ** attempt;
+    const waitMs = baseWaitMs + Math.round(Math.random() * 150);
+    if (
+      baseWaitMs > MAX_TOTAL_RETRY_WAIT_MS ||
+      totalRetryWaitMs + waitMs > MAX_TOTAL_RETRY_WAIT_MS
+    ) {
+      break;
     }
+    totalRetryWaitMs += waitMs;
+    await sleep(waitMs);
+  }
+  if (!response) {
+    throw new LlmRequestError(`${args.vendor} request did not complete`, {
+      vendor: args.vendor,
+    });
   }
 
   if (!response.ok) {

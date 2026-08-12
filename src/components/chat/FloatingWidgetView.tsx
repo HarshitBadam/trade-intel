@@ -51,20 +51,36 @@ function ExitSafeOverlay({
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
+      initial={{
+        backgroundColor: "rgba(0, 0, 0, 0)",
+        backdropFilter: "blur(0px)",
+      }}
       animate={{
-        opacity: 1,
-        transition: { duration: 0.15 },
+        backgroundColor: "rgba(0, 0, 0, 0.3)",
+        backdropFilter: "blur(24px)",
+        transition: {
+          backgroundColor: {
+            delay: 0.04,
+            duration: 0.3,
+            ease: [0.22, 1, 0.36, 1],
+          },
+          backdropFilter: {
+            delay: 0.1,
+            duration: 0.42,
+            ease: [0.22, 1, 0.36, 1],
+          },
+        },
       }}
       exit={{
-        opacity: 0,
-        transition: { delay: 0.32, duration: 0.15 },
+        backgroundColor: "rgba(0, 0, 0, 0)",
+        backdropFilter: "blur(0px)",
+        transition: { duration: 0.36, ease: [0.4, 0, 0.2, 1] },
       }}
       style={{
         pointerEvents: isPresent ? "auto" : "none",
       }}
       aria-hidden={isPresent ? undefined : true}
-      className="pointer-events-auto absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-xl"
+      className="pointer-events-auto absolute inset-0 flex items-center justify-center"
       onClick={onClick}
     >
       {children}

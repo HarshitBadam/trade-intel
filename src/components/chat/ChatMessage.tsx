@@ -200,12 +200,12 @@ export function ChatMessage({
       }
     >
       <div
-        className={`w-fit rounded-lg p-3 text-foreground ${
+        className={`w-fit ${
           message.sender === "user"
-            ? "max-w-xl bg-muted"
+            ? "max-w-xl rounded-lg bg-muted p-3 text-foreground"
             : message.error
-              ? "max-w-3xl border border-border bg-muted/50"
-              : "max-w-3xl"
+              ? "max-w-3xl px-3 py-1 text-muted-foreground"
+              : "max-w-3xl rounded-lg p-3 text-foreground"
         } ${accentClass ? `border-l-2 ${accentClass}` : ""}`}
       >
         {message.sender === "ai" ? (
@@ -243,10 +243,14 @@ export function ChatMessage({
               <button
                 type="button"
                 onClick={() => onRetry(message.id)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground/75 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  message.error
+                    ? "mb-2 bg-muted text-foreground/70 hover:bg-muted/80 hover:text-foreground"
+                    : "border border-border text-foreground/75 hover:bg-muted hover:text-foreground"
+                }`}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
-                Regenerate
+                {message.error ? "Try again" : "Regenerate"}
               </button>
             )}
             {showResearch && (

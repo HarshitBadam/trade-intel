@@ -1144,18 +1144,23 @@ function errorReply(
   stage: "semantic extraction" | "answer composition",
   error: unknown
 ): ChatReply {
+  const summary = llmErrorSummary(error);
+  const rateLimited = summary.status === 429;
   console.warn(
     "[stocksage]",
     JSON.stringify({
       event: "simple_llm_unavailable",
       stage,
-      ...llmErrorSummary(error),
+      ...summary,
     })
   );
   return {
-    text: "Sorry, StockSage is currently unavailable. Please try again later.",
+    text: rateLimited
+      ? "Sorry, StockSage is busy right now. Please try again in a moment."
+      : "StockSage could not finish that response. Please try again.",
     live: false,
     kind: "error",
+    ...(rateLimited ? { errorCode: "rate_limited" as const } : {}),
     retryable: true,
     responseId: randomUUID(),
     state,
