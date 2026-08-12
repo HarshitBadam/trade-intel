@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { MarketCalendar } from "@/lib/market-calendar";
+
 export type MarketDataProvider =
   | "alpaca"
   | "polygon"
@@ -11,7 +13,7 @@ export type MarketDataProvider =
 
 export type MarketVenue = "US" | "ASX" | "INDEX" | "UNKNOWN";
 export type MarketCurrency = "USD" | "AUD" | "NONE" | (string & {});
-export type ExchangeCalendar = "US" | "AU";
+export type ExchangeCalendar = MarketCalendar;
 export type BarGranularity = "1Day" | "15Min" | "1Min";
 export type AdjustmentKind =
   | "split"

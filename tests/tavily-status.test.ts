@@ -27,6 +27,6 @@ test("detailed Tavily search distinguishes provider unavailability", async () =>
   });
 });
 
-test("legacy Tavily wrapper preserves its fail-open evidence contract", async () => {
+test("Tavily evidence wrapper preserves its fail-open contract", async () => {
   assert.deepEqual(await searchTavily(QUERY), []);
 });

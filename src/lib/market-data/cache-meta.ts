@@ -124,7 +124,6 @@ function finnhubSearchRelevance(hit: FinnhubHitLite, q: string): number {
   else if (tk.includes(q)) score -= 20;
   if (name.startsWith(q)) score -= 30;
   else if (name.includes(q)) score -= 10;
-  // Prefer plain common stock over odd instrument types.
   if (hit.type && hit.type !== "Common Stock") score += 50;
   score += tk.length;
   return score;
@@ -147,11 +146,7 @@ function finnhubSearchToLite(
   return out;
 }
 
-// Live symbol search for the long tail the local universe can't answer.
-// Finnhub /search only (fuzzy matching, 60/min), filtered to plausible
-// US-listed symbols and ranked locally so exact/prefix matches surface first.
-// Throws on failure (never returns [] for an outage) so unstable_cache
-// doesn't pin the failure and the caller can distinguish "search down" from "no matches".
+// Throwing prevents unstable_cache from pinning provider outages as empty results.
 async function fetchTickerSearch(query: string): Promise<SearchResult[]> {
   const q = query.toUpperCase();
   const hits = finnhubSearchToLite(await finnhubSearch(query));

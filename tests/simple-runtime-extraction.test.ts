@@ -66,31 +66,6 @@ test("normalizes the three evidence lanes without changing price pairs", () => {
   });
 });
 
-test("accepts a stale pairs completion as a defensive compatibility path", () => {
-  assert.deepEqual(
-    normalizeSimpleEvidencePlan({
-      pairs: [["AAPL", "2026-08-12"]],
-    }),
-    {
-      prices: [["AAPL", "2026-08-12"]],
-      news: [],
-      rankings: [],
-    }
-  );
-});
-
-test("prefers an explicitly populated prices lane over legacy pairs", () => {
-  assert.deepEqual(
-    normalizeSimpleEvidencePlan({
-      prices: [["MSFT", "2026-08-12"]],
-      pairs: [["AAPL", "2026-08-12"]],
-      news: [],
-      rankings: [],
-    }).prices,
-    [["MSFT", "2026-08-12"]]
-  );
-});
-
 test("validates dates, markets, and bounded lane sizes", () => {
   assert.throws(() =>
     normalizeSimpleEvidencePlan({

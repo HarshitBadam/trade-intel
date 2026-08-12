@@ -1,3 +1,5 @@
+import { isWithinOneEdit } from "./text-normalization";
+
 export type CrisisKind = "self_harm" | "acute_distress";
 
 export const SELF_HARM_RESPONSE =
@@ -59,49 +61,6 @@ const SELF_DIRECTED_HARM_ACTIONS = new Set([
   "unalive",
 ]);
 
-// Allows one insertion, deletion, substitution, or adjacent transposition.
-// Keeping this token-scoped prevents fuzzy matching across arbitrary prose.
-function isWithinOneTokenEdit(value: string, expected: string): boolean {
-  if (value === expected) return true;
-  if (Math.abs(value.length - expected.length) > 1) return false;
-
-  if (value.length === expected.length) {
-    const mismatches: number[] = [];
-    for (let index = 0; index < value.length; index += 1) {
-      if (value[index] !== expected[index]) mismatches.push(index);
-      if (mismatches.length > 2) return false;
-    }
-
-    if (mismatches.length === 1) return true;
-    if (mismatches.length !== 2) return false;
-
-    const [first, second] = mismatches;
-    return (
-      second === first + 1 &&
-      value[first] === expected[second] &&
-      value[second] === expected[first]
-    );
-  }
-
-  const shorter = value.length < expected.length ? value : expected;
-  const longer = value.length < expected.length ? expected : value;
-  let shorterIndex = 0;
-  let longerIndex = 0;
-  let edits = 0;
-
-  while (shorterIndex < shorter.length && longerIndex < longer.length) {
-    if (shorter[shorterIndex] === longer[longerIndex]) {
-      shorterIndex += 1;
-    } else {
-      edits += 1;
-      if (edits > 1) return false;
-    }
-    longerIndex += 1;
-  }
-
-  return true;
-}
-
 function hasTypoTolerantSelfDirectedHarmPhrase(text: string): boolean {
   const tokens = text.split(" ");
 
@@ -109,13 +68,13 @@ function hasTypoTolerantSelfDirectedHarmPhrase(text: string): boolean {
     if (!SELF_DIRECTED_HARM_ACTIONS.has(tokens[index])) continue;
 
     const next = tokens[index + 1];
-    if (next && isWithinOneTokenEdit(next, "myself")) return true;
+    if (next && isWithinOneEdit(next, "myself")) return true;
 
     const following = tokens[index + 2];
     if (
       (next === "my" || next === "me") &&
       following &&
-      isWithinOneTokenEdit(following, "self")
+      isWithinOneEdit(following, "self")
     ) {
       return true;
     }

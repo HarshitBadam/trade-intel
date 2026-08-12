@@ -12,7 +12,6 @@ import {
 } from "framer-motion";
 import { ArrowUp, X } from "lucide-react";
 import { LegalDialog } from "@/components/legal/LegalModal";
-import type { ClarificationChoice } from "@/lib/stocksage/types";
 import {
   ChatMessage,
   type ChatMessageModel,
@@ -27,9 +26,7 @@ type FloatingWidgetViewProps = {
   handleExitComplete: () => void;
   dialogRef: RefObject<HTMLDivElement | null>;
   messages: ChatMessageModel[];
-  runResearch: (messageId: string) => void;
   retryMessage: (messageId: string) => void;
-  submitClarification: (messageId: string, choice: ClarificationChoice) => void;
   isThinking: boolean;
   chatEndRef: RefObject<HTMLDivElement | null>;
   inputRef: RefObject<HTMLInputElement | null>;
@@ -96,9 +93,7 @@ export function FloatingWidgetView({
   handleExitComplete,
   dialogRef,
   messages,
-  runResearch,
   retryMessage,
-  submitClarification,
   isThinking,
   chatEndRef,
   inputRef,
@@ -216,9 +211,7 @@ export function FloatingWidgetView({
                         <ChatMessage
                           key={message.id}
                           message={message}
-                          onResearch={runResearch}
                           onRetry={retryMessage}
-                          onClarify={submitClarification}
                         />
                       ))}
                       {isThinking && (

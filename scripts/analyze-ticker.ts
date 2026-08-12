@@ -1,48 +1,17 @@
-// Ops tool: run the deep-analysis engine for one ticker and read the result back.
+// Ops tool: run the market-intelligence analysis pipeline for one ticker.
 //
 //   NODE_OPTIONS="--conditions=react-server" npx tsx scripts/analyze-ticker.ts CCL
 //   NODE_OPTIONS="--conditions=react-server" npx tsx scripts/analyze-ticker.ts CCL --force
 //
-// The react-server condition is required because the store/engine modules import
+// The react-server condition is required because the store modules import
 // "server-only", which throws under plain Node resolution. Env is parsed from
 // .env.local manually so it is set BEFORE the modules (which read process.env at
 // import time via src/lib/config.ts) are dynamically imported.
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-
-function loadEnvLocal(): void {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const envPath = resolve(here, "..", ".env.local");
-  let raw: string;
-  try {
-    raw = readFileSync(envPath, "utf8");
-  } catch {
-    console.warn(`No .env.local at ${envPath}; relying on ambient env.`);
-    return;
-  }
-  for (const line of raw.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    // Ambient env wins so an inline override (e.g. GROQ_ANALYSIS_MODEL=...)
-    // on the command line takes precedence over .env.local.
-    if (!(key in process.env)) process.env[key] = value;
-  }
-}
+import { loadEnvLocal } from "./env";
 
 async function main(): Promise<void> {
-  loadEnvLocal();
+  loadEnvLocal({ warnIfMissing: true });
 
   const args = process.argv.slice(2);
   const force = args.includes("--force");

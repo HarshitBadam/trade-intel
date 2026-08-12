@@ -8,114 +8,6 @@ export type WebAlias = {
   private?: true;
 };
 
-// Stooq is keyless and provides delayed index/AU proxy coverage.
-export type StooqListing = { symbol: string; note?: string; index?: true };
-
-export const STOOQ_SYMBOLS: Record<string, StooqListing> = {
-  GSPC: { symbol: "^spx", index: true },
-  IXIC: { symbol: "^ndq", index: true },
-  DJI: { symbol: "^dji", index: true },
-  CBA: { symbol: "cmway.us", note: "US-listed ADR, USD" },
-  NAB: { symbol: "nabzy.us", note: "US-listed ADR, USD" },
-  ANZ: { symbol: "anzgy.us", note: "US-listed ADR, USD" },
-  WBC: { symbol: "wbkcy.us", note: "US-listed ADR, USD" },
-  MQG: { symbol: "mqbky.us", note: "US-listed ADR, USD" },
-};
-
-export type MarketProxyListing = {
-  candidates: { symbol: string; note: string }[];
-  kind: "etf" | "adr";
-};
-
-// Fallback symbols are traded proxies, not aliases for the underlying index.
-export const MARKET_PROXY_SYMBOLS: Record<string, MarketProxyListing> = {
-  GSPC: {
-    candidates: [
-      {
-        symbol: "SPY",
-        note: "SPY ETF proxy for the S&P 500; these are SPY returns, not S&P 500 index returns",
-      },
-    ],
-    kind: "etf",
-  },
-  IXIC: {
-    candidates: [
-      {
-        symbol: "ONEQ",
-        note: "ONEQ ETF proxy for the Nasdaq Composite; these are ONEQ returns, not Nasdaq Composite index returns",
-      },
-      {
-        symbol: "QQQ",
-        note: "QQQ ETF proxy for the Nasdaq-100; it is not the Nasdaq Composite, and these are QQQ returns",
-      },
-    ],
-    kind: "etf",
-  },
-  DJI: {
-    candidates: [
-      {
-        symbol: "DIA",
-        note: "DIA ETF proxy for the Dow; these are DIA returns, not Dow index returns",
-      },
-    ],
-    kind: "etf",
-  },
-  AXJO: {
-    candidates: [
-      {
-        symbol: "EWA",
-        note: "EWA ETF proxy for broad Australian equities; it is not the ASX 200 or All Ordinaries, and these are EWA returns",
-      },
-    ],
-    kind: "etf",
-  },
-  CBA: {
-    candidates: [
-      {
-        symbol: "CMWAY",
-        note: "CMWAY US OTC ADR in USD; these are ADR returns, not ASX:CBA returns",
-      },
-    ],
-    kind: "adr",
-  },
-  NAB: {
-    candidates: [
-      {
-        symbol: "NABZY",
-        note: "NABZY US OTC ADR in USD; these are ADR returns, not ASX:NAB returns",
-      },
-    ],
-    kind: "adr",
-  },
-  ANZ: {
-    candidates: [
-      {
-        symbol: "ANZGY",
-        note: "ANZGY US OTC ADR in USD; these are ADR returns, not ASX:ANZ returns",
-      },
-    ],
-    kind: "adr",
-  },
-  WBC: {
-    candidates: [
-      {
-        symbol: "WBKCY",
-        note: "WBKCY US OTC ADR in USD; these are ADR returns, not ASX:WBC returns",
-      },
-    ],
-    kind: "adr",
-  },
-  MQG: {
-    candidates: [
-      {
-        symbol: "MQBKY",
-        note: "MQBKY US OTC ADR in USD; these are ADR returns, not ASX:MQG returns",
-      },
-    ],
-    kind: "adr",
-  },
-};
-
 export const WEB_ALIASES: WebAlias[] = [
   { name: "Apple", query: "Apple AAPL stock financial news", ticker: "AAPL", aliases: ["apple"], market: "us", jurisdiction: "United States" },
   { name: "Microsoft", query: "Microsoft MSFT stock financial news", ticker: "MSFT", aliases: ["microsoft"], market: "us", jurisdiction: "United States" },
@@ -186,7 +78,6 @@ export const PRIVATE_COMPANY_NAMES = new Set(
 export type CanonicalGroup = {
   id: string;
   version: 1;
-  /** Human-readable identity used when the answer must name the group. */
   label: string;
   aliases: RegExp;
   members: string[];

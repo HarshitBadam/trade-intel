@@ -6,19 +6,16 @@ The source tree, annotated. Config and generated files are omitted.
 .
 ├── .github/workflows/
 │   └── ci.yml                   # typecheck, lint, tests, and production build
-├── langflow/
-│   ├── README.md                # Langflow evolution and migration record
-│   ├── stocksage-ingestion.json # representative historical ingestion flow
-│   ├── stocksage-chat.json      # representative historical chat flow
-│   └── stocksage-analysis.json  # representative historical analysis flow
 ├── scripts/
+│   ├── env.ts                    # shared .env.local loader for standalone tools
 │   ├── build-universe.mjs       # rebuilds universe.json from Alpaca's asset list
 │   ├── run-showcase-cron.ts     # invokes the showcase scheduler manually
 │   ├── load-news.ts             # loads news for a single ticker
 │   ├── analyze-ticker.ts        # analyzes a single ticker
 │   ├── setup-qstash.ts          # reconciles showcase + maintenance schedules
 │   ├── stocksage-smoke.ts       # runs the StockSage smoke scenarios
-│   └── stocksage-eval.ts        # runs the broader StockSage evaluation set
+│   ├── stocksage-simple-eval.ts # runs the live StockSage evaluation set
+│   └── asx-parity-benchmark.ts  # compares AU and US simple-runtime coverage
 ├── docs/
 │   ├── screenshots.md
 │   ├── stack.md
@@ -62,10 +59,10 @@ The source tree, annotated. Config and generated files are omitted.
     │   ├── login/               # LoginForm, Guilloche background, BrandMarquee
     │   ├── error/               # ErrorScene
     │   ├── legal/               # LegalModal (disclaimer)
-    │   ├── TextAnimations/      # VariableProximity text effect
-    │   └── ui/                  # shadcn-style primitives (button, card, select, form, ...)
+    │   └── ui/                  # shared button, card, chart, menu, and progress primitives
     ├── lib/
     │   ├── config.ts            # feature flags derived from which env keys exist
+    │   ├── market-calendar.ts   # shared US/AU sessions, holidays, and interval types
     │   ├── breaker.ts           # isolated provider and workload breakers
     │   ├── rate-limit.ts        # Upstash sliding-window limiter
     │   ├── guard.ts             # per-action, per-identity rate guard
@@ -75,40 +72,35 @@ The source tree, annotated. Config and generated files are omitted.
     │   ├── movers.ts            # market movers helpers
     │   ├── prefetch.ts          # hover/route prefetch helpers
     │   ├── tickers.ts           # ticker resolution from free text
+    │   ├── telemetry.ts         # structured StockSage and market-data events
     │   ├── useStaleData.ts      # stale-while-revalidate client hook
     │   ├── utils.ts             # cn() and small shared helpers
     │   ├── stocksage/
-    │   │   ├── chat.ts          # stable wrapper for the unified engine
-    │   │   ├── engine.ts / answer.ts # five-stage lifecycle and sole answer executor
-    │   │   ├── router.ts / context.ts # authoritative frozen turn resolution
-    │   │   ├── publication.ts   # shared regular/deep publication contract
-    │   │   ├── deterministic-answer.ts / degraded-answer.ts # focused safe answer helpers
-    │   │   ├── conversation-entity-state.ts / entity-state-helpers.ts # entity state transitions
-    │   │   ├── regular-*.ts     # focused prompt, guards, history, and fallback helpers
-    │   │   ├── deep/            # durable queue, worker, snapshot, store, validation
-    │   │   ├── evidence/        # planner, cache-first retrieval, filters, provider helpers
+    │   │   ├── chat.ts          # stable wrapper for the simple runtime
+    │   │   ├── simple-runtime.ts # compatibility facade for the simple pipeline
+    │   │   ├── simple/           # extraction, retrieval, composition, and orchestration
+    │   │   ├── conversation-*.ts # focused entity, group, correction, and reference state transitions
+    │   │   ├── temporal.ts       # public temporal facade
+    │   │   ├── temporal-*.ts     # calendar, parsing, interval, and state helpers
+    │   │   ├── evidence/astra.ts # published market-intelligence evidence reader
     │   │   ├── policy.ts        # finance-domain and misuse policy
     │   │   ├── crisis.ts        # zero-cost crisis-language prefilter
-    │   │   ├── safety-classifier.ts # custom-policy safeguard rail behind the prefilter
     │   │   ├── state.ts         # untrusted state canonicalization
     │   │   ├── conversation-attributes.ts # criteria, horizon, and jurisdiction detection
     │   │   ├── citations.ts     # source-ID validation and safe link expansion
     │   │   ├── entity-catalog.ts # aliases, groups, and non-US listings
-    │   │   ├── entities.ts      # US quote-safe and web-only entity resolution
-    │   │   ├── intent.ts        # deterministic route decisions
-    │   │   ├── regular-prompt.ts    # evidence-bound intent-aware prompt
-    │   │   ├── synthesis.ts     # isolated Groq model failover and admission
+    │   │   ├── entity-resolution.ts # canonical ticker/group resolution
     │   │   ├── tavily.ts        # bounded server-side Tavily fetch wrapper
-    │   │   ├── telemetry.ts     # structured StockSage request telemetry
-    │   │   ├── types.ts         # validated chat contracts
-    │   │   ├── prompt.ts        # loads the Deep Research system prompt
-    │   │   ├── analysis-prompt.ts   # the deep-analysis instructions
-    │   │   └── system-prompt.json   # Deep Research system prompt
-    │   ├── market-intelligence/ # bundle contracts, queue, worker, scheduler
+    │   │   └── types.ts         # validated chat contracts
+    │   ├── market-intelligence/
+    │   │   ├── worker.ts / refresh-*.ts # refresh orchestration and finalization
+    │   │   ├── job-store.ts / job-*.ts  # durable jobs, locks, and reservations
+    │   │   ├── queue.ts / scheduler.ts  # request admission and scheduled work
+    │   │   └── repository.ts / types.ts # published bundle access and contracts
     │   └── market-data/
-    │       ├── index.ts         # public re-exports
-    │       ├── api.ts           # high-level read API (movers, quotes, home bundles)
-    │       ├── queries.ts       # detail-page assembly and news summary
+    │       ├── api-home.ts / api-related.ts # focused page-level read APIs
+    │       ├── queries.ts       # detail-query facade
+    │       ├── price-queries.ts / stock-details-query.ts / news-queries.ts
     │       ├── cache.ts         # candles + Astra reads via unstable_cache
     │       ├── cache-market.ts  # market-wide movers and year-ago closes
     │       ├── cache-quotes.ts  # targeted quote snapshots for peer sets
@@ -118,12 +110,16 @@ The source tree, annotated. Config and generated files are omitted.
     │       ├── finnhub.ts       # profile, peers, search
     │       ├── polygon.ts       # authenticated fetch + status check
     │       ├── news-loaders.ts  # write path: Polygon/Alpaca news ingest
-    │       ├── news-store.ts    # Astra reads/writes for articles and verdicts
+    │       ├── news-store.ts / news-store-*.ts # article, verdict, and pruning persistence
     │       ├── analysis.ts      # validated direct-Groq analysis preparation
-    │       ├── analysis-helpers.ts  # prompt build, Zod schema, runAnalysisLLM
+    │       ├── analysis-prompt.ts / analysis-helpers.ts # analysis contract and execution
+    │       ├── range-bars.ts / range-bar-*.ts # bounded price series and providers
+    │       ├── market-rankings.ts / market-ranking-*.ts # mover ranking and retrieval
+    │       ├── security-master.ts / security-master-*.ts # canonical instrument identities
+    │       ├── sec-edgar.ts / sec-edgar-*.ts # SEC facts, filings, and normalization
     │       ├── universe.ts      # local search over universe.json
     │       ├── limiter.ts       # per-provider sliding rate limiter
-    │       ├── queries.ts / transforms*.ts  # normalization, sentiment math, activity series
+    │       ├── transforms*.ts   # normalization, sentiment math, activity series
     │       └── types.ts         # shared market-data types
     ├── context/
     │   └── ChartContext.tsx     # shared chart range/state across a page

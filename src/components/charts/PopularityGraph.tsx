@@ -1,4 +1,5 @@
 "use client"
+import Image from "next/image"
 import * as React from "react"
 import { PopularityChart } from "./PopularityChart"
 import { RANGES, rangeToKind, DAY_MS } from "./ranges"
@@ -132,7 +133,7 @@ export function PopularityGraph({
         </div>
 
         <div className="flex items-center gap-2 p-8 text-muted-foreground text-xs">
-          <img src="/shuffle.svg" alt="shuffle" className="w-4 h-4" />
+          <Image src="/shuffle.svg" alt="shuffle" width={16} height={16} />
           <span className="stock-text-description-right">Switch to Stock Price View</span>
         </div>
       </div>

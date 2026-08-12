@@ -2,7 +2,7 @@ import Link from "next/link";
 import TopGainer, {
   TopGainerSkeleton,
 } from "@/components/stocks/TopGainer";
-import { getRelatedStocksData } from "@/lib/market-data";
+import { getRelatedStocksData } from "@/lib/market-data/api-related";
 import { sanitizeTicker } from "@/lib/market-data/transforms";
 import type { RelatedCard } from "@/lib/market-data/types";
 

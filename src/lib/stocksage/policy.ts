@@ -5,7 +5,6 @@ import {
   SELF_HARM_RESPONSE,
   VIOLENCE_THREAT_RESPONSE,
 } from "./crisis";
-import { creativeRequestOnly } from "./regular-guards";
 import {
   CASUAL_ACKNOWLEDGEMENT,
   FAREWELL,
@@ -20,6 +19,10 @@ import type {
 
 const CODE =
   /\b(?:python|javascript|typescript|java|c\+\+|code|script|function|loop|syntax|compile|runtime|console\.log|print\s*\(|for\s+\w+\s+in\s+range)\b/i;
+const CREATIVE_ASK =
+  /\b(?:write|writing|compose|pen|craft)\b[^.!?;\n]{0,40}\b(?:haikus?|poems?|poetry|songs?|raps?|stor(?:y|ies)|jokes?|limericks?|sonnets?|lyrics|ballads?|odes?|verses?)\b|\b(?:tell|give|make|do|sing)\s+(?:me\s+|us\s+)?(?:a|an|another|one more|some)\s+(?:\w+\s+){0,2}?(?:haiku|poem|song|rap|story|joke|limerick|sonnet|ballad|ode)\b|\b(?:a\s+)?(?:haiku|limerick|sonnet|ballad|ode)\s+about\b/i;
+const FINANCE_ASK =
+  /\b(?:how(?:'?s| is| are| did| has| have)|what(?:'?s| is| are| about| happened| moved)|compare|vs\.?|versus|rank|wb|price[sd]?|trading|perform(?:s|ed|ing|ance)?|doing|moved?|outlook|earnings|risks?)\b/i;
 const SPORTS =
   /\b(?:sports?|football|soccer|cricket|rugby|basketball|baseball|tennis|afl|nfl|nba|score|fixture|match result)\b/i;
 const GAMBLING =
@@ -38,6 +41,15 @@ const FINANCIAL_ACTION =
   /\b(?:place|execute|submit|make)\b.{0,60}\b(?:buy|sell|trade|order)\b|\b(?:buy|sell)\b.{0,60}\b(?:shares?|stocks?)\b.{0,30}\b(?:for me|on my behalf)\b|\b(?:transfer|send|move)\b.{0,60}\b(?:money|funds?|\$\s*\d)/i;
 const CRYPTO =
   /\b(?:crypto|bitcoin|btc|ethereum|eth|token|memecoin|altcoin|stablecoin|blockchain|wallet|defi|nft)\b/i;
+
+function creativeRequestOnly(message: string): boolean {
+  if (!CREATIVE_ASK.test(message)) return false;
+  const remainder = message
+    .split(/[.!?;\n]+|,?\s+\b(?:and|then|also|plus|btw|after that)\b\s+/i)
+    .filter((clause) => clause.trim().length > 0 && !CREATIVE_ASK.test(clause))
+    .join(" ");
+  return !FINANCE_ASK.test(remainder);
+}
 const CRYPTO_EXECUTION =
   /\b(?:execute|place|buy|sell|swap|transfer|send)\b.{0,50}\b(?:trade|order|crypto|bitcoin|token|wallet)|\b(?:wallet|transfer)\s+(?:steps?|instructions?)\b/i;
 const CRYPTO_PROMOTION =

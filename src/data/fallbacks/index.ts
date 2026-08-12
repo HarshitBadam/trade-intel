@@ -21,7 +21,4 @@ export {
   CURATED_PEERS,
   getCuratedPeers,
   getGroupPeers,
-  getRelatedStocks,
 } from "./related";
-
-export type { RelatedStock } from "./related";

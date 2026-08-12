@@ -1,5 +1,6 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { loadEnvLocal } from "./env";
 import type {
   ChatReply,
   ChatTurn,
@@ -9,21 +10,6 @@ import type {
   SimpleCompositionPayload,
   SimpleEvidencePlan,
 } from "../src/lib/stocksage/simple-runtime";
-
-function loadEnvLocal(): void {
-  let raw = "";
-  try {
-    raw = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
-  } catch {
-    return;
-  }
-  for (const line of raw.split("\n")) {
-    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-    if (!match) continue;
-    const value = match[2].replace(/^["']|["']$/g, "");
-    if (!(match[1] in process.env)) process.env[match[1]] = value;
-  }
-}
 
 function option(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -121,7 +107,7 @@ async function runScenario(
   scenario: Scenario,
   options: { planOnly: boolean; delayMs: number; retryWaitMs: number }
 ): Promise<TurnResult[]> {
-  const [{ answerChat }, { getMarketRanking }] = await Promise.all([
+  const [{ answerChat }, { getMarketRankingRange }] = await Promise.all([
     import("../src/lib/stocksage/chat"),
     import("../src/lib/market-data/market-rankings"),
   ]);
@@ -144,47 +130,70 @@ async function runScenario(
           state,
         },
         {
-          engine: "simple",
-          simple: {
-            ...(options.planOnly
-              ? {
-                  retrieveMarket: async () => [],
-                  retrieveGeneralNews: async () => [],
-                  retrieveFocusedNews: async (queries: readonly string[]) => ({
-                    evidence: [],
-                    outcomes: queries.map((query) => ({
-                      query,
-                      status: "no_results" as const,
-                      evidenceCount: 0,
-                    })),
-                  }),
-                  retrieveRankings: async () => [],
-                  composeAnswer: async () => "Plan captured.",
-                }
-              : {
-                  // Standalone scripts do not have Next's incremental cache.
-                  retrieveRankings: async (requests, now) =>
-                    Promise.all(
-                      requests.flatMap(([market, date]) =>
-                        market === "UNSPECIFIED"
-                          ? []
-                          : [
-                              getMarketRanking(
-                                market,
-                                date,
-                                now,
-                                { cache: false }
-                              ),
-                            ]
-                      )
-                    ),
+          ...(options.planOnly
+            ? {
+                retrieveMarket: async () => [],
+                retrieveGeneralNews: async () => [],
+                retrieveFocusedNews: async (queries: readonly string[]) => ({
+                  evidence: [],
+                  outcomes: queries.map((query) => ({
+                    query,
+                    status: "no_results" as const,
+                    evidenceCount: 0,
+                  })),
                 }),
-            onExtractionComplete: (value) => {
-              plan = value;
-            },
-            onCompositionPayload: (value) => {
-              compositionPayload = value;
-            },
+                retrieveRankingOutcomes: async () => [],
+                composeAnswer: async () => "Plan captured.",
+              }
+            : {
+                // Standalone scripts do not have Next's incremental cache.
+                retrieveRankingOutcomes: async (requests, now) =>
+                  Promise.all(
+                    requests.map(async (request) => {
+                      if (request.market === "ASX" || request.sector) {
+                        return {
+                          request,
+                          status: "unsupported" as const,
+                          reason:
+                            request.market === "ASX"
+                              ? "asx_market_wide_unsupported"
+                              : "sector_classification_unavailable",
+                          alternatives: [
+                            "whole_us_market",
+                            "compare_named_securities",
+                          ],
+                        };
+                      }
+                      const evidence = await getMarketRankingRange(
+                        {
+                          market: "US",
+                          startDate: request.startDate,
+                          endDate: request.endDate,
+                          limit: request.limit,
+                        },
+                        now,
+                        { cache: false }
+                      );
+                      return {
+                        request,
+                        status:
+                          evidence.status === "available"
+                            ? ("available" as const)
+                            : ("unavailable" as const),
+                        ...(evidence.reason
+                          ? { reason: evidence.reason }
+                          : {}),
+                        alternatives: ["compare_named_securities"],
+                        evidence,
+                      };
+                    })
+                  ),
+              }),
+          onExtractionComplete: (value) => {
+            plan = value;
+          },
+          onCompositionPayload: (value) => {
+            compositionPayload = value;
           },
         }
       );
@@ -320,13 +329,6 @@ async function main(): Promise<void> {
       result.scenario === "ranking-market-default" &&
       result.plan?.rankings[0]?.[0] !== "US"
   );
-  const priceAliasMismatches = results.filter(
-    (result) =>
-      result.plan &&
-      result.compositionPayload &&
-      JSON.stringify(result.plan.prices) !==
-        JSON.stringify(result.compositionPayload.extractedPairs)
-  );
   const failedReplies = planOnly
     ? []
     : results.filter((result) => result.replyKind === "error");
@@ -336,7 +338,6 @@ async function main(): Promise<void> {
     focusedLaneFailures.length > 0 ||
     rankingLaneFailures.length > 0 ||
     rankingDefaultFailures.length > 0 ||
-    priceAliasMismatches.length > 0 ||
     failedReplies.length > 0
   ) {
     console.error(
@@ -354,9 +355,6 @@ async function main(): Promise<void> {
           (result) => `${result.scenario}:${result.turn}`
         ),
         rankingDefaultFailures: rankingDefaultFailures.map(
-          (result) => `${result.scenario}:${result.turn}`
-        ),
-        priceAliasMismatches: priceAliasMismatches.map(
           (result) => `${result.scenario}:${result.turn}`
         ),
         failedReplies: failedReplies.map(

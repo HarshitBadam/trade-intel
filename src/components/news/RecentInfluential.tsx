@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Progress } from "@/components/ui/progress";
 import { NewsCard } from "./NewsCard";
@@ -246,7 +247,13 @@ export function RecentInfluential({
         <div className="flex justify-center items-center gap-4 pb-3">
           <div className="flex pr-3">
             <div className="text-sm">Positive</div>
-            <img src="/upArrow.svg" alt="Positive" className="w-4 h-4 mt-0.5 dark:invert" />
+            <Image
+              src="/upArrow.svg"
+              alt="Positive"
+              width={16}
+              height={16}
+              className="mt-0.5 dark:invert"
+            />
           </div>
 
           <Progress value={positiveSentimentPercentage} className="" />
@@ -255,10 +262,12 @@ export function RecentInfluential({
         <div className="flex justify-center items-center gap-4 pt-3">
           <div className="flex pr-3">
             <div className="text-sm">Negative</div>
-            <img
+            <Image
               src="/downArrow.svg"
               alt="Negative"
-              className="w-4 h-4 mt-0.5 dark:invert"
+              width={16}
+              height={16}
+              className="mt-0.5 dark:invert"
             />
           </div>
           <Progress value={negativeSentimentPercentage} className="" />

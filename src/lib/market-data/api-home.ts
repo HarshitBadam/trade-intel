@@ -2,7 +2,7 @@ import "server-only";
 
 import { generateMockWeek } from "@/data/fallbacks";
 import { hasAstra, hasAlpaca, hasPolygon } from "@/lib/config";
-import type { Headline, Movers, Quote } from "./types";
+import type { Headline, LiveQuote, Movers, Quote } from "./types";
 import {
   mockHeadline,
   mockMovers,
@@ -115,4 +115,23 @@ export async function getHomeTickerData(ticker: string): Promise<{
     getHeadlineData(ticker),
   ]);
   return { quote, headline };
+}
+
+export async function getLiveQuotes(tickers: string[]): Promise<LiveQuote[]> {
+  if (!hasPrices || tickers.length === 0) return [];
+  try {
+    const map = await getMarketMapCached();
+    const seen = new Set<string>();
+    const quotes: LiveQuote[] = [];
+    for (const rawTicker of tickers) {
+      const ticker = rawTicker.toUpperCase();
+      if (seen.has(ticker)) continue;
+      seen.add(ticker);
+      if (map[ticker]) quotes.push(map[ticker]);
+    }
+    return quotes.slice(0, 4);
+  } catch (error) {
+    console.error("Live quote lookup failed:", error);
+    return [];
+  }
 }

@@ -1,6 +1,5 @@
 import { formatVolume, moveStrength } from "@/lib/movers";
-import type { RelatedStock } from "@/data/fallbacks";
-import type { Candidate } from "./types";
+import type { Candidate, RelatedStock } from "./types";
 
 export function titleCase(s: string): string {
   return s

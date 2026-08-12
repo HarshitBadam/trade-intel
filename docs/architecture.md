@@ -133,54 +133,48 @@ Reads go through `unstable_cache` with tag-based revalidation. The cron calls `r
 
 ## StockSage execution
 
-`src/lib/stocksage/chat.ts` is the stable public wrapper over one engine.
-`engine.ts` gates the request, freezes one turn from `router.ts` and
-`context.ts`, retrieves through `evidence/planner.ts` and
-`evidence/retrieve.ts`, then calls the sole executor in `answer.ts`.
-Retrieval reads revision-scoped cache and published market intelligence first,
-computes entity-by-criterion gaps, and calls fundamentals or Tavily only for
-uncovered cells. Regular synthesis uses direct Groq primary/fallback lanes;
-deterministic ASX, proxy, ranking, concept, and degraded answers remain local.
+`src/lib/stocksage/chat.ts` is the stable public wrapper around
+`simple-runtime.ts`. Each finance turn follows one pipeline:
 
-Deep Research lives under `src/lib/stocksage/deep/`. Signed snapshots are
-accepted by `queue.ts`, executed only by the signed QStash worker, and tracked
-durably by `store.ts` through terminal success or failure. Queue outages never
-fall back to inline work.
+1. Resolve bounded v1 conversation state, entity references, and temporal hints.
+2. Apply the deterministic crisis and finance-domain policy floor.
+3. Ask the selected LLM to extract price, focused-news, and ranking needs.
+4. Retrieve range bars, published Astra evidence, Tavily results, and supported
+   US rankings in parallel.
+5. Ask the LLM to compose from that evidence, then expand only validated
+   citation URLs into the reply.
+
+StockSage can use Cerebras or Groq as its primary LLM and fails over to the
+other provider only for missing-provider, network, rate-limit, and server
+failures. Market data remains deterministic and provider-labelled.
 
 ## Chat safety
 
-Safety is two layers, because either one alone fails in a way the other covers.
-
-**The prefilter** (`src/lib/stocksage/crisis.ts`) is a regex over a normalized form of the message: lowercased, punctuation stripped, stretched letters collapsed, so "KILL MY SELF" and "FUCKKKK" match the same patterns as their tidy spellings. It costs nothing, runs before entity resolution so a distressed message never reaches the market path on the strength of ticker-shaped words, and when it fires the turn returns the crisis response immediately. Nothing else runs, including the classifier.
-
-**The classifier** (`src/lib/stocksage/safety-classifier.ts`) is GPT-OSS Safeguard on Groq with StockSage’s explicit JSON policy, and it exists because the prefilter can only catch phrasings someone thought of. It scores the current turn only; recent user context is added only for ambiguous distress language. It runs on turns that reach the answering pipeline, which is where a model-composed reply could be produced.
+`src/lib/stocksage/crisis.ts` normalizes and detects explicit self-harm, acute
+distress, and violence language before any retrieval or model call.
+`src/lib/stocksage/policy.ts` then enforces the finance-domain boundary,
+high-stakes guidance limits, and misuse refusals.
 
 ```mermaid
 flowchart LR
   M["user turn"] --> R{"crisis regex"}
   R -->|match| C["crisis response"]
-  R -->|no match| P["policy, routing"]
-  P --> RT["retrieval"]
-  P -.->|started, not awaited| G["GPT-OSS Safeguard"]
-  RT --> J{"join verdict"}
-  G --> J
-  J -->|allow| A["synthesis"]
+  R -->|no match| P{"domain policy"}
+  P -->|respond or clarify| REF["bounded response"]
+  P -->|allow| X["evidence extraction"]
+  X --> RT["parallel retrieval"]
+  RT --> A["evidence-bound composition"]
   A --> OUT["answer"]
-  J -->|S11| C
-  J -->|S3/S4/S9| REF["refusal"]
 ```
-
-The classifier promise starts before retrieval and is awaited before synthesis, so on a normal finance turn its ~460ms hides entirely behind seconds of retrieval and adds no measurable wall clock, while still gating any model-composed reply. The verdict is checked before any reply leaves `answerChat`.
-
-It acts on four of the fourteen MLCommons categories: `S11` (Suicide & Self-Harm) routes to the same crisis response as the prefilter, and `S3`, `S4`, `S9` refuse. Everything else is allowed through deliberately. `S6` (Specialized Advice) and `S2` (Non-Violent Crimes) matter most here: they fire on ordinary investment questions and on analysis of insider trading or market manipulation as subjects, which is the product's core function. Actual misconduct facilitation is refused deterministically in `policy.ts`, which does not depend on a model being reachable.
-
-The rail fails open at every step. No key, open breaker, exhausted budget, HTTP error, unparseable output, or a verdict slower than 1,500ms all resolve to "allow" and the turn continues on the prefilter alone. A classifier outage degrades safety back to where it was before the classifier existed; it never takes chat down.
 
 ## Failure handling
 
 Two mechanisms keep a flaky provider from becoming a broken page.
 
-**Circuit breaker** (`src/lib/breaker.ts`) isolates retrieval providers and each Groq model lane. Three persistent failures inside ten minutes opens only that circuit; transient Groq 429s follow the server retry window and fail over without opening a ten-minute breaker. State lives in Redis so it is shared across serverless instances, with an in-process map as the local fallback. A shared synthesis admission limit prevents parallel chat requests from stampeding a model token bucket.
+**Circuit breaker** (`src/lib/breaker.ts`) isolates retrieval providers. Three
+persistent failures inside ten minutes opens only that circuit. State lives in
+Redis so it is shared across serverless instances, with an in-process map as
+the local fallback. StockSage LLM requests use direct cross-provider failover.
 
 **Sliding rate limiter** (`src/lib/market-data/limiter.ts`) smooths outgoing bursts to each provider (Alpaca 180/min, Finnhub 50/min). It never rejects, it delays. Callers just `await acquire()`.
 

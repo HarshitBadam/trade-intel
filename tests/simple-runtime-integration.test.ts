@@ -108,8 +108,8 @@ test("prices keep the existing market and general-news path unchanged", async ()
         assert.deepEqual(queries, []);
         return emptyFocused();
       },
-      retrieveRankings: async (rankings) => {
-        assert.deepEqual(rankings, []);
+      retrieveRankingOutcomes: async (requests) => {
+        assert.deepEqual(requests, []);
         return [];
       },
       composeAnswer: async () => "Tesla answer.",
@@ -120,7 +120,6 @@ test("prices keep the existing market and general-news path unchanged", async ()
   );
 
   assert.equal(generalNewsCalls, 1);
-  assert.deepEqual(capturedPayload?.extractedPairs, plan.prices);
   assert.deepEqual(capturedPayload?.extractedPrices, plan.prices);
   assert.equal(reply.text, "Tesla answer.");
   assert.equal(reply.dataStatus, "full");
@@ -154,7 +153,7 @@ test("focused news is supplemental and preserves no-results status for compositi
           },
         ],
       }),
-      retrieveRankings: async () => [],
+      retrieveRankingOutcomes: async () => [],
       composeAnswer: async ({ focusedNews }) => {
         assert.equal(focusedNews.outcomes[0]?.status, "no_results");
         return "I couldn't find reliable reporting about the Macquarie whistleblower story.";
@@ -199,7 +198,7 @@ test("focused provider failure remains distinct and retryable", async () => {
           },
         ],
       }),
-      retrieveRankings: async () => [],
+      retrieveRankingOutcomes: async () => [],
       composeAnswer: async () =>
         "Focused news search is temporarily unavailable.",
     }
@@ -224,7 +223,14 @@ test("ranking-only US turns publish compact evidence as a full answer", async ()
       retrieveMarket: async () => [],
       retrieveGeneralNews: async () => [],
       retrieveFocusedNews: async () => emptyFocused(),
-      retrieveRankings: async () => [availableUsRanking()],
+      retrieveRankingOutcomes: async (requests) => [
+        {
+          request: requests[0],
+          status: "available",
+          alternatives: ["compare_named_securities"],
+          evidence: availableUsRanking(),
+        },
+      ],
       composeAnswer: async () => "| Top | Return |\n| --- | --- |\n| AAPL | +10% |",
       onCompositionPayload: (payload) => {
         capturedPayload = payload;
@@ -240,7 +246,6 @@ test("ranking-only US turns publish compact evidence as a full answer", async ()
 
 test("ASX-wide ranking gives the composer a structured capability outcome", async () => {
   let composed = false;
-  let retrieved = false;
   const reply = await runSimpleChatAdapter(
     { message: "Rank the ASX performers today", history: [] },
     {
@@ -253,10 +258,6 @@ test("ASX-wide ranking gives the composer a structured capability outcome", asyn
       retrieveMarket: async () => [],
       retrieveGeneralNews: async () => [],
       retrieveFocusedNews: async () => emptyFocused(),
-      retrieveRankings: async () => {
-        retrieved = true;
-        return [];
-      },
       composeAnswer: async ({ rankingOutcomes }) => {
         composed = true;
         assert.equal(rankingOutcomes[0]?.status, "unsupported");
@@ -269,7 +270,6 @@ test("ASX-wide ranking gives the composer a structured capability outcome", asyn
     }
   );
 
-  assert.equal(retrieved, false);
   assert.equal(composed, true);
   assert.match(reply.text, /can’t currently rank the entire ASX/i);
   assert.equal(reply.presentationMode, "limited_evidence");
@@ -292,7 +292,6 @@ test("mixed ASX ranking requests still compose supported price evidence", async 
       retrieveMarket: async () => [packet("AAPL")],
       retrieveGeneralNews: async () => [],
       retrieveFocusedNews: async () => emptyFocused(),
-      retrieveRankings: async () => [],
       composeAnswer: async ({ market, rankings, rankingOutcomes }) => {
         composed = true;
         assert.equal(market.length, 1);
@@ -319,10 +318,18 @@ test("an unspecified ranking market defaults to US", async () => {
         news: [],
         rankings: [["UNSPECIFIED", "2026-08-12"]],
       }),
-      retrieveRankings: async (rankings) => {
+      retrieveRankingOutcomes: async (requests) => {
         retrieved = true;
-        assert.deepEqual(rankings, [["US", "2026-08-12"]]);
-        return [availableUsRanking()];
+        assert.equal(requests[0]?.market, "US");
+        assert.equal(requests[0]?.endDate, "2026-08-12");
+        return [
+          {
+            request: requests[0],
+            status: "available",
+            alternatives: ["compare_named_securities"],
+            evidence: availableUsRanking(),
+          },
+        ];
       },
       composeAnswer: async ({ rankingOutcomes }) => {
         assert.equal(rankingOutcomes[0]?.status, "available");

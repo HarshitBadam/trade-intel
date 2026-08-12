@@ -23,21 +23,25 @@ import type { RefreshJob } from "@/lib/market-intelligence/job-store";
 import {
   buildStockData,
   getDetailsData,
+  getChartRangeData,
+} from "@/lib/market-data/queries";
+import {
   getQuoteData,
   getHeadlineData,
   getMoversData,
-  getLiveQuotes as getLiveQuotesImpl,
-  getChartRangeData,
   getHomeTickerData,
-  searchTickersCached,
-  searchUniverse,
+  getLiveQuotes as getLiveQuotesImpl,
+} from "@/lib/market-data/api-home";
+import { searchTickersCached } from "@/lib/market-data/cache";
+import { searchUniverse } from "@/lib/market-data/universe";
+import {
   mockQuote,
   mockHeadline,
   mockNewsSummary,
   mockMovers,
   summarizeMovers,
   sanitizeTicker,
-} from "@/lib/market-data";
+} from "@/lib/market-data/transforms";
 
 import type {
   Quote,

@@ -100,8 +100,6 @@ type AlpacaNewsItem = {
   created_at?: string;
 };
 
-// Alpaca (Benzinga) news mapped to the store row shape. Benzinga carries no
-// sentiment, so rows are Neutral until the deep pass relabels them.
 export async function fetchAlpacaNews(
   ticker: string,
   limit = 24
@@ -135,8 +133,6 @@ export async function fetchAlpacaNews(
     const description = item.summary || title;
     const publicationDate = (item.created_at ?? "").slice(0, 10);
     const id = articleIdFor(symbol, item.url, title, publicationDate);
-    // Benzinga reports sources in lowercase ("benzinga"); capitalize so the
-    // byline renders like the other providers'.
     const source = item.source
       ? item.source.charAt(0).toUpperCase() + item.source.slice(1)
       : "Benzinga";

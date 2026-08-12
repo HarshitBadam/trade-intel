@@ -17,28 +17,21 @@ for (const key of [
   "GROQ_API_KEY",
   "GROQ_ANALYSIS_MODEL",
   "GROQ_CHAT_MODEL",
-  "GROQ_FALLBACK_MODEL",
-  "GROQ_SAFETY_MODEL",
   "CEREBRAS_API_KEY",
   "CEREBRAS_MODEL",
   "STOCKSAGE_SIMPLE_PROVIDER",
   "STOCKSAGE_SIMPLE_MODEL",
-  "STOCKSAGE_SAFETY_CLASSIFIER",
   "TAVILY_API_KEY",
 
-  // Auth presence feeds liveAllowed and STOCKSAGE_DEEP_SNAPSHOT_SECRET, which
-  // gate the deep-research routes.
+  // Auth presence feeds liveAllowed, which gates live provider access.
   "AUTH_SECRET",
   "NEXTAUTH_SECRET",
   "AUTH_GOOGLE_ID",
   "AUTH_GOOGLE_SECRET",
   "AUTH_APPLE_ID",
   "AUTH_APPLE_SECRET",
-  "STOCKSAGE_DEEP_SNAPSHOT_SECRET",
 
-  // Without these the breaker and deep-work stores stay in memory, so the
-  // resetBreakerMemory/resetDeepWorkMemory helpers actually clear the store
-  // the code under test reads.
+  // Without these the breaker and rate-limit stores stay in memory.
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
 ]) {

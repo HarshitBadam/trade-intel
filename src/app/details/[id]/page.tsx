@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { getDetailsData, getRelatedStocksData } from "@/lib/market-data";
+import { getRelatedStocksData } from "@/lib/market-data/api-related";
+import { getDetailsData } from "@/lib/market-data/queries";
 import { sanitizeTicker } from "@/lib/market-data/transforms";
 import type { StockData } from "@/lib/market-intelligence/types";
 import DetailsView from "./DetailsView";

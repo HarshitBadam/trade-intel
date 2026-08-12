@@ -26,7 +26,6 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Exported because queries.ts reads it to label status ("analyzed Nd ago").
 export const ANALYSIS_TTL_DAYS = 3;
 
 const SOURCE_WINDOW_DAYS = 90;
@@ -106,7 +105,6 @@ export type PreparedTickerAnalysis = {
   >;
 };
 
-/** Runs and validates analysis without mutating storage. */
 export async function prepareTickerAnalysis(
   ticker: string,
   articles: readonly StoredArticle[]

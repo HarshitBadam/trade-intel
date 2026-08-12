@@ -1,4 +1,3 @@
-import type { RelatedStock } from "@/data/fallbacks";
 import type { News, NewsStatus } from "@/components/news/RecentInfluential";
 import type { NewsVerdict } from "@/components/news/VerdictModal";
 
@@ -132,20 +131,16 @@ export type ChatQuote = {
   intervalMetrics?: Record<string, ChatIntervalMetric>;
 };
 
-export type ChatFundamentals = {
+export type RelatedStock = {
   ticker: string;
-  asOf: string;
-  peTtm: number | null;
-  revenueGrowthTtmYoy: number | null;
-  beta: number | null;
-  earnings: {
-    period: string;
-    quarter: number | null;
-    year: number | null;
-    actualEps: number | null;
-    estimatedEps: number | null;
-    surprisePercent: number | null;
-  } | null;
+  name: string;
+  currentPrice: string;
+  priceChange: string;
+  percentageChange: string;
+  volume: string;
+  sentiment: string;
+  sentimentSource: string[];
+  reason: string;
 };
 
 export type RelatedCard = { title: string; data: RelatedStock };

@@ -1,17 +1,5 @@
 import { z } from "zod";
-import type { LatencyClass, RouteClass } from "./telemetry";
-import type { MarketCalendar, TemporalInterval } from "./temporal";
-
-export type ChatRoute =
-  | "social"
-  | "general"
-  | "out_of_scope"
-  | "refused"
-  | "stable_finance"
-  | "current_finance"
-  | "comparison"
-  | "clarify"
-  | "safety_support";
+import type { TemporalInterval } from "./temporal";
 
 export type ChatTurn = {
   role: "user" | "ai";
@@ -25,36 +13,15 @@ export type ChatRequest = {
   state?: ConversationState;
 };
 
-// Data health: full, limited verified data, or unavailable.
 export type ChatDataStatus = "full" | "limited" | "unavailable";
 
-/**
- * How the widget should render a reply, using the architecture's stable
- * presentation buckets rather than generic instant/answer labels. Additive
- * and backward-compatible: every existing consumer that ignores these
- * fields keeps working exactly as before. Only the unified engine
- * (`engine.ts`) currently populates them; call sites that skip it (e.g. raw
- * `immediateResponse` for crisis/refusal text) leave them undefined.
- * `deep_pending`/`deep_failed` are client-only states the widget derives from
- * local Deep Research progress (see `effectivePresentationMode` in
- * `components/chat/presentation.ts`); the server never sets them.
- */
 export type ChatPresentationMode =
   | "social"
   | "clarification"
-  | "stable_finance"
   | "current_finance"
   | "comparison"
   | "limited_evidence"
-  | "no_evidence"
-  | "deep_pending"
-  | "deep_failed";
-
-/** One structured choice the widget can render for a clarification turn. */
-export type ClarificationChoice = {
-  id: string;
-  label: string;
-};
+  | "no_evidence";
 
 export type ChatReply = {
   text: string;
@@ -64,16 +31,12 @@ export type ChatReply = {
   retryable?: boolean;
   citationUrls?: string[];
   responseId?: string;
-  deepResearch?: DeepResearchOffer;
   state?: ConversationState;
   dataStatus?: ChatDataStatus;
-  /** Optional, backward-compatible presentation hints for the widget. */
   presentationMode?: ChatPresentationMode;
   presentationReason?: string;
-  clarificationChoices?: ClarificationChoice[];
 };
 
-// ASX quotes use native Yahoo data; Stooq/ADRs remain labeled fallbacks.
 export type FinanceMarket = "us" | "web" | "index" | "au";
 
 export type FinanceEntity = {
@@ -86,86 +49,27 @@ export type FinanceEntity = {
   private?: boolean;
 };
 
-/**
- * A group the user named as a unit ("the Aussie Big Four"). Group identity is
- * kept beside the flat entity list because a later "them" can refer to the
- * last named group rather than to the whole prior comparison.
- */
 export type NamedGroupRef = {
   id: string;
   label: string;
   memberIds: string[];
-  /** State revision at which the group was named. */
   namedAtRevision: number;
 };
 
-export type ConversationFrameGroupRef = {
-  /** Canonical group catalog ID. */
-  id: string;
-  /** The explicit qualification that selected the group on this turn. */
-  qualification: string;
-  /** Ordered members represented by this side of the frame. */
-  memberIds: readonly string[];
-};
-
-/**
- * A bounded, ordered referent captured by the greenfield engine. Entity order
- * is semantic order, not the order of the accumulated entity catalog.
- */
-export type ConversationReferenceFrame = {
-  id: string;
-  kind: "comparison" | "reference";
-  entityIds: readonly string[];
-  groups: readonly ConversationFrameGroupRef[];
-  temporalSpecIds: readonly string[];
-  /** Compiled intervals in the same order as the referenced temporal specs. */
-  intervals: readonly TemporalInterval[];
-};
-
-/**
- * One compiled temporal anchor. Comparison specs intentionally produce two
- * entries with distinct positions so point-vs-point meaning is not collapsed.
- */
-export type ConversationTemporalAnchor = {
-  specId: string;
-  position: number;
-  interval: TemporalInterval;
-};
-
-type ConversationStateFields = {
+export type ConversationState = {
+  version: 1;
   revision: number;
   entities: FinanceEntity[];
   explicitEntitySet: string[];
   criteria: string[];
-  /** Legacy wire format retained while clients migrate to `intervals`. */
   horizon?: string;
   jurisdiction?: string;
   safetyRepliesUsed?: string[];
-  /** Ordered named-group reference frames, oldest first. */
   groups?: NamedGroupRef[];
-  /** The subset the next bare pronoun should resolve to. */
   focusEntityIds?: string[];
-  /** Normalized market-calendar intervals for this turn. */
   intervals?: TemporalInterval[];
   pendingClarification?: string;
 };
-
-export type ConversationStateV1 = ConversationStateFields & {
-  version: 1;
-};
-
-/**
- * Public state for a sticky greenfield session. It is a bounded projection of
- * the internal append-only ledger, never a serialized ledger.
- */
-export type ConversationStateV2 = ConversationStateFields & {
-  version: 2;
-  focusEntityIds: string[];
-  frames: ConversationReferenceFrame[];
-  activeTemporalAnchors: ConversationTemporalAnchor[];
-};
-
-export type ConversationState = ConversationStateV1 | ConversationStateV2;
 
 export type SourceKind = "astra" | "tavily";
 
@@ -191,52 +95,9 @@ export type EvidenceSource = {
   relevanceScore?: number;
 };
 
-export type EvidenceRejectionReason =
-  | "low_provider_score"
-  | "unsafe_authority"
-  | "stale"
-  | "stale_content"
-  | "entity_mismatch"
-  | "missing_entity"
-  | "criterion_mismatch"
-  | "duplicate"
-  | "invalid_source";
-
-export type EvidenceDiagnostics = {
-  inputCount: number;
-  acceptedCount: number;
-  cacheHitCount: number;
-  rejected: Partial<Record<EvidenceRejectionReason, number>>;
-};
-
-export type EvidenceBundle = {
-  version: 1;
-  asOf: string;
-  entityIds: string[];
-  criteria: string[];
-  horizon?: string;
-  quotes: import("@/lib/market-data").ChatQuote[];
-  fundamentals: import("@/lib/market-data").ChatFundamentals[];
-  sources: EvidenceSource[];
-  criteriaCoverage: Record<string, string[]>;
-  freshness: Record<string, string | undefined>;
-  proxyIdentity: Record<
-    string,
-    { symbol: string; kind: "etf" | "adr"; note?: string }
-  >;
-  diagnostics: EvidenceDiagnostics;
-};
-
-export type EvidenceProvider =
-  | "quotes"
-  | "market_proxy"
-  | "astra"
-  | "tavily"
-  | "stooq";
-
 export type EvidenceQuery = {
   id: string;
-  provider: EvidenceProvider;
+  provider: SourceKind;
   query: string;
   entityIds: string[];
   tickers: string[];
@@ -244,92 +105,6 @@ export type EvidenceQuery = {
   freshnessDays?: number;
   topic: "general" | "news";
   limit: number;
-};
-
-export type EvidencePlan = {
-  version: 1;
-  /** Additive for compatibility with persisted/test v1 plans; planner always sets it. */
-  depth?: "regular" | "deep";
-  route: ChatRoute;
-  asOf: string;
-  queries: EvidenceQuery[];
-  requiredEntityIds: string[];
-  criteria: string[];
-  explicitCriteria?: string[];
-  /** True when sources are being used to explain a price move in this window. */
-  causal?: boolean;
-  /** Legacy label; `intervals` carries the normalized market-calendar window. */
-  horizon?: string;
-  intervals?: TemporalInterval[];
-};
-
-export type RouteDecision = {
-  route: ChatRoute;
-  reasonCode: string;
-  retrievalRequired: boolean;
-  deepEligible: boolean;
-  clarification?: string;
-};
-
-/**
- * The single authoritative classification of a turn. Every answer executor
- * consumes a frozen decision; none of them may re-run policy or routing.
- */
-export type TurnDecisionKind =
-  | "supported_stable"
-  | "supported_current"
-  | "supported_comparison"
-  | "high_stakes_finance"
-  | "ambiguous"
-  | "out_of_scope"
-  | "prohibited"
-  | "safety_support"
-  | "social";
-
-export type TurnDecision = {
-  readonly version: 1;
-  readonly kind: TurnDecisionKind;
-  /** Legacy route, preserved so existing consumers and telemetry keep working. */
-  readonly route: ChatRoute;
-  readonly reasonCode: string;
-  readonly latencyClass: LatencyClass;
-  readonly routeClass: RouteClass;
-  /** No executor may call a market or web provider when this is false. */
-  readonly retrievalAuthorized: boolean;
-  /** Model synthesis may shape wording only when this is true. */
-  readonly synthesisAuthorized: boolean;
-  readonly deepEligible: boolean;
-  readonly retryEligible: boolean;
-  /**
-   * False only where the reply is itself the safe output (crisis, hard safety
-   * floor, refusal copy); every other turn joins the classifier verdict before
-   * publishing.
-   */
-  readonly safetyRailRequired: boolean;
-  /** Set for instant routes that answer without any executor work. */
-  readonly immediateText?: string;
-  readonly clarification?: string;
-};
-
-export type TurnContext = {
-  readonly version: 1;
-  /** NFKC-normalized message the decision was made from. */
-  readonly message: string;
-  readonly state: ConversationState;
-  /** Ordered active entities for this turn. */
-  readonly entities: FinanceEntity[];
-  /** The subset a bare pronoun currently refers to. */
-  readonly focusEntities: FinanceEntity[];
-  readonly groups: NamedGroupRef[];
-  readonly intervals: TemporalInterval[];
-  readonly calendar: MarketCalendar;
-  readonly criteria: string[];
-  readonly jurisdiction?: string;
-};
-
-export type Turn = {
-  readonly decision: TurnDecision;
-  readonly context: TurnContext;
 };
 
 export type DomainReasonCode =
@@ -351,31 +126,6 @@ export type DomainPolicyDecision = {
   action: "allow" | "respond" | "clarify";
   reasonCode: DomainReasonCode;
   response?: string;
-};
-
-export type DeepResearchOffer = {
-  token: string;
-  workId: string;
-  // False when research providers cannot supply evidence for these subjects.
-  available: boolean;
-  unavailableReason?: string;
-};
-
-export type DeepResearchReply = {
-  workId: string;
-  status: "success" | "failure";
-  text?: string;
-  citationUrls?: string[];
-  retryable?: boolean;
-  /**
-   * Set only when `status: "failure"` represents a transient admission
-   * denial (rate limit) or an auth gate, not a terminal job outcome. The
-   * widget uses this to decide whether to retry the same work automatically
-   * versus surface a definite stop. Absent for every real job failure.
-   */
-  errorCode?: "unauthorized" | "rate_limited";
-  /** Present only alongside `errorCode: "rate_limited"`: how long to wait before retrying. */
-  retryAfterMs?: number;
 };
 
 export const MAX_MESSAGE_CHARS = 1200;
@@ -412,7 +162,8 @@ const IntervalSchema = z.object({
   raw: z.string().max(60).optional(),
 });
 
-const ConversationStateFieldsSchema = z.object({
+const ConversationStateSchema = z.object({
+  version: z.literal(1),
   revision: z.number().int().min(0).max(10_000),
   entities: z.array(EntitySchema).max(12),
   explicitEntitySet: z.array(z.string().min(1).max(40)).max(12),
@@ -425,43 +176,6 @@ const ConversationStateFieldsSchema = z.object({
   intervals: z.array(IntervalSchema).max(8).optional(),
   pendingClarification: z.string().max(300).optional(),
 });
-
-const FrameGroupSchema = z.object({
-  id: z.string().min(1).max(60),
-  qualification: z.string().min(1).max(120),
-  memberIds: z.array(z.string().min(1).max(40)).max(12),
-});
-
-const ReferenceFrameSchema = z.object({
-  id: z.string().min(1).max(80),
-  kind: z.enum(["comparison", "reference"]),
-  entityIds: z.array(z.string().min(1).max(40)).max(12),
-  groups: z.array(FrameGroupSchema).max(4),
-  temporalSpecIds: z.array(z.string().min(1).max(80)).max(8),
-  intervals: z.array(IntervalSchema).max(8),
-});
-
-const TemporalAnchorSchema = z.object({
-  specId: z.string().min(1).max(80),
-  position: z.number().int().min(0).max(7),
-  interval: IntervalSchema,
-});
-
-const ConversationStateV1Schema = ConversationStateFieldsSchema.extend({
-  version: z.literal(1),
-});
-
-const ConversationStateV2Schema = ConversationStateFieldsSchema.extend({
-  version: z.literal(2),
-  focusEntityIds: z.array(z.string().min(1).max(40)).max(12),
-  frames: z.array(ReferenceFrameSchema).max(4),
-  activeTemporalAnchors: z.array(TemporalAnchorSchema).max(8),
-});
-
-const ConversationStateSchema = z.discriminatedUnion("version", [
-  ConversationStateV1Schema,
-  ConversationStateV2Schema,
-]);
 
 type ParseResult =
   | { ok: true; value: ChatRequest }

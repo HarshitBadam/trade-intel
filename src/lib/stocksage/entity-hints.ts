@@ -12,6 +12,7 @@ const GENERIC_NAME_TOKENS = new Set([
   "class",
   "common",
   "company",
+  "capital",
   "corp",
   "corporation",
   "global",
@@ -23,17 +24,23 @@ const GENERIC_NAME_TOKENS = new Set([
   "stock",
 ]);
 
-function significantTokens(value: string): string[] {
+export function entityNameTokens(
+  value: string,
+  minLength = 4
+): string[] {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .split(" ")
-    .filter((token) => token.length >= 4 && !GENERIC_NAME_TOKENS.has(token));
+    .filter(
+      (token) =>
+        token.length >= minLength && !GENERIC_NAME_TOKENS.has(token)
+    );
 }
 
 function namesOverlap(left: string, right: string): boolean {
-  const leftTokens = significantTokens(left);
-  const rightTokens = new Set(significantTokens(right));
+  const leftTokens = entityNameTokens(left);
+  const rightTokens = new Set(entityNameTokens(right));
   return leftTokens.some((token) => rightTokens.has(token));
 }
 

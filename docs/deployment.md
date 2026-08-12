@@ -42,8 +42,3 @@ marks the job terminal, preserves the last usable bundle, and applies a short
 retry cooldown. There is no synchronous provider or model fallback in a page
 request. Deployment checks, incident handling, and rollback steps are in the
 [market-intelligence runbook](market-intelligence-runbook.md).
-
-StockSage Deep Research is also queue-only. The server action accepts a signed
-snapshot, publishes `/api/stocksage/deep`, and polls the durable job record.
-Missing queue configuration or publish failure returns an honest unavailable
-result and never executes research inside the request.

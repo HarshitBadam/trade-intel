@@ -3,16 +3,9 @@ import "server-only";
 import { hasUpstash } from "./config";
 
 export type Provider =
-  | "groq-chat"
-  | "groq-fallback"
-  | "groq-deep"
-  | "groq-deep-fallback"
   | "groq-analysis"
-  | "groq-guard"
   | "tavily"
-  | "astra"
-  | "quotes"
-  | "stooq";
+  | "astra";
 
 const FAILURE_THRESHOLD = 3;
 

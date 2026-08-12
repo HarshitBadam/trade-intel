@@ -1,7 +1,7 @@
 import {
   temporalIntervalKey,
   type TemporalInterval,
-} from "@/lib/stocksage/temporal";
+} from "@/lib/market-calendar";
 import type { ChatIntervalMetric, ChatQuote } from "./types";
 
 export type QuoteMetricPoint = {

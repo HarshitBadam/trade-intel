@@ -5,7 +5,7 @@ import {
   GROQ_ANALYSIS_MODEL,
 } from "@/lib/config";
 import { groqChatJSON } from "@/lib/groq";
-import { ANALYSIS_INSTRUCTIONS } from "@/lib/stocksage/analysis-prompt";
+import { ANALYSIS_INSTRUCTIONS } from "./analysis-prompt";
 import { isOpen, recordFailure, recordSuccess } from "@/lib/breaker";
 import type { StoredArticle } from "./types";
 

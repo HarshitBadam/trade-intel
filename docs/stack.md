@@ -17,11 +17,11 @@ Grouped by role. The choices that actually shape the app are explained in [archi
 ## Store and infrastructure
 
 - **Astra DB** (DataStax) holds analyzed articles and per-ticker verdicts. It is the store the request path reads from.
-- **Upstash Redis** backs rate limiting, isolated circuit breakers, the cron cursor, and deeper-research idempotency. It is HTTP-based, so it works from serverless functions and shares state across instances.
+- **Upstash Redis** backs rate limiting, isolated circuit breakers, the cron cursor, and durable market-intelligence work. It is HTTP-based, so it works from serverless functions and shares state across instances.
 - **Vercel** hosts the app; **QStash** schedules and delivers durable market-intelligence work.
 
 ## AI
 
-- **Groq** runs isolated model lanes for market analysis, primary/fallback chat synthesis, Deep Research, and the input-safety rail.
-- **Tavily** supplies only explicitly planned, filtered evidence for current and comparison routes.
+- **Cerebras and Groq** provide StockSage extraction and composition with cross-provider failover; Groq also runs market-intelligence analysis.
+- **Tavily** supplies focused web evidence requested by the simple StockSage plan.
 - **Auth.js** handles Google sign-in.

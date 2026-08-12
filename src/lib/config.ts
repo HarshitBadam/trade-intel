@@ -2,28 +2,6 @@ import "server-only";
 
 export const isProd = process.env.NODE_ENV === "production";
 
-/**
- * Greenfield remains opt-in until the live-path gate is approved. Unknown
- * values deliberately collapse to legacy rather than creating another mode.
- */
-export const STOCKSAGE_ENGINE: "legacy" | "greenfield" | "simple" =
-  process.env.STOCKSAGE_ENGINE === "greenfield"
-    ? "greenfield"
-    : process.env.STOCKSAGE_ENGINE === "simple"
-      ? "simple"
-      : "legacy";
-
-function canaryPercentage(value: string | undefined): number {
-  if (value === undefined || value.trim() === "") return 0;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : 0;
-}
-
-/** Sticky session canary; malformed/out-of-range values disable the canary. */
-export const STOCKSAGE_GREENFIELD_CANARY_PERCENT = canaryPercentage(
-  process.env.STOCKSAGE_GREENFIELD_CANARY_PERCENT
-);
-
 export const POLYGON_API_KEY = process.env.POLYGON_API_KEY;
 const rawPolygon = Boolean(POLYGON_API_KEY);
 
@@ -51,14 +29,6 @@ export const GROQ_ANALYSIS_MODEL =
   process.env.GROQ_ANALYSIS_MODEL ?? "openai/gpt-oss-20b";
 export const GROQ_CHAT_MODEL =
   process.env.GROQ_CHAT_MODEL ?? "qwen/qwen3.6-27b";
-export const GROQ_FALLBACK_MODEL =
-  process.env.GROQ_FALLBACK_MODEL ?? "openai/gpt-oss-120b";
-export const GROQ_SEMANTIC_MODEL =
-  process.env.GROQ_SEMANTIC_MODEL ?? GROQ_CHAT_MODEL;
-export const GROQ_SEMANTIC_FALLBACK_MODEL =
-  process.env.GROQ_SEMANTIC_FALLBACK_MODEL ?? GROQ_ANALYSIS_MODEL;
-export const GROQ_SAFETY_MODEL =
-  process.env.GROQ_SAFETY_MODEL ?? "openai/gpt-oss-safeguard-20b";
 const rawGroq = Boolean(GROQ_API_KEY);
 
 export const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
@@ -85,10 +55,6 @@ export function resolveSimpleLlmConfig(
 const simpleLlm = resolveSimpleLlmConfig();
 export const STOCKSAGE_SIMPLE_PROVIDER = simpleLlm.provider;
 export const STOCKSAGE_SIMPLE_MODEL = simpleLlm.model;
-// A rail that can false-positive needs an off switch that does not also take
-// chat synthesis down with it.
-const safetyClassifierOff =
-  process.env.STOCKSAGE_SAFETY_CLASSIFIER === "off";
 
 export const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 const rawTavily = Boolean(TAVILY_API_KEY);
@@ -114,17 +80,7 @@ export const hasFinnhub = rawFinnhub && liveAllowed;
 export const hasAstra = rawAstra && liveAllowed;
 export const hasGroq = rawGroq && liveAllowed;
 export const hasCerebras = rawCerebras && liveAllowed;
-export const hasSafetyClassifier = hasGroq && !safetyClassifierOff;
-// StockSage synthesis resolves only the direct Groq primary/fallback pair.
-export const hasAnySynthesisLlm = hasGroq;
 export const hasTavily = rawTavily && liveAllowed;
-export const STOCKSAGE_DEEP_SNAPSHOT_SECRET =
-  process.env.STOCKSAGE_DEEP_SNAPSHOT_SECRET ??
-  process.env.AUTH_SECRET ??
-  process.env.NEXTAUTH_SECRET;
-export const hasDeepResearch = Boolean(
-  hasAnySynthesisLlm && (hasTavily || hasAstra) && STOCKSAGE_DEEP_SNAPSHOT_SECRET
-);
 
 if (
   isProd &&
@@ -145,19 +101,6 @@ if (
   );
 }
 
-// Evaluation-only ASX feeds. These are deliberately excluded from the
-// `has*` flags the request path reads: the parity benchmark may call them,
-// production may not, until a licensed provider is signed off.
-export const ASX_EVAL_PROVIDER = process.env.ASX_EVAL_PROVIDER;
-export const EODHD_API_KEY = process.env.EODHD_API_KEY;
-export const MARKETSTACK_API_KEY = process.env.MARKETSTACK_API_KEY;
-export const asxEvalProvider: "eodhd" | "marketstack" | "none" =
-  ASX_EVAL_PROVIDER === "eodhd" && EODHD_API_KEY
-    ? "eodhd"
-    : ASX_EVAL_PROVIDER === "marketstack" && MARKETSTACK_API_KEY
-      ? "marketstack"
-      : "none";
-
 export const QSTASH_URL = process.env.QSTASH_URL;
 export const QSTASH_TOKEN = process.env.QSTASH_TOKEN;
 export const QSTASH_CURRENT_SIGNING_KEY = process.env.QSTASH_CURRENT_SIGNING_KEY;
@@ -171,13 +114,7 @@ const hasQStashQueue = Boolean(
     APP_URL &&
     (QSTASH_CURRENT_SIGNING_KEY || QSTASH_NEXT_SIGNING_KEY)
 );
-/**
- * Asynchronous Deep Research needs somewhere to publish to, somewhere to call
- * back, a way to prove the callback came from QStash, and durable state shared
- * by every serverless instance. Without all four the enqueue path stays
- * unavailable; Deep Research never runs inline.
- */
-export const hasDeepQueue = hasQStashQueue && hasUpstash;
+/** Market-intelligence refreshes require signed callbacks and durable state. */
 export const hasRefreshQueue = hasQStashQueue && hasUpstash;
 export const MARKET_INTELLIGENCE_ON_DEMAND_DAILY_BUDGET = Math.max(
   1,

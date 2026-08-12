@@ -34,10 +34,9 @@ No API keys required. An empty `.env.local` runs the whole app on mock data; cop
 | [Configuration](docs/configuration.md)   | Environment variables and run modes                |
 | [Deployment](docs/deployment.md)         | Hosting, cron jobs, queues, and provider setup     |
 | [Repo structure](docs/repo-structure.md) | The source tree, annotated                         |
-| [Langflow evolution](langflow/README.md) | Historical flow artifacts and migration context    |
 
 
 ---
 
-> **On the origin.** This started as a [university hackathon project](https://devpost.com/software/tradeintel) built with a team in March 2025, where we shipped a rough homepage and detail page over a weekend. The version here was rebuilt solo through mid-2026: the store-first pipeline, the provider split, the Langflow flows, auth, the chat assistant, and the current UI. The commit history has the full trail.
+> **On the origin.** This started as a [university hackathon project](https://devpost.com/software/tradeintel) built with a team in March 2025, where we shipped a rough homepage and detail page over a weekend. The version here was rebuilt solo through mid-2026: the store-first pipeline, provider integrations, auth, the chat assistant, and the current UI. The commit history has the full trail.
 

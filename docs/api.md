@@ -24,10 +24,12 @@ These are called directly from client components. Each one that touches a provid
 
 | Action | Limit | Returns |
 |--------|-------|---------|
-| `getSummary({ message, sessionId?, history, state? })` | 10 / min | Regular reply, citations, resolved state, response id, and an optional research offer |
-| `researchDeeper(snapshotToken)` | 4 / min | Idempotent per-response research result |
+| `getSummary({ message, sessionId?, history, state? })` | 24 / min | Answer, citations, resolved v1 state, presentation metadata, and response id |
 
-`getSummary` validates bounded history and state, enforces the finance-domain policy, resolves references and groups, then retrieves only providers named by a typed evidence plan. Social, out-of-scope, general-code, and stable-finance turns do not retrieve. Eligible completed responses carry a signed immutable snapshot token for `researchDeeper`; there is no composer-selected research mode.
+`getSummary` validates bounded history and v1 state, enforces the deterministic
+crisis and finance-domain policy floor, resolves references and groups, then
+runs the simple extraction, parallel retrieval, and evidence-bound composition
+pipeline. Social and policy responses return without retrieval.
 
 **Stock data** (`src/app/details/[id]/actions.ts`)
 
