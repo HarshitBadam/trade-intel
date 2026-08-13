@@ -6,11 +6,7 @@ import {
   validCitationUrls,
 } from "../citations";
 import { resolveConversationState } from "../conversation";
-import {
-  evaluateDomainPolicy,
-  hardSafetyFloor,
-  OUT_OF_SCOPE_RESPONSE,
-} from "../policy";
+import { evaluateDomainPolicy, hardSafetyFloor } from "../policy";
 import type { ChatReply, ChatRequest } from "../types";
 import {
   buildSimpleCompositionPayload,
@@ -24,6 +20,7 @@ import type {
   SimpleRuntimeDependencies,
 } from "./contracts";
 import { preExtractionClarification } from "./context";
+import { contextualRecoveryHints, resolveContextualRecovery } from "./contextual-recovery";
 import { extractEvidencePlan } from "./extraction";
 import { repairListingRelativePrices } from "./listing-repair";
 import { retrieveMarket } from "./market";
@@ -42,6 +39,7 @@ import {
   isColloquialGreeting,
   simpleClarificationReply,
   simpleLlmErrorReply,
+  simpleOutOfScopeReply,
   simpleSocialReply,
 } from "./responses";
 import { hasSimpleEvidenceRequest } from "./validation";
@@ -56,6 +54,7 @@ export async function runSimpleChatAdapter(
     request.state,
     request.history
   );
+  const contextualRequest: ChatRequest = { ...request, state: initial.state };
   const floor = hardSafetyFloor(request.message, initial.state.entities);
   if (floor?.response) {
     return {
@@ -86,34 +85,51 @@ export async function runSimpleChatAdapter(
     };
   }
   const clarification = preExtractionClarification(request, initial);
+  if (clarification && clarification.reason !== "ambiguous_follow_up")
+    return simpleClarificationReply(initial.state, clarification.text, clarification.reason);
+  let plan: SimpleEvidencePlan | undefined;
   if (clarification) {
-    return simpleClarificationReply(
+    const recovery = await resolveContextualRecovery(
+      contextualRequest,
       initial.state,
-      clarification.text,
-      clarification.reason
+      dependencies,
+      { clarification, hints: contextualRecoveryHints(initial) }
     );
+    if (recovery.plan) {
+      plan = recovery.plan;
+      dependencies.onExtractionComplete?.(plan);
+    } else if (recovery.reply) return recovery.reply;
+    else
+      return simpleClarificationReply(
+        initial.state,
+        clarification.text,
+        clarification.reason
+      );
   }
-
-  let plan: SimpleEvidencePlan;
-  try {
-    plan = dependencies.extractPlan
-      ? await dependencies.extractPlan(request)
-      : await extractEvidencePlan(request, dependencies.now);
-    dependencies.onExtractionComplete?.(plan);
-  } catch (error) {
-    return simpleLlmErrorReply(initial.state, "semantic extraction", error);
+  if (!plan) {
+    try {
+      plan = dependencies.extractPlan
+        ? await dependencies.extractPlan(contextualRequest)
+        : await extractEvidencePlan(contextualRequest, dependencies.now, undefined, contextualRecoveryHints(initial));
+      dependencies.onExtractionComplete?.(plan);
+    } catch (error) {
+      return simpleLlmErrorReply(initial.state, "semantic extraction", error);
+    }
   }
-
   if (!hasSimpleEvidenceRequest(plan)) {
-    return {
-      text: OUT_OF_SCOPE_RESPONSE,
-      live: false,
-      kind: "answer",
-      responseId: randomUUID(),
-      state: initial.state,
-      dataStatus: "full",
-      presentationReason: "simple_no_finance_subject",
-    };
+    const recovery = await resolveContextualRecovery(
+      contextualRequest,
+      initial.state,
+      dependencies,
+      { hints: contextualRecoveryHints(initial) }
+    );
+    if (recovery.plan) {
+      plan = recovery.plan;
+      dependencies.onExtractionComplete?.(plan);
+    } else if (recovery.reply) return recovery.reply;
+  }
+  if (!hasSimpleEvidenceRequest(plan)) {
+    return simpleOutOfScopeReply(initial.state, "simple_no_finance_subject");
   }
   let rankingRequests: RefinedRankingRequest[] = [];
   try {
@@ -122,14 +138,14 @@ export async function runSimpleChatAdapter(
         ? []
         : dependencies.refineRankings
           ? await dependencies.refineRankings(
-              request,
+              contextualRequest,
               plan.rankings,
               dependencies.now
             )
           : dependencies.extractPlan
             ? rankingRequestsFromSeed(plan.rankings)
             : await refineRankingRequests(
-                request,
+                contextualRequest,
                 plan.rankings,
                 dependencies.now
               );
@@ -166,8 +182,8 @@ export async function runSimpleChatAdapter(
       ? dependencies.retrieveMarket(resolvedPairs)
       : retrieveMarket(resolvedPairs),
     dependencies.retrieveGeneralNews
-      ? dependencies.retrieveGeneralNews(request, entities, dates)
-      : retrieveNews(request, entities, dates),
+      ? dependencies.retrieveGeneralNews(contextualRequest, entities, dates)
+      : retrieveNews(contextualRequest, entities, dates),
     dependencies.retrieveFocusedNews
       ? dependencies.retrieveFocusedNews(plan.news, entities)
       : retrieveFocusedNews(plan.news, entities),
@@ -201,13 +217,13 @@ export async function runSimpleChatAdapter(
     try {
       const repairedPrices = dependencies.repairListingPrices
         ? await dependencies.repairListingPrices(
-            request,
+            contextualRequest,
             pairs,
             listingContext,
             dependencies.now
           )
         : await repairListingRelativePrices(
-            request,
+              contextualRequest,
             pairs,
             listingContext,
             dependencies.now
@@ -269,7 +285,7 @@ export async function runSimpleChatAdapter(
   );
 
   const compositionArgs: SimpleComposeArgs = {
-    request,
+    request: contextualRequest,
     pairs,
     entities,
     market,

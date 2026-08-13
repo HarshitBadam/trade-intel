@@ -14,6 +14,70 @@ import type {
   FocusedNewsOutcome,
 } from "./contracts";
 
+const FOCUSED_QUERY_STOP_WORDS = new Set([
+  "about",
+  "after",
+  "allegation",
+  "allegations",
+  "alleged",
+  "controversy",
+  "event",
+  "incident",
+  "latest",
+  "news",
+  "report",
+  "reporting",
+  "reports",
+  "story",
+  "that",
+  "their",
+  "they",
+  "time",
+  "what",
+  "when",
+  "with",
+]);
+
+function searchTokens(value: string): string[] {
+  return (
+    value
+      .normalize("NFKD")
+      .replace(/\p{Mark}/gu, "")
+      .toLowerCase()
+      .match(/\p{Letter}[\p{Letter}\p{Number}]*/gu) ?? []
+  );
+}
+
+export function filterFocusedNewsEvidence(
+  query: string,
+  entities: readonly FinanceEntity[],
+  evidence: readonly EvidenceInput[]
+): EvidenceInput[] {
+  const entityTokens = new Set(
+    entities.flatMap((entity) =>
+      searchTokens(`${entity.name} ${entity.ticker ?? ""}`)
+    )
+  );
+  const topicTokens = [
+    ...new Set(
+      searchTokens(query).filter(
+        (token) =>
+          token.length >= 3 &&
+          !entityTokens.has(token) &&
+          !FOCUSED_QUERY_STOP_WORDS.has(token)
+      )
+    ),
+  ];
+  if (topicTokens.length === 0) return [...evidence];
+  const requiredMatches = topicTokens.length >= 3 ? 2 : 1;
+  return evidence.filter((item) => {
+    if ((item.score ?? 0) >= 0.5) return true;
+    const text = searchTokens(`${item.title} ${item.excerpt}`).join("");
+    const matches = topicTokens.filter((token) => text.includes(token)).length;
+    return matches >= requiredMatches;
+  });
+}
+
 function newsQueries(
   request: ChatRequest,
   entities: readonly FinanceEntity[],
@@ -95,13 +159,22 @@ export async function retrieveFocusedNews(
         limit: 6,
       };
       const result = await searchTavilyDetailed(request);
+      const evidence = filterFocusedNewsEvidence(
+        query,
+        entities,
+        result.evidence
+      );
+      const status =
+        result.status === "ok" && evidence.length === 0
+          ? "no_results"
+          : result.status;
       return {
-        result,
+        result: { ...result, status, evidence },
         outcome: {
           query,
-          status: result.status,
+          status,
           ...(result.reason ? { reason: result.reason } : {}),
-          evidenceCount: result.evidence.length,
+          evidenceCount: evidence.length,
         } satisfies FocusedNewsOutcome,
       };
     })

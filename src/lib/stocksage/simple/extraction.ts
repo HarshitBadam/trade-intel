@@ -2,8 +2,15 @@ import { z, ZodError } from "zod";
 import { llmErrorSummary } from "@/lib/llm";
 import { logStockSage } from "@/lib/telemetry";
 import type { ChatRequest } from "../types";
-import type { RankingMarket, RankingRequest, SimpleEvidencePlan } from "./contracts";
+import type {
+  ContextualRecoveryHints,
+  ContextualRecoveryResult,
+  RankingMarket,
+  RankingRequest,
+  SimpleEvidencePlan,
+} from "./contracts";
 import {
+  contextualRecoveryContext,
   deterministicRankingMarkets,
   hasMarketWideRankingIntent,
   isoToday,
@@ -17,7 +24,9 @@ import {
 } from "./llm";
 import {
   NewsQuerySchema,
+  hasSimpleEvidenceRequest,
   normalizeSimpleEvidencePlan,
+  PricePairsSchema,
   RankingTupleSchema,
   SubjectDatePairSchema,
   summarizeZodIssues,
@@ -179,10 +188,89 @@ function salvageEvidencePlan(
   return normalizeSimpleEvidencePlan({ prices, news, rankings });
 }
 
+const ContextualRecoverySchema = z.object({
+  disposition: z.enum([
+    "research",
+    "social",
+    "acknowledgement",
+    "ambiguous",
+    "out_of_scope",
+  ]),
+  prices: PricePairsSchema.optional().default([]),
+  news: z.array(NewsQuerySchema).max(3).optional().default([]),
+  rankings: z.array(RankingTupleSchema).max(2).optional().default([]),
+});
+
+export async function recoverContextualEvidencePlan(
+  request: ChatRequest,
+  now = new Date(),
+  jsonCall: SimpleJsonCall = simpleLlmChatJSON,
+  hints: ContextualRecoveryHints = { resolvedCurrentEntities: [] }
+): Promise<ContextualRecoveryResult> {
+  const raw = await jsonCall({
+    maxTokens: 700,
+    temperature: 0,
+    timeoutMs: 12_000,
+    system: `You resolve only uncertain follow-up turns for a financial research assistant.
+Return only {"disposition":"research"|"social"|"acknowledgement"|"ambiguous"|"out_of_scope","prices":[["subject","YYYY-MM-DD"], ...],"news":["focused search query", ...],"rankings":[["US"|"ASX"|"UNSPECIFIED","YYYY-MM-DD"], ...]}.
+
+Judge the CURRENT message. Use recentConversation and activeState only to resolve its references and topic.
+- research: the current message requests fresh information about a financial subject, including a pronoun reference, an elliptical follow-up, an explicit return to an earlier financial topic, or a purported event involving an active financial entity.
+- social: it is a greeting, welcome, casual check-in, or farewell that does not request research.
+- acknowledgement: it merely accepts, thanks, reacts to, or closes the prior answer.
+- ambiguous: it may be a financial follow-up but the intended subject or request cannot be resolved safely.
+- out_of_scope: it clearly has no semantic relationship to a named or active financial subject, market, investment, or economic topic.
+
+Never repeat or continue a previous evidence request merely because it appears in recentConversation. A research disposition requires the current message itself to semantically request more research.
+Do not reject a company-related event because it sounds implausible, comedic, cultural, colloquial, or non-financial. If the current message attributes a purported action or event to a resolved active company, classify it as research and request focused news. Retrieval decides whether the claim is substantiated.
+currentTurnResolution.resolvedEntities contains only entities that the deterministic resolver linked to the CURRENT message through an explicit name or reference such as it, they, or the company. When this list is non-empty, out_of_scope is forbidden because the current turn is semantically connected to a financial subject. Distinguish research from a mere acknowledgement or genuine ambiguity.
+You do not need to understand or validate an unfamiliar slang action before searching it. When a question attributes an unclear action or event phrase to a resolved current entity, preserve that phrase verbatim beside the entity name in a standalone news query and classify the turn as research. Use ambiguous only when no subject or requested claim can be identified.
+When the current message is a concise story, event, allegation, or news-topic fragment with no named subject, inherit the sole activeState entity and classify it as research. Use ambiguous only when there are multiple plausible active subjects or the fragment cannot be connected to the conversation.
+
+For research, populate the same evidence lanes used by the main extractor:
+- prices includes every named or conversationally referenced financial subject. Use a canonical ticker when known.
+- news is supplemental and only for a particular story, allegation, announcement, report, lawsuit, investigation, or event. Make each query standalone.
+- rankings is only for market-wide top, bottom, best, worst, gainers, losers, or movers.
+- Use today's date for a current request when no other date is resolved.
+
+For every non-research disposition, return all three evidence arrays empty. Do not answer the user and do not add fields.`,
+    user: contextualRecoveryContext(
+      request,
+      now,
+      hints.resolvedCurrentEntities
+    ),
+  });
+  const parsed = ContextualRecoverySchema.parse(raw);
+  const plan = normalizeSimpleEvidencePlan(parsed);
+  if (parsed.disposition !== "research") {
+    return {
+      disposition: parsed.disposition,
+      plan: { prices: [], news: [], rankings: [] },
+    };
+  }
+  if (!hasSimpleEvidenceRequest(plan)) {
+    return {
+      disposition: "ambiguous",
+      plan,
+    };
+  }
+  logStockSage({
+    event: "simple_contextual_recovery",
+    reasonCode: "fresh_research_plan",
+    detail: JSON.stringify({
+      prices: plan.prices.length,
+      news: plan.news.length,
+      rankings: plan.rankings.length,
+    }),
+  });
+  return { disposition: "research", plan };
+}
+
 export async function extractEvidencePlan(
   request: ChatRequest,
   now = new Date(),
-  jsonCall: SimpleJsonCall = simpleLlmChatJSON
+  jsonCall: SimpleJsonCall = simpleLlmChatJSON,
+  hints: ContextualRecoveryHints = { resolvedCurrentEntities: [] }
 ): Promise<SimpleEvidencePlan> {
   const args = {
     maxTokens: 800,
@@ -195,6 +283,7 @@ The three arrays request factual evidence. Request only evidence needed to answe
 
 prices is the primary financial-evidence lane. Each entry retrieves available market prices and broad financial news for this subject at this date.
 - Always include every named or conversationally referenced financial subject in prices, including when news is also populated.
+- currentTurnResolvedEntities contains entities that the deterministic resolver linked specifically to the current wording through an explicit name or reference. Treat a question attributing any action or event to one of these entities as a research request. Preserve unfamiliar action wording in a focused query rather than returning an empty plan.
 - For a listed security, subject must be its canonical ticker without "$".
 - For a private company, industry, concept, index, or unresolved group, use its concise canonical name. A listed price does not need to exist.
 - Resolve former/latter, it/they/them, misspellings, and follow-up dates from the supplied conversation and active entities.
@@ -205,6 +294,8 @@ prices is the primary financial-evidence lane. Each entry retrieves available ma
 - For causal/current-news questions, emit the relevant period boundaries.
 
 news is supplemental. Populate it only when the user asks about a specific named story, allegation, announcement, report, lawsuit, investigation, or event. Write a concise standalone search query. Do not use news for ordinary price, performance, comparison, "why", or general company-news questions.
+- A purported event involving a named or conversationally referenced financial subject is still a research request when its wording is slang, humorous, surprising, unlikely, or unverified. Include the active subject in prices and create a standalone focused-news query. Retrieval, not extraction, determines whether reliable reporting exists.
+- A concise story, event, allegation, or news-topic fragment with no named subject inherits the sole active entity from the supplied context. Do not return an empty plan merely because the company name is omitted.
 
 rankings is only for market-wide top, bottom, best, worst, gainers, losers, or movers. The product's default ranking market is US. Use US when the user does not name a market. Use ASX only when it is explicit in the current request or was explicitly established in the supplied conversation. Ranking named companies against one another belongs in prices, not rankings.
 - For a pure market-wide ranking request, leave prices empty even when the ranking includes a sector or industry qualifier. Add prices only for a separately requested named security or index.
@@ -220,7 +311,7 @@ Examples:
 - "What can you tell me about the ASX generally?" -> {"prices":[["AXJO","${isoToday(now)}"]],"news":[],"rankings":[]}
 
 Never invent a ticker. If the request has no finance-research subject or market request, return all three arrays empty. Do not answer the question and do not add fields.`,
-    user: semanticContext(request, now),
+    user: semanticContext(request, now, hints.resolvedCurrentEntities),
   };
 
   let raw: unknown;

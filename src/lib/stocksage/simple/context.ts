@@ -2,7 +2,7 @@ import { detectCriteria } from "../conversation/conversation-attributes";
 import type { StateResolution } from "../conversation";
 import { CONTEXTUAL_FOLLOW_UP } from "../entity/entity-state-helpers";
 import { evaluateDomainPolicy, OUT_OF_SCOPE_RESPONSE } from "../policy";
-import type { ChatRequest } from "../types";
+import type { ChatRequest, FinanceEntity } from "../types";
 import type { RankingMarket } from "./contracts";
 
 export function compactHistory(request: ChatRequest): string {
@@ -21,7 +21,8 @@ export function isoToday(now = new Date()): string {
 
 export function semanticContext(
   request: ChatRequest,
-  now = new Date()
+  now = new Date(),
+  resolvedCurrentEntities: readonly FinanceEntity[] = []
 ): string {
   const entities = request.state?.entities.map((entity) => ({
     name: entity.name,
@@ -31,10 +32,48 @@ export function semanticContext(
   return JSON.stringify({
     today: isoToday(now),
     activeEntities: entities ?? [],
+    currentTurnResolvedEntities: resolvedCurrentEntities.map((entity) => ({
+      id: entity.id,
+      name: entity.name,
+      ticker: entity.ticker,
+    })),
     focusEntityIds: request.state?.focusEntityIds ?? [],
     priorIntervals: request.state?.intervals ?? [],
     conversation: compactHistory(request),
     currentMessage: request.message,
+  });
+}
+
+export function contextualRecoveryContext(
+  request: ChatRequest,
+  now = new Date(),
+  resolvedCurrentEntities: readonly FinanceEntity[] = []
+): string {
+  return JSON.stringify({
+    today: isoToday(now),
+    currentMessage: request.message,
+    recentConversation: request.history.slice(-8),
+    currentTurnResolution: {
+      resolvedEntities: resolvedCurrentEntities.map((entity) => ({
+        id: entity.id,
+        name: entity.name,
+        ticker: entity.ticker,
+      })),
+    },
+    activeState: {
+      entities:
+        request.state?.entities.map((entity) => ({
+          id: entity.id,
+          name: entity.name,
+          ticker: entity.ticker,
+          market: entity.market,
+          private: entity.private,
+        })) ?? [],
+      focusEntityIds: request.state?.focusEntityIds ?? [],
+      intervals: request.state?.intervals ?? [],
+      criteria: request.state?.criteria ?? [],
+      jurisdiction: request.state?.jurisdiction,
+    },
   });
 }
 

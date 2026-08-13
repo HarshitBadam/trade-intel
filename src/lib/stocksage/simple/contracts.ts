@@ -18,6 +18,22 @@ export type SimpleEvidencePlan = {
   rankings: RankingRequest[];
 };
 
+export type ContextualTurnDisposition =
+  | "research"
+  | "social"
+  | "acknowledgement"
+  | "ambiguous"
+  | "out_of_scope";
+
+export type ContextualRecoveryResult = {
+  disposition: ContextualTurnDisposition;
+  plan: SimpleEvidencePlan;
+};
+
+export type ContextualRecoveryHints = {
+  resolvedCurrentEntities: FinanceEntity[];
+};
+
 export type RefinedRankingRequest = {
   market: RankingMarket;
   startDate: string;
@@ -136,6 +152,10 @@ export type SimpleCompositionPayload = {
 export type SimpleRuntimeDependencies = {
   now?: Date;
   extractPlan?: (request: ChatRequest) => Promise<SimpleEvidencePlan>;
+  recoverContextualTurn?: (
+    request: ChatRequest,
+    hints: ContextualRecoveryHints
+  ) => Promise<ContextualRecoveryResult>;
   retrieveMarket?: (
     pairs: readonly ResolvedPair[]
   ) => Promise<MarketPacket[]>;

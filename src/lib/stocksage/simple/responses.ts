@@ -4,6 +4,7 @@ import {
   isCasualAcknowledgement,
   isFarewell,
 } from "../policy/social-patterns";
+import { OUT_OF_SCOPE_RESPONSE } from "../policy";
 import { isWithinOneEdit } from "../text-normalization";
 import type { ChatReply, ConversationState } from "../types";
 
@@ -79,6 +80,21 @@ export function simpleClarificationReply(
     state,
     dataStatus: "full",
     presentationMode: "clarification",
+    presentationReason: reason,
+  };
+}
+
+export function simpleOutOfScopeReply(
+  state: ConversationState,
+  reason: string
+): ChatReply {
+  return {
+    text: OUT_OF_SCOPE_RESPONSE,
+    live: false,
+    kind: "answer",
+    responseId: randomUUID(),
+    state,
+    dataStatus: "full",
     presentationReason: reason,
   };
 }
