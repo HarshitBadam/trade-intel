@@ -66,6 +66,23 @@ export function simpleSocialReply(message: string): string {
   return "Hey, good to see you. What company or market should we look at?";
 }
 
+export function simpleClarificationReply(
+  state: ConversationState,
+  text: string,
+  reason: string
+): ChatReply {
+  return {
+    text,
+    live: false,
+    kind: "answer",
+    responseId: randomUUID(),
+    state,
+    dataStatus: "full",
+    presentationMode: "clarification",
+    presentationReason: reason,
+  };
+}
+
 export function simpleLlmErrorReply(
   state: ConversationState,
   stage: "semantic extraction" | "answer composition",

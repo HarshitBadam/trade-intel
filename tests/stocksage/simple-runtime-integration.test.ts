@@ -96,6 +96,9 @@ test("social replies distinguish greetings, thanks, and farewells", async () => 
     ["thnaks", acknowledgement],
     ["thnak you", acknowledgement],
     ["dass good", acknowledgement],
+    ["ig that works", acknowledgement],
+    ["I guess that works", acknowledgement],
+    ["works for me", acknowledgement],
     ["All good then", farewell],
     ["thats enough I gues", farewell],
     ["bye yaar", farewell],
@@ -105,7 +108,10 @@ test("social replies distinguish greetings, thanks, and farewells", async () => 
     ["Sayonara", farewell],
   ] as const) {
     const reply = await runSimpleChatAdapter(
-      { message, history: [] },
+      {
+        message,
+        history: [{ role: "ai", text: "Here are the requested rankings." }],
+      },
       {
         extractPlan: async () => {
           throw new Error("social messages should not reach extraction");
@@ -126,7 +132,10 @@ test("prices keep the existing market and general-news path unchanged", async ()
   let generalNewsCalls = 0;
   let capturedPayload: SimpleCompositionPayload | undefined;
   const reply = await runSimpleChatAdapter(
-    { message: "How is Tesla doing?", history: [] },
+    {
+      message: "How is Tesla doing?",
+      history: [{ role: "ai", text: "What should we look at next?" }],
+    },
     {
       now: NOW,
       extractPlan: async () => plan,
@@ -171,7 +180,7 @@ test("focused news is supplemental and preserves no-results status for compositi
   const reply = await runSimpleChatAdapter(
     {
       message: "What about the Macquarie whistleblower story?",
-      history: [],
+      history: [{ role: "ai", text: "What should we look at next?" }],
     },
     {
       now: NOW,
@@ -251,7 +260,10 @@ test("focused provider failure remains distinct and retryable", async () => {
 test("ranking-only US turns publish compact evidence as a full answer", async () => {
   let capturedPayload: SimpleCompositionPayload | undefined;
   const reply = await runSimpleChatAdapter(
-    { message: "Top and bottom US performers today", history: [] },
+    {
+      message: "Top and bottom US performers today",
+      history: [{ role: "ai", text: "What should we look at next?" }],
+    },
     {
       now: NOW,
       extractPlan: async () => ({

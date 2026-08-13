@@ -16,7 +16,7 @@ export const FAREWELL =
   /^(?:(?:thanks?|thank you|thx|cheers|ok(?:ay)?|aight|gucci|all good(?:\s+then)?)[\s,!.]*)?(?:bye|goodbye|farewell|see (?:you|ya)|peace(?:\s+out)?|sayonara|later[sz]?|catch (?:you|ya)(?:\s+later)?|ciao|cya|ttyl|take care|good\s*night|adios|au revoir|auf wiedersehen|hasta luego|arrivederci|alvida|phir milenge|zai\s*jian|i'?m (?:off|out|done(?:\s+for\s+(?:today|the\s+day))?)|gtg|gotta (?:go|run|bounce)|all good then|that'?s (?:all|enough)(?:\s+i\s+gue?s{1,2})?)(?:[\s,]+(?:for now|for today|later|soon|again|then|boss|bro|mate|dude|yaar|bhaijan|friend|man|thanks|thank you|sage))*[\s,.!?.-]*$/i;
 
 export const CASUAL_ACKNOWLEDGEMENT =
-  /^(?:(?:thx|thanks?|thank you|cheers)(?:\s+(?:so much|a lot|very much|heaps|boss|bro|mate|dude|man|for (?:that|the help|the info(?:rmation)?)))*(?:,?\s+that helps)?|(?:that'?s|thats|dats?|dass)\s+good)[\s,.!?.-]*$/i;
+  /^(?:(?:thx|thanks?|thank you|cheers)(?:\s+(?:so much|a lot|very much|heaps|boss|bro|mate|dude|man|for (?:that|the help|the info(?:rmation)?)))*(?:,?\s+that helps)?|(?:that'?s|thats|dats?|dass)\s+good|(?:(?:yeah|yep|ok(?:ay)?)[,\s]+)?(?:(?:i\s+guess|ig)\s+)?that\s+works|works\s+for\s+me|that(?:'ll|\s+will)\s+do|fair\s+enough)[\s,.!?.-]*$/i;
 
 const ACKNOWLEDGEMENT_PHRASES = [
   "thanks",
@@ -28,6 +28,11 @@ const ACKNOWLEDGEMENT_PHRASES = [
   "muchappreciated",
   "thathelps",
   "thatsgood",
+  "thatworks",
+  "igthatworks",
+  "iguessthatworks",
+  "worksforme",
+  "fairenough",
 ] as const;
 const FAREWELL_PHRASES = [
   "goodbye",

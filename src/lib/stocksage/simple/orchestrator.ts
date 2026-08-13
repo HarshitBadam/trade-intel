@@ -23,6 +23,7 @@ import type {
   SimpleEvidencePlan,
   SimpleRuntimeDependencies,
 } from "./contracts";
+import { preExtractionClarification } from "./context";
 import { extractEvidencePlan } from "./extraction";
 import { repairListingRelativePrices } from "./listing-repair";
 import { retrieveMarket } from "./market";
@@ -39,6 +40,7 @@ import {
 } from "./resolution";
 import {
   isColloquialGreeting,
+  simpleClarificationReply,
   simpleLlmErrorReply,
   simpleSocialReply,
 } from "./responses";
@@ -82,6 +84,14 @@ export async function runSimpleChatAdapter(
       presentationMode: "social",
       presentationReason: "social",
     };
+  }
+  const clarification = preExtractionClarification(request, initial);
+  if (clarification) {
+    return simpleClarificationReply(
+      initial.state,
+      clarification.text,
+      clarification.reason
+    );
   }
 
   let plan: SimpleEvidencePlan;

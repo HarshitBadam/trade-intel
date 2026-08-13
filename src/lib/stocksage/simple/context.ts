@@ -1,3 +1,7 @@
+import { detectCriteria } from "../conversation/conversation-attributes";
+import type { StateResolution } from "../conversation";
+import { CONTEXTUAL_FOLLOW_UP } from "../entity/entity-state-helpers";
+import { evaluateDomainPolicy, OUT_OF_SCOPE_RESPONSE } from "../policy";
 import type { ChatRequest } from "../types";
 import type { RankingMarket } from "./contracts";
 
@@ -96,6 +100,49 @@ const RANKING_INTENT_PATTERN =
 
 export function hasMarketWideRankingIntent(message: string): boolean {
   return RANKING_INTENT_PATTERN.test(message);
+}
+
+function hasCurrentTurnEvidenceIntent(
+  message: string,
+  resolution: StateResolution,
+  policy: ReturnType<typeof evaluateDomainPolicy>
+): boolean {
+  return (
+    resolution.entities.length > 0 ||
+    resolution.temporal.status === "resolved" ||
+    CONTEXTUAL_FOLLOW_UP.test(message) ||
+    detectCriteria(message).length > 0 ||
+    hasMarketWideRankingIntent(message) ||
+    (policy.action === "allow" && policy.reasonCode !== "social")
+  );
+}
+
+export function preExtractionClarification(
+  request: ChatRequest,
+  resolution: StateResolution
+): { text: string; reason: string } | undefined {
+  if (resolution.clarification) {
+    return {
+      text: resolution.clarification,
+      reason: resolution.reasonCode,
+    };
+  }
+  const hasPriorContext =
+    request.history.length > 0 || (request.state?.revision ?? 0) > 0;
+  const policy = evaluateDomainPolicy(request.message, resolution.entities);
+  if (
+    !hasPriorContext ||
+    hasCurrentTurnEvidenceIntent(request.message, resolution, policy)
+  ) {
+    return undefined;
+  }
+  return {
+    text:
+      policy.response && policy.response !== OUT_OF_SCOPE_RESPONSE
+        ? policy.response
+        : "Sorry, I didn’t quite catch that. What would you like to look at next?",
+    reason: "ambiguous_follow_up",
+  };
 }
 
 const MIXED_INTENT_SIGNAL =
