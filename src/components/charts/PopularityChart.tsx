@@ -19,8 +19,7 @@ import {
   ChartTooltip,
 } from "@/components/ui/chart"
 import { buildActivitySeries } from "@/lib/market-data/transforms"
-import type { BarPoint } from "@/lib/market-data/types"
-import type { News } from "@/components/news/RecentInfluential"
+import type { BarPoint, News } from "@/lib/market-data/types"
 
 const chartConfig = {
   activity: { label: "Activity" },

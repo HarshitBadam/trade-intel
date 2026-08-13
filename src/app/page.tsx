@@ -1,5 +1,5 @@
 import { mockStockData } from "@/data/mockStocks";
-import { getHomeData } from "@/lib/market-data/api-home";
+import { getHomeData } from "@/lib/market-data/api/home";
 import HomeView from "./HomeView";
 
 export const dynamic = "force-dynamic";

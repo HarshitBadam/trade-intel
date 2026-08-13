@@ -16,10 +16,11 @@ Everything is configured through environment variables. `.env.example` documents
 | Store | `ASTRA_DB_*` | Analyzed news and verdicts. |
 | StockSage AI | `STOCKSAGE_SIMPLE_PROVIDER`, `STOCKSAGE_SIMPLE_MODEL`, `GROQ_API_KEY`, `GROQ_CHAT_MODEL`, `CEREBRAS_API_KEY`, `CEREBRAS_MODEL` | Selects the primary chat provider/model. When both providers are configured, transient failures fail over automatically. |
 | Retrieval | `TAVILY_API_KEY`, `ASTRA_DB_*`, market-data keys | Focused web news, published market intelligence, prices, and US rankings. |
-| Ops | `UPSTASH_REDIS_*`, `QSTASH_*`, `APP_URL`, `CRON_SECRET`, `MARKET_INTELLIGENCE_*` | Rate limiting, durable refresh jobs, signed workers, showcase/maintenance schedules, and on-demand budgets. |
+| Ops | `UPSTASH_REDIS_*`, `QSTASH_*`, `APP_URL`, `CRON_SECRET`, `MARKET_INTELLIGENCE_*` | Rate limiting, durable refresh jobs, signed workers, showcase/maintenance schedules, and on-demand budgets. `APP_URL` resolves as `APP_URL`, then `AUTH_URL`, then legacy `NEXTAUTH_URL`. |
 
 StockSage always applies the deterministic crisis and finance-domain policy
-checks in `crisis.ts` and `policy.ts`; they require no separate configuration.
+checks in `stocksage/policy/crisis.ts` and `stocksage/policy/index.ts`; they
+require no separate configuration.
 
 ## The production safety rule
 

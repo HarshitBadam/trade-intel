@@ -4,9 +4,8 @@ import { GROQ_ANALYSIS_MODEL } from "@/lib/config";
 import {
   readAnalysisDoc,
   readTickerArticles,
-  readTickerArticlesByIds,
-} from "@/lib/market-data/news-store";
-import { MAX_ARTICLES_PER_PASS } from "@/lib/market-data/analysis-helpers";
+} from "@/lib/market-data/news/store";
+import { MAX_ARTICLES_PER_PASS } from "@/lib/market-data/news/analysis";
 import { dedupeNews, windowNews } from "@/lib/market-data/transforms";
 import type { AnalysisDoc, StoredArticle } from "@/lib/market-data/types";
 import {
@@ -60,12 +59,11 @@ const EVIDENCE_FETCH_CAP = 200;
 
 /**
  * Shared gate for every "no manifest yet" legacy fallback (homepage
- * headline, details article list, `readPublishedIntelligence`): the
- * unscoped raw read is only legal when no refresh is currently staging
- * unpublished rows for this ticker. Once `refresh_staging_at` is set, a
- * worker run is in flight (or died mid-flight) without ever publishing, so
- * callers must fail closed instead of risking exposure of this run's
- * unpublished fetch.
+ * headline, details article list): the unscoped raw read is only legal when
+ * no refresh is currently staging unpublished rows for this ticker. Once
+ * `refresh_staging_at` is set, a worker run is in flight (or died
+ * mid-flight) without ever publishing, so callers must fail closed instead
+ * of risking exposure of this run's unpublished fetch.
  */
 export function legacyFallbackAllowed(analysis: AnalysisDoc | null): boolean {
   return !analysis?.refresh_staging_at;
@@ -162,31 +160,5 @@ export async function selectCandidateSet(ticker: string): Promise<CandidateSet> 
       promptVersion: ANALYSIS_PROMPT_VERSION,
       model: GROQ_ANALYSIS_MODEL,
     }),
-  };
-}
-
-export async function readPublishedIntelligence(ticker: string): Promise<{
-  analysis: AnalysisDoc | null;
-  articles: StoredArticle[];
-  legacy: boolean;
-}> {
-  const symbol = ticker.trim().toUpperCase();
-  const analysis = await readAnalysisDoc(symbol);
-  const ids = analysis?.published_article_ids;
-  if (ids) {
-    const articles = await readTickerArticlesByIds(symbol, ids);
-    return {
-      analysis,
-      articles: applyPublishedArticleLabels(articles, analysis),
-      legacy: false,
-    };
-  }
-  if (!legacyFallbackAllowed(analysis)) {
-    return { analysis, articles: [], legacy: true };
-  }
-  return {
-    analysis,
-    articles: await readTickerArticles(symbol, MAX_ARTICLES_PER_PASS),
-    legacy: true,
   };
 }

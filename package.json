@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "tsx --conditions=react-server --test tests/*.test.ts",
+    "test": "tsx --conditions=react-server --test tests/*/*.test.ts",
     "typecheck": "tsc --noEmit",
     "smoke:stocksage": "tsx --conditions=react-server scripts/stocksage-smoke.ts",
     "eval:stocksage": "tsx --conditions=react-server scripts/stocksage-simple-eval.ts",

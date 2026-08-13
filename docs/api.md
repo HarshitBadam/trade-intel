@@ -39,9 +39,6 @@ pipeline. Social and policy responses return without retrieval.
 | `fetchDetails(ticker)` | 30 / min | Store-only `StockData` snapshot |
 | `requestDetailsRefresh(ticker)` | 4 / min plus daily admission | Reserve or join one durable refresh job |
 | `pollDetailsRefresh(workId)` | 120 / min | Durable queued/running/done/failed state |
-| `fetchQuote(ticker)` | 30 / min | latest `Quote` |
-| `fetchTopHeadline(ticker)` | 30 / min | lead `Headline` |
-| `fetchMovers()` | 30 / min | gainers, losers, sentiment shifts |
 | `getLiveQuotes(tickers)` | none | `LiveQuote[]` for a small set |
 | `fetchChartRange(ticker, kind)` | 30 / min | `BarPoint[]` for a range |
 | `fetchHomeTicker(ticker)` | 30 / min | `{ quote, headline }` for a home chip switch |

@@ -175,24 +175,6 @@ export function validCitationUrls(
     .map((source) => markdownUrl(source.url));
 }
 
-export function stripUntrustedLinks(text: string): string {
-  return stripMarkdownLinks(text)
-    .replace(/\[(?:S\d{1,3})(?:\s*,\s*S\d{1,3})*\]/g, "")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/[ \t]+([.,;:])/g, "$1")
-    .trim();
-}
-
-export function stripTickerCitationMarkers(
-  text: string,
-  tickers: string[]
-): string {
-  const known = new Set(tickers.map((ticker) => ticker.toUpperCase()));
-  return text.replace(/\[([A-Z][A-Z0-9.-]{0,9})\]/g, (match, ticker) =>
-    known.has(ticker.toUpperCase()) ? "" : match
-  );
-}
-
 export function expandValidCitations(
   text: string,
   sources: EvidenceSource[]

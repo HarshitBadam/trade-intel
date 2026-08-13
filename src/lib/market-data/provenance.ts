@@ -76,32 +76,3 @@ export function createProvenance(input: ProvenanceInput): DataProvenance {
     notes: input.notes ? [...input.notes] : undefined,
   };
 }
-
-export function formatProvenance(provenance: DataProvenance): string {
-  const provider = provenance.provider
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-  const details: string[] = [];
-  if (provenance.feed) details.push(provenance.feed.toUpperCase());
-  if (provenance.adjustment && provenance.adjustment !== "provider_default") {
-    details.push(
-      provenance.adjustment === "none"
-        ? "unadjusted"
-        : `${provenance.adjustment}-adjusted`
-    );
-  }
-  if (provenance.delayed) details.push("delayed");
-  const coverage =
-    provenance.coverageStart && provenance.coverageEnd
-      ? `covers ${provenance.coverageStart}–${provenance.coverageEnd}`
-      : undefined;
-  return [
-    provider + (details.length ? ` ${details.join(" ")}` : ""),
-    coverage,
-    `fetched ${provenance.fetchedAt}`,
-    provenance.proxyFor ? `proxy for ${provenance.proxyFor}` : undefined,
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join(", ");
-}

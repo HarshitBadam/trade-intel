@@ -1,8 +1,8 @@
 // Ops tool: run the market-intelligence analysis pipeline for one ticker.
-//
+
 //   NODE_OPTIONS="--conditions=react-server" npx tsx scripts/analyze-ticker.ts CCL
 //   NODE_OPTIONS="--conditions=react-server" npx tsx scripts/analyze-ticker.ts CCL --force
-//
+
 // The react-server condition is required because the store modules import
 // "server-only", which throws under plain Node resolution. Env is parsed from
 // .env.local manually so it is set BEFORE the modules (which read process.env at
@@ -22,8 +22,8 @@ async function main(): Promise<void> {
   }
 
   // Dynamic import AFTER env is loaded so config.ts sees the keys.
-  const store = await import("../src/lib/market-data/news-store");
-  const analysis = await import("../src/lib/market-data/analysis");
+  const store = await import("../src/lib/market-data/news/store");
+  const analysis = await import("../src/lib/market-data/news/analysis");
 
   const mode = await store.ensureAnalysisCollection();
   console.log(`Analysis store mode: ${mode}`);
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
 
   if (force) {
     console.log(`\nForcing analyzeTicker(${ticker})...`);
-    const summary = await analysis.analyzeTicker(ticker, { force: true });
+    const summary = await analysis.analyzeTicker(ticker);
     console.log(
       `Result: analyzed ${summary.analyzed}, relabeled ${summary.relabeled}, ` +
         `verdict ${summary.verdict ?? "(none)"}` +

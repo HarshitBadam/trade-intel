@@ -3,7 +3,6 @@ import { SHOWCASE_TICKERS } from "@/lib/market-intelligence/showcase";
 export const FALLBACK_TICKERS = SHOWCASE_TICKERS;
 
 export const CRON_WARMUP_TICKERS = [
-  // Mega-cap tech
   { ticker: "AAPL", name: "Apple Inc." },
   { ticker: "MSFT", name: "Microsoft Corporation" },
   { ticker: "NVDA", name: "NVIDIA Corporation" },
@@ -14,27 +13,22 @@ export const CRON_WARMUP_TICKERS = [
   { ticker: "ORCL", name: "Oracle Corporation" },
   { ticker: "CRM", name: "Salesforce Inc." },
   { ticker: "ADBE", name: "Adobe Inc." },
-  // Consumer / discretionary
   { ticker: "TSLA", name: "Tesla Inc." },
   { ticker: "NFLX", name: "Netflix Inc." },
   { ticker: "DIS", name: "The Walt Disney Company" },
   { ticker: "NKE", name: "Nike Inc." },
   { ticker: "SBUX", name: "Starbucks Corporation" },
   { ticker: "MCD", name: "McDonald's Corporation" },
-  // Consumer staples / retail
   { ticker: "WMT", name: "Walmart Inc." },
   { ticker: "COST", name: "Costco Wholesale Corporation" },
   { ticker: "KO", name: "The Coca-Cola Company" },
-  // Financials
   { ticker: "JPM", name: "JPMorgan Chase & Co." },
   { ticker: "BAC", name: "Bank of America Corporation" },
   { ticker: "V", name: "Visa Inc." },
   { ticker: "MA", name: "Mastercard Incorporated" },
-  // Healthcare
   { ticker: "JNJ", name: "Johnson & Johnson" },
   { ticker: "LLY", name: "Eli Lilly and Company" },
   { ticker: "UNH", name: "UnitedHealth Group Incorporated" },
-  // Energy / industrial / comms
   { ticker: "XOM", name: "Exxon Mobil Corporation" },
   { ticker: "CVX", name: "Chevron Corporation" },
   { ticker: "BA", name: "The Boeing Company" },

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // Builds the committed search universe (src/data/universe.json) from Alpaca's
 // /v2/assets: every active, tradable, exchange-listed US equity (incl. ETFs).
-//
+
 //   node --env-file=.env.local scripts/build-universe.mjs
-//
+
 // Assets live on the TRADING API domain (paper-api.alpaca.markets for paper
 // keys, api.alpaca.markets for live keys) — NOT data.alpaca.markets. Both
 // hosts are tried so either key kind works.
-//
+
 // Crypto is deliberately EXCLUDED for now: the app's Alpaca layer
-// (src/lib/market-data/alpaca.ts) only speaks the /v2/stocks bars/snapshot
+// (src/lib/market-data/providers/alpaca.ts) only speaks the /v2/stocks bars/snapshot
 // endpoints, so a crypto symbol would be searchable but unchartable — exactly
 // the broken-row state the universe exists to rule out. Revisit once a crypto
 // data path (v1beta3/crypto) exists.
@@ -50,7 +50,7 @@ const SEED_SYMBOLS = [
   "SPY", "QQQ", "VOO", "VTI", "IWM", "DIA",
 ];
 
-// Mirror of sanitizeTicker (src/lib/market-data/transforms.ts): the details
+// Mirror of sanitizeTicker (src/lib/market-data/transforms/index.ts): the details
 // route strips anything outside [A-Z.] and truncates at 6 chars, so a symbol
 // that wouldn't survive it round-trip (long preferred-share/warrant forms
 // like "BML.PRG") would navigate to a DIFFERENT symbol — an unroutable row.

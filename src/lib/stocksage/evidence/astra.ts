@@ -1,7 +1,7 @@
 import "server-only";
 
 import { hasAstra } from "@/lib/config";
-import { isOpen, recordSuccess } from "@/lib/breaker";
+import { isOpen, recordSuccess } from "@/lib/resilience/breaker";
 import type { StoredArticle } from "@/lib/market-data/types";
 import { readTickerArticlesForEvidence } from "@/lib/market-intelligence/repository";
 import type { EvidenceInput } from "../citations";

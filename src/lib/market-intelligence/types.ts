@@ -1,6 +1,5 @@
-import type { News, NewsStatus } from "@/components/news/RecentInfluential";
 import type { NewsVerdict } from "@/components/news/VerdictModal";
-import type { BarPoint } from "@/lib/market-data/types";
+import type { BarPoint, News, NewsStatus } from "@/lib/market-data/types";
 
 export type RefreshSource = "showcase_cron" | "user_request" | "manual";
 

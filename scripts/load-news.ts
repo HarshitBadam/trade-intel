@@ -1,8 +1,8 @@
 // Ops tool: load a ticker's news into the Astra store and read it back.
-//
+
 //   NODE_OPTIONS="--conditions=react-server" npx tsx scripts/load-news.ts CCL
 //   NODE_OPTIONS="--conditions=react-server" npx tsx scripts/load-news.ts CCL --prune-dry-run
-//
+
 // The react-server condition is required because the store modules import
 // "server-only", which throws under a plain Node resolution. Env is parsed from
 // .env.local manually so it is set BEFORE the store modules (which read
@@ -22,8 +22,8 @@ async function main(): Promise<void> {
   }
 
   // Dynamic import AFTER env is loaded so config.ts sees the keys.
-  const store = await import("../src/lib/market-data/news-store");
-  const providers = await import("../src/lib/market-data/news-loaders");
+  const store = await import("../src/lib/market-data/news/store");
+  const providers = await import("../src/lib/market-data/news/loaders");
 
   const mode = await store.ensureAnalysisCollection();
   const collections = await store.listNewsStoreCollections();

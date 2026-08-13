@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { pruneOldArticles } from "@/lib/market-data/news-store";
+import { pruneOldArticles } from "@/lib/market-data/news/store";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;

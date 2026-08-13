@@ -1,16 +1,13 @@
 import { Suspense } from "react";
-import { getRelatedStocksData } from "@/lib/market-data/api-related";
+import { getRelatedStocksData } from "@/lib/market-data/api/related";
 import { getDetailsData } from "@/lib/market-data/queries";
 import { sanitizeTicker } from "@/lib/market-data/transforms";
-import type { StockData } from "@/lib/market-intelligence/types";
 import DetailsView from "./DetailsView";
 import RelatedStocksSection, {
   RelatedStocksSkeleton,
 } from "./RelatedStocksSection";
 
 export const dynamic = "force-dynamic";
-
-export type { StockData } from "@/lib/market-intelligence/types";
 
 export default async function Page({
   params,

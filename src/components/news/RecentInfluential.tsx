@@ -11,36 +11,7 @@ import {
   deriveEffectiveNewsStatus,
   type RefreshState,
 } from "@/lib/market-intelligence/types";
-
-export type News = {
-  _id: string;
-  page_content: string;
-  metadata: {
-    title: string;
-    source: string;
-    publication_date: string;
-    importance: string;
-    sentiment: string;
-    key_observations: string;
-    url: string;
-    ticker: string;
-    description: string;
-    event: string;
-    ingested_at?: string;
-  };
-};
-
-export type NewsStatus =
-  | "fresh"
-  | "analyzing"
-  | "live"
-  | "sample"
-  | "stale"
-  | "degraded"
-  | "hard_expired"
-  | "no_news"
-  | "analysis_unavailable"
-  | "unavailable";
+import type { News, NewsStatus } from "@/lib/market-data/types";
 
 interface RecentInfluentialProps {
   news?: News[];

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { useState } from "react";
+import { ModalFrame } from "@/components/shared/ModalFrame";
+import { useModalDismiss } from "@/hooks/useModalDismiss";
 
 const SECTIONS = [
   {
@@ -30,61 +30,29 @@ export function LegalDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [open, onClose]);
+  const mounted = useModalDismiss(open, onClose);
 
   if (!open || !mounted) return null;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-4 backdrop-blur-xl duration-200 animate-in fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="relative w-full max-w-lg rounded-2xl border border-white/50 bg-white/80 p-8 shadow-2xl backdrop-blur-xl duration-200 animate-in zoom-in-95 dark:border-white/10 dark:bg-card/85"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="absolute right-4 top-4 cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <X className="h-5 w-5" />
-        </button>
+  return (
+    <ModalFrame onClose={onClose}>
+      <h2 className="mb-5 font-serif text-2xl font-bold leading-snug">
+        Terms &amp; Privacy
+      </h2>
 
-        <h2 className="mb-5 font-serif text-2xl font-bold leading-snug">
-          Terms &amp; Privacy
-        </h2>
-
-        <div className="max-h-[55vh] space-y-5 overflow-y-auto pr-1">
-          {SECTIONS.map((s) => (
-            <div key={s.h}>
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                {s.h}
-              </p>
-              <p className="text-sm leading-relaxed text-foreground/80">
-                {s.p}
-              </p>
-            </div>
-          ))}
-        </div>
+      <div className="max-h-[55vh] space-y-5 overflow-y-auto pr-1">
+        {SECTIONS.map((s) => (
+          <div key={s.h}>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              {s.h}
+            </p>
+            <p className="text-sm leading-relaxed text-foreground/80">
+              {s.p}
+            </p>
+          </div>
+        ))}
       </div>
-    </div>,
-    document.body
+    </ModalFrame>
   );
 }
 

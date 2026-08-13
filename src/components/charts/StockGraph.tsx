@@ -3,29 +3,22 @@
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import MainChart from "./MainChart";
+import { RangeSelector } from "./RangeSelector";
+import { DAY_MS } from "./ranges";
 
 type ChartPoint = { date: string | number; value: number };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-const RANGES: { label: string; days: number; blurb: string }[] = [
-  { label: "1D", days: 1, blurb: "today" },
-  { label: "1W", days: 7, blurb: "past week" },
-  { label: "1M", days: 30, blurb: "past month" },
-  { label: "3M", days: 90, blurb: "past 3 months" },
-  { label: "6M", days: 180, blurb: "past 6 months" },
-  { label: "1Y", days: 365, blurb: "past year" },
-  { label: "All", days: Infinity, blurb: "all time" },
-];
-
-function rangeToKind(
-  days: number,
-): "intraday" | "week" | "fine" | null {
-  if (days === 1) return "intraday";
-  if (days === 7) return "week";
-  if (days === 30 || days === 90) return "fine";
-  return null;
-}
+// Blurbs for the price-change caption aren't part of the shared range
+// selector (PopularityGraph has no equivalent caption), so they stay local.
+const RANGE_BLURBS: Record<number, string> = {
+  1: "today",
+  7: "past week",
+  30: "past month",
+  90: "past 3 months",
+  180: "past 6 months",
+  365: "past year",
+  [Infinity]: "all time",
+};
 
 function normalize(data?: ChartPoint[]) {
   if (!Array.isArray(data)) return [] as { t: number; v: number }[];
@@ -112,8 +105,7 @@ export function StockGraph({
 
   const isUp = windowChange.abs >= 0;
   const sign = isUp ? "+" : "";
-  const blurb =
-    RANGES.find((r) => r.days === rangeDays)?.blurb ?? "selected range";
+  const blurb = RANGE_BLURBS[rangeDays] ?? "selected range";
   const changeLabel = `${sign}${windowChange.abs.toFixed(2)} (${sign}${windowChange.pct.toFixed(2)}%) ${blurb}`;
 
   const chartSeries = isIntraday
@@ -143,42 +135,15 @@ export function StockGraph({
             )}
           </div>
 
-          <div className="flex gap-1 mt-3">
-            {RANGES.map((r) => {
-              const kind = rangeToKind(r.days);
-              const hiResAvailable =
-                r.days === 1 ? has1D : r.days === 7 ? hasWeek : hasFine;
-
-              const disabled = (() => {
-                if (kind && onRequestRange) return false;
-                if (r.days === 1) return !has1D;
-                return r.days !== Infinity && r.days > spanDays + 1;
-              })();
-
-              const active = rangeDays === r.days;
-              return (
-                <button
-                  key={r.label}
-                  type="button"
-                  disabled={disabled}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setRangeDays(r.days);
-                    if (onRequestRange && kind && !hiResAvailable) {
-                      onRequestRange(kind);
-                    }
-                  }}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                    active
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground hover:bg-accent/50"
-                  } ${disabled ? "opacity-30" : "cursor-pointer"}`}
-                >
-                  {r.label}
-                </button>
-              );
-            })}
-          </div>
+          <RangeSelector
+            rangeDays={rangeDays}
+            onSelect={setRangeDays}
+            has1D={has1D}
+            hasWeek={hasWeek}
+            hasFine={hasFine}
+            spanDays={spanDays}
+            onRequestRange={onRequestRange}
+          />
         </div>
 
         {hasShuffle && (

@@ -15,25 +15,13 @@ import {
   generateMockIntraday,
 } from "@/data/fallbacks";
 import { fetchHomeTicker } from "./details/[id]/actions";
-import type { Mover, Movers, Quote, Headline } from "@/lib/market-data/types";
+import type { Movers, Quote, Headline } from "@/lib/market-data/types";
 import { StockChips } from "@/components/stocks/StockChips";
 import { NewsModal, type NewsArticle } from "@/components/news/NewsModal";
-import { type Shift } from "@/components/stocks/Overview";
-import { moverToCard } from "@/lib/movers";
+import { moverToCard, moverToShift } from "@/components/stocks/mover-presentation";
 import { FloatingWidget } from "@/components/chat/FloatingWidget";
-import { useStaleData } from "@/lib/useStaleData";
-import { prefetch } from "@/lib/prefetch";
-
-function moverToShift(m: Mover): Shift {
-  const up = m.percentChange >= 0;
-  const sign = up ? "+" : "";
-  return {
-    ticker: m.ticker,
-    name: m.name,
-    change: `${sign}${m.percentChange.toFixed(2)}%`,
-    sentiment: `${up ? "Bullish" : "Bearish"} (${Math.abs(m.percentChange).toFixed(1)}%)`,
-  };
-}
+import { useStaleData } from "@/hooks/useStaleData";
+import { prefetch } from "@/lib/client/prefetch";
 
 const defaultStock =
   mockStockData.find((s) => s.id === 1) ?? mockStockData[0];

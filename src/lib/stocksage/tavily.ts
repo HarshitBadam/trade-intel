@@ -8,7 +8,7 @@ import {
   recordFailure,
   recordSuccess,
   recordUnavailable,
-} from "@/lib/breaker";
+} from "@/lib/resilience/breaker";
 import { hasTavily, TAVILY_API_KEY } from "@/lib/config";
 import type { EvidenceInput } from "./citations";
 import type { EvidenceQuery } from "./types";

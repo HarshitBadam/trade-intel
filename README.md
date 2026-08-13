@@ -2,8 +2,6 @@
 
 TradeIntel is a stock research dashboard built around news sentiment. Search any ticker for its price chart, a news sentiment read, and its closest peers. StockSage, the built-in assistant, answers follow-up questions grounded in live quotes and, when it can reach its news index, the same stored analysis.
 
-TradeIntel home screen with the price chart, sentiment gauge, and top market movers
-
 > **Live:** [trade-intel-app.vercel.app](https://trade-intel-app.vercel.app) (sign in with Google)
 >
 > **Note:** a research project, not financial advice.
@@ -13,8 +11,8 @@ A 30-minute showcase schedule and authenticated on-demand requests publish durab
 ## Getting started
 
 ```bash
-git clone https://github.com/your-username/tradeintel.git
-cd tradeintel
+git clone https://github.com/HarshitBadam/trade-intel.git
+cd trade-intel
 npm install
 npm run dev
 ```
@@ -33,10 +31,10 @@ No API keys required. An empty `.env.local` runs the whole app on mock data; cop
 | [API reference](docs/api.md)             | The HTTP routes and server actions                 |
 | [Configuration](docs/configuration.md)   | Environment variables and run modes                |
 | [Deployment](docs/deployment.md)         | Hosting, cron jobs, queues, and provider setup     |
+| [Market intelligence runbook](docs/market-intelligence-runbook.md) | Showcase cron, workers, and ops recovery |
 | [Repo structure](docs/repo-structure.md) | The source tree, annotated                         |
 
 
 ---
 
 > **On the origin.** This started as a [university hackathon project](https://devpost.com/software/tradeintel) built with a team in March 2025, where we shipped a rough homepage and detail page over a weekend. The version here was rebuilt solo through mid-2026: the store-first pipeline, provider integrations, auth, the chat assistant, and the current UI. The commit history has the full trail.
-

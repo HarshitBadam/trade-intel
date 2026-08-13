@@ -76,7 +76,7 @@ A request never fans out to a rate-limited provider. It reads the store and Alpa
 sequenceDiagram
   participant B as Browser
   participant P as page.tsx
-  participant Q as market-data/queries.ts
+  participant Q as market-data/queries/index.ts
   participant C as unstable_cache
   participant A as Alpaca
   participant D as Astra
@@ -150,9 +150,9 @@ failures. Market data remains deterministic and provider-labelled.
 
 ## Chat safety
 
-`src/lib/stocksage/crisis.ts` normalizes and detects explicit self-harm, acute
-distress, and violence language before any retrieval or model call.
-`src/lib/stocksage/policy.ts` then enforces the finance-domain boundary,
+`src/lib/stocksage/policy/crisis.ts` normalizes and detects explicit self-harm,
+acute distress, and violence language before any retrieval or model call.
+`src/lib/stocksage/policy/index.ts` then enforces the finance-domain boundary,
 high-stakes guidance limits, and misuse refusals.
 
 ```mermaid
@@ -171,15 +171,15 @@ flowchart LR
 
 Two mechanisms keep a flaky provider from becoming a broken page.
 
-**Circuit breaker** (`src/lib/breaker.ts`) isolates retrieval providers. Three
+**Circuit breaker** (`src/lib/resilience/breaker.ts`) isolates retrieval providers. Three
 persistent failures inside ten minutes opens only that circuit. State lives in
 Redis so it is shared across serverless instances, with an in-process map as
 the local fallback. StockSage LLM requests use direct cross-provider failover.
 
-**Sliding rate limiter** (`src/lib/market-data/limiter.ts`) smooths outgoing bursts to each provider (Alpaca 180/min, Finnhub 50/min). It never rejects, it delays. Callers just `await acquire()`.
+**Sliding rate limiter** (`src/lib/market-data/providers/limiter.ts`) smooths outgoing bursts to each provider (Alpaca 180/min, Finnhub 50/min). It never rejects, it delays. Callers just `await acquire()`.
 
 ## Auth and user limits
 
 Auth.js handles Google OAuth with JWT sessions (`src/auth.ts`, `src/auth.config.ts`, `src/middleware.ts`). Auth turns on only when `AUTH_SECRET` and a provider are configured; otherwise the app runs open in demo mode. When it is on, `/login` and the auth callbacks are the only public routes.
 
-Every server action runs through `guard()` (`src/lib/guard.ts`), which rate limits per identity: the signed-in user id, or a hashed client IP when anonymous. Per-action limits are in [api.md](api.md).
+Every server action runs through `guard()` (`src/lib/resilience/guard.ts`), which rate limits per identity: the signed-in user id, or a hashed client IP when anonymous. Per-action limits are in [api.md](api.md).

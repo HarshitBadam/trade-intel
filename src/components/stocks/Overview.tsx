@@ -11,7 +11,6 @@ export type Shift = {
 interface OverviewProps {
   title: string;
   shifts?: Shift[];
-  children?: React.ReactNode;
 }
 
 export const topShifts: Shift[] = [
@@ -20,7 +19,7 @@ export const topShifts: Shift[] = [
   { ticker: "NVDA", name: "NVIDIA Corporation", change: "+5.1%", sentiment: "Very Bullish (78%)" },
 ];
 
-export function Overview({ title, shifts = topShifts, children }: OverviewProps) {
+export function Overview({ title, shifts = topShifts }: OverviewProps) {
   const router = useRouter();
 
   const handleStockClick = (ticker: string) => {

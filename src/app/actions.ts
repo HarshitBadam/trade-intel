@@ -1,6 +1,6 @@
 "use server";
 
-import { guard } from "@/lib/guard";
+import { guard } from "@/lib/resilience/guard";
 import { answerChat } from "@/lib/stocksage/chat";
 import { logStockSage } from "@/lib/telemetry";
 import { parseChatRequest } from "@/lib/stocksage/types";

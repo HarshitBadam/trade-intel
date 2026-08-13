@@ -134,13 +134,12 @@ async function publishWithBoundedRetry(
     await publish(payload, delaySec);
     return true;
   } catch {
-    // fall through to the single bounded retry below
-  }
-  try {
-    await publish(payload, delaySec);
-    return true;
-  } catch {
-    return false;
+    try {
+      await publish(payload, delaySec);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

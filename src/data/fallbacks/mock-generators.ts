@@ -1,4 +1,4 @@
-import { News } from "@/components/news/RecentInfluential";
+import type { News } from "@/lib/market-data/types";
 
 export function hashTicker(ticker: string): number {
   let hash = 0;
@@ -8,8 +8,7 @@ export function hashTicker(ticker: string): number {
   return hash;
 }
 
-// Mulberry32 PRNG
-export function seededRandom(seed: number) {
+export function createMulberry32(seed: number) {
   let state = seed;
   return () => {
     state |= 0;
@@ -27,8 +26,8 @@ function tradesFrom(volume: number, rand: () => number): number {
 }
 
 export function generateMockCandles(ticker: string, days = 5 * 365) {
-  const rand = seededRandom(hashTicker(ticker));
-  const volRand = seededRandom(hashTicker(ticker) ^ 0x0107ff);
+  const rand = createMulberry32(hashTicker(ticker));
+  const volRand = createMulberry32(hashTicker(ticker) ^ 0x0107ff);
   const basePrice = 40 + rand() * 460;
   const drift = (rand() - 0.45) * 0.002;
   const baseVol = 500_000 + Math.floor(volRand() * 25_000_000);
@@ -55,8 +54,8 @@ export function generateMockCandles(ticker: string, days = 5 * 365) {
 export function generateMockWeek(ticker: string, days = 7) {
   const daily = generateMockCandles(ticker);
   const anchor = daily[daily.length - 1].value;
-  const rand = seededRandom(hashTicker(ticker) ^ 0x55aa);
-  const volRand = seededRandom(hashTicker(ticker) ^ 0x55aa ^ 0x0107ff);
+  const rand = createMulberry32(hashTicker(ticker) ^ 0x55aa);
+  const volRand = createMulberry32(hashTicker(ticker) ^ 0x55aa ^ 0x0107ff);
 
   const points: MockBar[] = [];
   const stepMs = 15 * 60 * 1000;
@@ -81,8 +80,8 @@ export function generateMockWeek(ticker: string, days = 7) {
 export function generateMockFine(ticker: string, days = 95) {
   const daily = generateMockCandles(ticker);
   const anchor = daily[daily.length - 1].value;
-  const rand = seededRandom(hashTicker(ticker) ^ 0x77ee);
-  const volRand = seededRandom(hashTicker(ticker) ^ 0x77ee ^ 0x0107ff);
+  const rand = createMulberry32(hashTicker(ticker) ^ 0x77ee);
+  const volRand = createMulberry32(hashTicker(ticker) ^ 0x77ee ^ 0x0107ff);
 
   const points: MockBar[] = [];
   const stepMs = 15 * 60 * 1000;
@@ -107,8 +106,8 @@ export function generateMockFine(ticker: string, days = 95) {
 export function generateMockIntraday(ticker: string) {
   const daily = generateMockCandles(ticker);
   const anchor = daily[daily.length - 1].value;
-  const rand = seededRandom(hashTicker(ticker) ^ 0x1d1d);
-  const volRand = seededRandom(hashTicker(ticker) ^ 0x1d1d ^ 0x0107ff);
+  const rand = createMulberry32(hashTicker(ticker) ^ 0x1d1d);
+  const volRand = createMulberry32(hashTicker(ticker) ^ 0x1d1d ^ 0x0107ff);
 
   const points: MockBar[] = [];
   const steps = 390;
@@ -144,7 +143,7 @@ export function generateMockStockData(ticker: string) {
 }
 
 export function generateMockPopularity(ticker: string, days = 90) {
-  const rand = seededRandom(hashTicker(ticker) ^ 0x50c1a1);
+  const rand = createMulberry32(hashTicker(ticker) ^ 0x50c1a1);
   const popularityRate = 55 + Math.floor(rand() * 44);
   const searchVolume = Math.floor((250 + rand() * 950) * 1000);
   const series: { date: string; positive: number; negative: number }[] = [];
@@ -214,7 +213,7 @@ const MOCK_HEADLINES: Array<{
 ];
 
 export function generateMockNews(ticker: string): News[] {
-  const rand = seededRandom(hashTicker(ticker) ^ 0xbeef);
+  const rand = createMulberry32(hashTicker(ticker) ^ 0xbeef);
   const count = 3 + Math.floor(rand() * 3);
   const dayMs = 24 * 60 * 60 * 1000;
 

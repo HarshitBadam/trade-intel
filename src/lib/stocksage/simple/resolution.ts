@@ -1,5 +1,5 @@
-import { entityNameTokens, resolveEntityHints } from "../entity-hints";
-import { canonicalizeEntity, resolveGroup } from "../entity-resolution";
+import { entityNameTokens, resolveEntityHints } from "../entity/entity-hints";
+import { canonicalizeEntity, resolveGroup } from "../entity/entity-resolution";
 import type {
   ConversationState,
   FinanceEntity,

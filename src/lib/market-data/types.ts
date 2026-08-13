@@ -1,5 +1,34 @@
-import type { News, NewsStatus } from "@/components/news/RecentInfluential";
 import type { NewsVerdict } from "@/components/news/VerdictModal";
+
+export type News = {
+  _id: string;
+  page_content: string;
+  metadata: {
+    title: string;
+    source: string;
+    publication_date: string;
+    importance: string;
+    sentiment: string;
+    key_observations: string;
+    url: string;
+    ticker: string;
+    description: string;
+    event: string;
+    ingested_at?: string;
+  };
+};
+
+export type NewsStatus =
+  | "fresh"
+  | "analyzing"
+  | "live"
+  | "sample"
+  | "stale"
+  | "degraded"
+  | "hard_expired"
+  | "no_news"
+  | "analysis_unavailable"
+  | "unavailable";
 
 export type SearchResult = {
   ticker: string;
@@ -29,7 +58,6 @@ export type Quote = {
   fineData: BarPoint[];
 };
 
-// Every payload must identify live data versus seeded sample data.
 export type DataStatus = "live" | "sample";
 
 export type Headline = {
@@ -101,7 +129,6 @@ export type ChatQuote = {
   proxySymbol?: string;
   proxyKind?: "etf" | "adr";
   dayPct: number;
-  // Prior completed session's move.
   prevSessionPct?: number | null;
   prevSessionDate?: string;
   fewDaysPct: number | null;

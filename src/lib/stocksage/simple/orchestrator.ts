@@ -5,7 +5,7 @@ import {
   expandValidCitations,
   validCitationUrls,
 } from "../citations";
-import { resolveConversationState } from "../conversation-entity-state";
+import { resolveConversationState } from "../conversation";
 import {
   evaluateDomainPolicy,
   hardSafetyFloor,

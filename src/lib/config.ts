@@ -105,17 +105,11 @@ export const QSTASH_URL = process.env.QSTASH_URL;
 export const QSTASH_TOKEN = process.env.QSTASH_TOKEN;
 export const QSTASH_CURRENT_SIGNING_KEY = process.env.QSTASH_CURRENT_SIGNING_KEY;
 export const QSTASH_NEXT_SIGNING_KEY = process.env.QSTASH_NEXT_SIGNING_KEY;
-export const APP_URL = process.env.APP_URL ?? process.env.NEXTAUTH_URL;
+export const APP_URL =
+  process.env.APP_URL ?? process.env.AUTH_URL ?? process.env.NEXTAUTH_URL;
 export const hasUpstash = Boolean(
   process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
 );
-const hasQStashQueue = Boolean(
-  QSTASH_TOKEN &&
-    APP_URL &&
-    (QSTASH_CURRENT_SIGNING_KEY || QSTASH_NEXT_SIGNING_KEY)
-);
-/** Market-intelligence refreshes require signed callbacks and durable state. */
-export const hasRefreshQueue = hasQStashQueue && hasUpstash;
 export const MARKET_INTELLIGENCE_ON_DEMAND_DAILY_BUDGET = Math.max(
   1,
   Number(process.env.MARKET_INTELLIGENCE_ON_DEMAND_DAILY_BUDGET ?? 300)

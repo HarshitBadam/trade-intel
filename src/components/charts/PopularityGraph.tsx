@@ -2,9 +2,9 @@
 import Image from "next/image"
 import * as React from "react"
 import { PopularityChart } from "./PopularityChart"
-import { RANGES, rangeToKind, DAY_MS } from "./ranges"
-import type { BarPoint } from "@/lib/market-data/types"
-import type { News } from "@/components/news/RecentInfluential"
+import { RangeSelector } from "./RangeSelector"
+import { DAY_MS } from "./ranges"
+import type { BarPoint, News } from "@/lib/market-data/types"
 
 interface PopularityGraphProps {
   companyName: string;
@@ -94,42 +94,15 @@ export function PopularityGraph({
             <div className="text-muted-foreground text-sm">{sentimentPercentage}% Positive Sentiment</div>
           </div>
 
-          <div className="flex gap-1 mt-3">
-            {RANGES.map((r) => {
-              const kind = rangeToKind(r.days);
-              const hiResAvailable =
-                r.days === 1 ? has1D : r.days === 7 ? hasWeek : hasFine;
-
-              const disabled = (() => {
-                if (kind && onRequestRange) return false;
-                if (r.days === 1) return !has1D;
-                return r.days !== Infinity && r.days > spanDays + 1;
-              })();
-
-              const active = rangeDays === r.days;
-              return (
-                <button
-                  key={r.label}
-                  type="button"
-                  disabled={disabled}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setRangeDays(r.days);
-                    if (onRequestRange && kind && !hiResAvailable) {
-                      onRequestRange(kind);
-                    }
-                  }}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                    active
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground hover:bg-accent/50"
-                  } ${disabled ? "opacity-30" : "cursor-pointer"}`}
-                >
-                  {r.label}
-                </button>
-              );
-            })}
-          </div>
+          <RangeSelector
+            rangeDays={rangeDays}
+            onSelect={setRangeDays}
+            has1D={has1D}
+            hasWeek={hasWeek}
+            hasFine={hasFine}
+            spanDays={spanDays}
+            onRequestRange={onRequestRange}
+          />
         </div>
 
         <div className="flex items-center gap-2 p-8 text-muted-foreground text-xs">

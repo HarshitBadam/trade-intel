@@ -1,34 +1,24 @@
 export const CURATED_PEERS: Record<string, string[]> = {
-  // IT services / consulting
   INFY: ["ACN", "CTSH", "WIT", "IBM", "EPAM", "GLOB"],
   WIT: ["INFY", "ACN", "CTSH", "IBM", "EPAM"],
   ACN: ["IBM", "CTSH", "INFY", "WIT", "EPAM"],
   CTSH: ["ACN", "INFY", "WIT", "IBM", "EPAM"],
-  // Semiconductors / foundries / equipment
   TSM: ["NVDA", "AMD", "AVGO", "INTC", "QCOM", "MU", "ASML"],
   ASML: ["AMAT", "LRCX", "KLAC", "TSM", "NVDA"],
-  // China internet / e-commerce
   BABA: ["JD", "PDD", "AMZN", "MELI", "SE"],
   JD: ["BABA", "PDD", "AMZN", "MELI"],
   PDD: ["BABA", "JD", "AMZN", "MELI"],
-  // Enterprise software
   SAP: ["ORCL", "CRM", "MSFT", "ADBE", "NOW"],
-  // Pharma / healthcare ADRs
   NVO: ["LLY", "PFE", "MRK", "AMGN", "ABBV"],
   AZN: ["PFE", "MRK", "JNJ", "LLY", "BMY"],
   NVS: ["PFE", "MRK", "JNJ", "LLY", "ABBV"],
   GSK: ["PFE", "MRK", "JNJ", "AZN", "BMY"],
-  // Autos
   TM: ["GM", "F", "HMC", "STLA", "TSLA"],
   HMC: ["TM", "GM", "F", "STLA"],
-  // Consumer / staples
   UL: ["PG", "KO", "CL", "KMB", "PEP"],
-  // Banks
   HSBC: ["JPM", "BAC", "C", "WFC"],
-  // Energy majors
   BP: ["XOM", "CVX", "SHEL", "COP"],
   SHEL: ["XOM", "CVX", "BP", "COP"],
-  // Consumer electronics / gaming
   SONY: ["MSFT", "AAPL", "EA", "TTWO"],
 };
 
@@ -43,42 +33,25 @@ export function getCuratedPeers(symbol: string): string[] {
 // here still uses only the live feed.
 const PEER_GROUPS: string[][] = [
   ["MSFT", "AAPL", "GOOGL", "AMZN", "META", "ORCL"],
-  // SaaS / enterprise software
   ["CRM", "NOW", "SNOW", "DDOG", "MDB", "WDAY", "HUBS", "TEAM", "ADBE", "INTU", "SAP"],
-  // Cybersecurity
   ["CRWD", "PANW", "ZS", "FTNT", "NET", "OKTA", "S"],
-  // Semiconductors / equipment / EDA
   ["NVDA", "AMD", "AVGO", "TSM", "QCOM", "MU", "TXN", "INTC", "AMAT", "ADI", "KLAC", "MRVL", "ASML", "SNPS", "CDNS"],
-  // Streaming / media
   ["NFLX", "DIS", "SPOT", "WBD", "RBLX"],
-  // Gig / travel platforms
   ["UBER", "ABNB", "DASH", "LYFT"],
-  // Social platforms
   ["PINS", "SNAP", "RDDT", "META"],
-  // Consumer fintech
   ["PYPL", "COIN", "HOOD", "SOFI", "AFRM", "SQ"],
-  // Banks
   ["JPM", "BAC", "WFC", "C", "GS", "MS", "SCHW", "COF", "USB"],
-  // Payment networks
   ["V", "MA", "AXP"],
   // Pharma / biotech (US-listed; ADRs like NVO omitted, Finnhub reports their
   // cap in local currency and inflates it relative to USD-listed peers)
   ["LLY", "PFE", "MRK", "ABBV", "BMY", "AMGN", "GILD", "MRNA"],
-  // Healthcare services / devices
   ["UNH", "JNJ", "TMO", "ABT", "DHR", "CVS"],
-  // Retail
   ["WMT", "COST", "TGT", "HD", "LOW", "DG"],
-  // Consumer staples
   ["KO", "PEP", "PG", "CL", "PM", "MDLZ"],
-  // Restaurants
   ["MCD", "SBUX", "CMG"],
-  // Autos / EV
   ["TSLA", "F", "GM", "RIVN", "LCID", "TM"],
-  // Energy majors
   ["XOM", "CVX", "COP", "BP", "SHEL"],
-  // Industrials
   ["BA", "CAT", "GE", "HON", "UPS", "LMT", "DE"],
-  // Telecom
   ["T", "VZ", "TMUS"],
   // IT services / consulting (INR-listed INFY/WIT excluded; see ADR note above)
   ["ACN", "CTSH", "IBM", "EPAM"],

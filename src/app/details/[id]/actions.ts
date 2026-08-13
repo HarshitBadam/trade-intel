@@ -1,6 +1,6 @@
 "use server";
 
-import type { StockData } from "./page";
+import type { StockData } from "@/lib/market-intelligence/types";
 import {
   generateMockStockData,
   generateMockIntraday,
@@ -14,7 +14,7 @@ import {
   MARKET_INTELLIGENCE_USER_BURST_LIMIT,
   MARKET_INTELLIGENCE_USER_DAILY_LIMIT,
 } from "@/lib/config";
-import { guard } from "@/lib/guard";
+import { guard } from "@/lib/resilience/guard";
 import {
   getTickerRefreshStatus,
   requestTickerRefresh,
@@ -26,27 +26,21 @@ import {
   getChartRangeData,
 } from "@/lib/market-data/queries";
 import {
-  getQuoteData,
-  getHeadlineData,
-  getMoversData,
   getHomeTickerData,
   getLiveQuotes as getLiveQuotesImpl,
-} from "@/lib/market-data/api-home";
+} from "@/lib/market-data/api/home";
 import { searchTickersCached } from "@/lib/market-data/cache";
-import { searchUniverse } from "@/lib/market-data/universe";
+import { searchUniverse } from "@/lib/market-data/security-master/universe";
 import {
   mockQuote,
   mockHeadline,
   mockNewsSummary,
-  mockMovers,
-  summarizeMovers,
   sanitizeTicker,
 } from "@/lib/market-data/transforms";
 
 import type {
   Quote,
   Headline,
-  Movers,
   LiveQuote,
   SearchResponse,
   BarPoint,
@@ -144,33 +138,6 @@ export async function pollDetailsRefresh(
   });
   if (!access.ok) return null;
   return getTickerRefreshStatus(workId);
-}
-
-export async function fetchQuote(ticker: string): Promise<Quote> {
-  const symbol = sanitizeTicker(ticker);
-  if (!symbol) return mockQuote("N/A");
-
-  const access = await guard("details", { limit: 30, windowSec: 60 });
-  if (!access.ok) return mockQuote(symbol);
-
-  return getQuoteData(symbol);
-}
-
-export async function fetchTopHeadline(ticker: string): Promise<Headline> {
-  const symbol = sanitizeTicker(ticker);
-  if (!symbol) return mockHeadline("AAPL");
-
-  const access = await guard("details", { limit: 30, windowSec: 60 });
-  if (!access.ok) return mockHeadline(symbol);
-
-  return getHeadlineData(symbol);
-}
-
-export async function fetchMovers(): Promise<Movers> {
-  const access = await guard("details", { limit: 30, windowSec: 60 });
-  if (!access.ok) return summarizeMovers(mockMovers(), "sample");
-
-  return getMoversData();
 }
 
 export async function getLiveQuotes(tickers: string[]): Promise<LiveQuote[]> {
