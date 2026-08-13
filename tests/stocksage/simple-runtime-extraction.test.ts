@@ -1,7 +1,7 @@
 import "../no-live-keys";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveSimpleLlmConfig } from "../../src/lib/config";
+import { resolveStockSageLlmConfig } from "../../src/lib/config";
 import { LlmRequestError } from "../../src/lib/llm";
 import {
   hasSimpleEvidenceRequest,
@@ -10,15 +10,15 @@ import {
 } from "../../src/lib/stocksage/simple-runtime";
 
 test("selects provider defaults and allows an explicit model override", () => {
-  assert.deepEqual(resolveSimpleLlmConfig(undefined, undefined), {
+  assert.deepEqual(resolveStockSageLlmConfig(undefined, undefined), {
     provider: "cerebras",
     model: "gpt-oss-120b",
   });
-  assert.deepEqual(resolveSimpleLlmConfig("groq", undefined), {
+  assert.deepEqual(resolveStockSageLlmConfig("groq", undefined), {
     provider: "groq",
     model: "qwen/qwen3.6-27b",
   });
-  assert.deepEqual(resolveSimpleLlmConfig(" GROQ ", " custom/model "), {
+  assert.deepEqual(resolveStockSageLlmConfig(" GROQ ", " custom/model "), {
     provider: "groq",
     model: "custom/model",
   });

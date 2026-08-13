@@ -78,6 +78,38 @@ function availableUsRanking(): MarketRankingPacket {
   };
 }
 
+test("social replies distinguish greetings, thanks, and farewells", async () => {
+  for (const [message, expected] of [
+    [
+      "Nihao",
+      "Hey, good to see you. What company or market should we look at?",
+    ],
+    [
+      "Thanks Mate",
+      "You’re welcome. Let me know what company or market you want to look at next.",
+    ],
+    [
+      "bye yaar",
+      "Take care. Come back anytime you want to look at a company or market.",
+    ],
+    [
+      "Sayonara",
+      "Take care. Come back anytime you want to look at a company or market.",
+    ],
+  ] as const) {
+    const reply = await runSimpleChatAdapter(
+      { message, history: [] },
+      {
+        extractPlan: async () => {
+          throw new Error("social messages should not reach extraction");
+        },
+      }
+    );
+    assert.equal(reply.text, expected, message);
+    assert.equal(reply.presentationMode, "social", message);
+  }
+});
+
 test("prices keep the existing market and general-news path unchanged", async () => {
   const plan: SimpleEvidencePlan = {
     prices: [["TSLA", "2026-08-12"]],

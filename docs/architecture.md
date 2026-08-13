@@ -64,8 +64,8 @@ flowchart TB
 
 Pages read Astra, Alpaca, and Finnhub. Polygon and direct Groq market analysis
 sit behind the durable worker.
-Chat first screens the turn for crisis language, then applies a deterministic
-domain policy, resolves typed conversation state, and builds a bounded evidence
+Chat first resolves typed conversation state, then screens the turn for crisis
+language, applies a deterministic domain policy, and builds a bounded evidence
 plan.
 
 ## Serving a page
@@ -108,7 +108,7 @@ generation. The page request itself performs no news ingestion or model work.
 | Finnhub | Company profile, peers, symbol search fallback | Read path |
 | Polygon | News and per-article interim sentiment | Market-intelligence worker |
 | Astra DB | Stored articles and per-ticker verdicts | Both |
-| Groq | Market analysis, isolated chat models, and the GPT-OSS Safeguard input rail | Worker and chat |
+| Groq | Market analysis and isolated chat models | Worker and chat |
 | Tavily | Planned, filtered web evidence for current/comparison routes | Chat |
 
 Prices resolve in order: Alpaca SIP history with a live IEX tail, then Polygon aggregates as a backup, then nothing. In live mode the UI shows an "unavailable" state rather than inventing a price.

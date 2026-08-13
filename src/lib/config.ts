@@ -36,13 +36,13 @@ export const CEREBRAS_MODEL =
   process.env.CEREBRAS_MODEL ?? "gpt-oss-120b";
 const rawCerebras = Boolean(CEREBRAS_API_KEY);
 
-export type StockSageSimpleProvider = "groq" | "cerebras";
+export type StockSageProvider = "groq" | "cerebras";
 
-export function resolveSimpleLlmConfig(
-  provider = process.env.STOCKSAGE_SIMPLE_PROVIDER,
-  model = process.env.STOCKSAGE_SIMPLE_MODEL
-): { provider: StockSageSimpleProvider; model: string } {
-  const selectedProvider: StockSageSimpleProvider =
+export function resolveStockSageLlmConfig(
+  provider = process.env.STOCKSAGE_PROVIDER,
+  model = process.env.STOCKSAGE_MODEL
+): { provider: StockSageProvider; model: string } {
+  const selectedProvider: StockSageProvider =
     provider?.trim().toLowerCase() === "groq" ? "groq" : "cerebras";
   return {
     provider: selectedProvider,
@@ -52,9 +52,9 @@ export function resolveSimpleLlmConfig(
   };
 }
 
-const simpleLlm = resolveSimpleLlmConfig();
-export const STOCKSAGE_SIMPLE_PROVIDER = simpleLlm.provider;
-export const STOCKSAGE_SIMPLE_MODEL = simpleLlm.model;
+const stockSageLlmConfig = resolveStockSageLlmConfig();
+export const STOCKSAGE_PROVIDER = stockSageLlmConfig.provider;
+export const STOCKSAGE_MODEL = stockSageLlmConfig.model;
 
 export const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 const rawTavily = Boolean(TAVILY_API_KEY);

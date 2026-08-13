@@ -37,7 +37,7 @@ pipeline. Social and policy responses return without retrieval.
 |--------|-------|---------|
 | `searchStocks(query)` | 60 / min (Finnhub path only) | `{ stocks, searchUnavailable? }` |
 | `fetchDetails(ticker)` | 30 / min | Store-only `StockData` snapshot |
-| `requestDetailsRefresh(ticker)` | 4 / min plus daily admission | Reserve or join one durable refresh job |
+| `requestDetailsRefresh(ticker)` | 10 / min plus daily admission | Reserve or join one durable refresh job |
 | `pollDetailsRefresh(workId)` | 120 / min | Durable queued/running/done/failed state |
 | `getLiveQuotes(tickers)` | none | `LiveQuote[]` for a small set |
 | `fetchChartRange(ticker, kind)` | 30 / min | `BarPoint[]` for a range |

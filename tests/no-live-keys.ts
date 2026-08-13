@@ -19,8 +19,8 @@ for (const key of [
   "GROQ_CHAT_MODEL",
   "CEREBRAS_API_KEY",
   "CEREBRAS_MODEL",
-  "STOCKSAGE_SIMPLE_PROVIDER",
-  "STOCKSAGE_SIMPLE_MODEL",
+  "STOCKSAGE_PROVIDER",
+  "STOCKSAGE_MODEL",
   "TAVILY_API_KEY",
 
   // Auth presence feeds liveAllowed, which gates live provider access.

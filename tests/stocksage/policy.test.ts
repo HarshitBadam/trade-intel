@@ -6,6 +6,7 @@ import {
   evaluateDomainPolicy,
   pickHighStakesReply,
 } from "../../src/lib/stocksage/policy";
+import { isColloquialGreeting } from "../../src/lib/stocksage/simple/responses";
 import type { FinanceEntity } from "../../src/lib/stocksage/types";
 
 const apple: FinanceEntity = {
@@ -166,6 +167,41 @@ for (const entry of cases) {
     assert.equal(result.reasonCode, entry.reasonCode);
   });
 }
+
+test("common regional and multilingual greetings stay on the social path", () => {
+  for (const message of [
+    "Howdy mate",
+    "Namaste",
+    "Ni Hao",
+    "Nihao",
+    "Nǐ hǎo",
+    "Bonjour",
+    "Bonjoue",
+    "Hola",
+    "Olá",
+    "Guten tag",
+    "Assalamu alaikum",
+    "Konnichiwa",
+    "Merhaba",
+  ]) {
+    const result = evaluateDomainPolicy(message, []);
+    assert.equal(result.action, "allow", message);
+    assert.equal(result.reasonCode, "social", message);
+  }
+});
+
+test("greeting fallback accepts short addresses and minor typos", () => {
+  for (const message of [
+    "namaste bhaijan",
+    "Bonjoue stranger",
+    "nihao mate",
+    "Konnichiwa StockSage",
+  ]) {
+    assert.equal(isColloquialGreeting(message), true, message);
+  }
+  assert.equal(isColloquialGreeting("write Python code"), false);
+  assert.equal(isColloquialGreeting("market outlook"), false);
+});
 
 test("high-stakes classification is direction- and tense-aware", () => {
   assert.equal(

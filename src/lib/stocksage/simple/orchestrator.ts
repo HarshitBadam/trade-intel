@@ -40,6 +40,7 @@ import {
 import {
   isColloquialGreeting,
   simpleLlmErrorReply,
+  simpleSocialReply,
 } from "./responses";
 import { hasSimpleEvidenceRequest } from "./validation";
 
@@ -72,7 +73,7 @@ export async function runSimpleChatAdapter(
       isColloquialGreeting(request.message))
   ) {
     return {
-      text: "Hey, good to see you. What company or market should we look at?",
+      text: simpleSocialReply(request.message),
       live: false,
       kind: "answer",
       responseId: randomUUID(),

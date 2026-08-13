@@ -56,12 +56,42 @@ export type LlmChatArgs = {
   };
 };
 
+export type LlmTransportDependencies = {
+  fetchImpl?: typeof fetch;
+  apiKey?: (vendor: LlmVendor) => string | undefined;
+  sleep?: (ms: number) => Promise<void>;
+};
+
 function composeMessages(args: LlmChatArgs): LlmMessage[] {
   return [
     ...(args.system ? [{ role: "system" as const, content: args.system }] : []),
     ...(args.messages ?? []),
     ...(args.user ? [{ role: "user" as const, content: args.user }] : []),
   ];
+}
+
+function messagesForMode(args: LlmChatArgs, jsonMode: boolean): LlmMessage[] {
+  const messages = composeMessages(args);
+  if (!jsonMode) return messages;
+
+  const jsonInstruction = args.jsonSchema
+    ? "Return valid JSON matching the requested response schema only."
+    : "Return one valid JSON object only.";
+  const systemIndex = messages.findIndex((message) => message.role === "system");
+  if (systemIndex === -1) {
+    return [{ role: "system", content: jsonInstruction }, ...messages];
+  }
+  return messages.map((message, index) =>
+    index === systemIndex
+      ? {
+          ...message,
+          content:
+            message.content.trim().length > 0
+              ? `${message.content}\n${jsonInstruction}`
+              : jsonInstruction,
+        }
+      : message
+  );
 }
 
 type ChatCompletion = {
@@ -152,54 +182,68 @@ function reasoningParams(args: LlmChatArgs): Record<string, unknown> {
   };
 }
 
-async function postChatCompletion(
+export function buildLlmRequestBody(
   args: LlmChatArgs,
   jsonMode: boolean
+): Record<string, unknown> {
+  return {
+    model: args.model,
+    messages: messagesForMode(args, jsonMode),
+    temperature: args.temperature ?? DEFAULT_TEMPERATURE,
+    ...(args.maxTokens ? { max_tokens: args.maxTokens } : {}),
+    ...reasoningParams(args),
+    ...(jsonMode
+      ? {
+          response_format: args.jsonSchema
+            ? {
+                type: "json_schema",
+                json_schema: {
+                  name: args.jsonSchema.name,
+                  strict: args.jsonSchema.strict ?? true,
+                  schema: args.jsonSchema.schema,
+                },
+              }
+            : { type: "json_object" },
+        }
+      : {}),
+  };
+}
+
+async function postChatCompletion(
+  args: LlmChatArgs,
+  jsonMode: boolean,
+  dependencies: LlmTransportDependencies
 ): Promise<Response> {
   const endpoint = ENDPOINTS[args.vendor];
-  const apiKey = endpoint.key();
+  const apiKey = dependencies.apiKey
+    ? dependencies.apiKey(args.vendor)
+    : endpoint.key();
   if (!apiKey) {
     throw new LlmRequestError(`${args.vendor} API key is not configured`, {
       vendor: args.vendor,
     });
   }
-  return fetch(endpoint.url, {
+  return (dependencies.fetchImpl ?? fetch)(endpoint.url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: args.model,
-      messages: composeMessages(args),
-      temperature: args.temperature ?? DEFAULT_TEMPERATURE,
-      ...(args.maxTokens ? { max_tokens: args.maxTokens } : {}),
-      ...reasoningParams(args),
-      ...(jsonMode
-        ? {
-            response_format: args.jsonSchema
-              ? {
-                  type: "json_schema",
-                  json_schema: {
-                    name: args.jsonSchema.name,
-                    strict: args.jsonSchema.strict ?? true,
-                    schema: args.jsonSchema.schema,
-                  },
-                }
-              : { type: "json_object" },
-          }
-        : {}),
-    }),
+    body: JSON.stringify(buildLlmRequestBody(args, jsonMode)),
     signal: AbortSignal.timeout(args.timeoutMs ?? REQUEST_TIMEOUT_MS),
   });
 }
 
-async function llmChatRaw(args: LlmChatArgs, jsonMode: boolean): Promise<string> {
+async function llmChatRaw(
+  args: LlmChatArgs,
+  jsonMode: boolean,
+  dependencies: LlmTransportDependencies = {}
+): Promise<string> {
   let response: Response | undefined;
   let totalRetryWaitMs = 0;
   for (let attempt = 0; attempt <= MAX_LLM_RETRIES; attempt += 1) {
     try {
-      response = await postChatCompletion(args, jsonMode);
+      response = await postChatCompletion(args, jsonMode, dependencies);
     } catch (error) {
       if (error instanceof LlmRequestError) throw error;
       throw new LlmRequestError(`${args.vendor} request did not complete`, {
@@ -221,7 +265,7 @@ async function llmChatRaw(args: LlmChatArgs, jsonMode: boolean): Promise<string>
       break;
     }
     totalRetryWaitMs += waitMs;
-    await sleep(waitMs);
+    await (dependencies.sleep ?? sleep)(waitMs);
   }
   if (!response) {
     throw new LlmRequestError(`${args.vendor} request did not complete`, {
@@ -250,8 +294,8 @@ async function llmChatRaw(args: LlmChatArgs, jsonMode: boolean): Promise<string>
   // whose reasoning consumed the completion budget before any visible content.
   // Treat that as transient once, rather than surfacing an internal transport
   // failure to the user.
-  await sleep(100);
-  const retry = await postChatCompletion(args, jsonMode);
+  await (dependencies.sleep ?? sleep)(100);
+  const retry = await postChatCompletion(args, jsonMode, dependencies);
   if (!retry.ok) {
     throw new LlmRequestError(
       `${args.vendor} empty-completion retry failed with ${retry.status}`,
@@ -293,11 +337,17 @@ export function llmErrorSummary(error: unknown): {
   return { name: error instanceof Error ? error.name : "unknown" };
 }
 
-export async function llmChatJSON<T = unknown>(args: LlmChatArgs): Promise<T> {
-  const raw = await llmChatRaw(args, true);
+export async function llmChatJSON<T = unknown>(
+  args: LlmChatArgs,
+  dependencies: LlmTransportDependencies = {}
+): Promise<T> {
+  const raw = await llmChatRaw(args, true, dependencies);
   return parseFencedJson<T>(raw);
 }
 
-export async function llmChatText(args: LlmChatArgs): Promise<string> {
-  return llmChatRaw(args, false);
+export async function llmChatText(
+  args: LlmChatArgs,
+  dependencies: LlmTransportDependencies = {}
+): Promise<string> {
+  return llmChatRaw(args, false, dependencies);
 }
