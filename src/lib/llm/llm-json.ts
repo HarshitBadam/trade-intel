@@ -6,13 +6,17 @@ export function stripJsonFences(text: string): string {
   return (fenced ? fenced[1] : trimmed).trim();
 }
 
+export class LlmJsonParseError extends Error {
+  constructor(options?: { cause?: unknown }) {
+    super("LLM JSON parse failed", options?.cause ? { cause: options.cause } : undefined);
+    this.name = "LlmJsonParseError";
+  }
+}
+
 export function parseFencedJson<T = unknown>(raw: string): T {
   try {
     return JSON.parse(stripJsonFences(raw)) as T;
   } catch (error) {
-    throw new Error(
-      `LLM JSON parse failed: ${(error as Error).message}; ` +
-        `body snippet: ${raw.slice(0, 300)}`
-    );
+    throw new LlmJsonParseError({ cause: error });
   }
 }

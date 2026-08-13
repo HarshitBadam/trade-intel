@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildLlmRequestBody,
+  LlmJsonParseError,
   LlmRequestError,
 } from "../../src/lib/llm";
 import {
   executeSimpleLlmFallback,
   simpleLlmChatJSON,
+  shouldFallbackSimpleLlm,
   type SimpleLlmTarget,
 } from "../../src/lib/stocksage/simple/llm";
 
@@ -19,6 +21,141 @@ const GROQ: SimpleLlmTarget = {
   vendor: "groq",
   model: "qwen/qwen3.6-27b",
 };
+
+test("switches only for failures another provider can reasonably recover", () => {
+  const cases: Array<[unknown, boolean]> = [
+    [new LlmJsonParseError(), true],
+    [new LlmRequestError("network failure"), true],
+    [new LlmRequestError("timeout", { status: 408 }), true],
+    [new LlmRequestError("rate limited", { status: 429 }), true],
+    [new LlmRequestError("server failure", { status: 500 }), true],
+    [new LlmRequestError("unavailable", { status: 503 }), true],
+    [new LlmRequestError("bad request", { status: 400 }), false],
+    [new LlmRequestError("unauthorized", { status: 401 }), false],
+    [new LlmRequestError("forbidden", { status: 403 }), false],
+    [new LlmRequestError("too large", { status: 413 }), false],
+    [new LlmRequestError("invalid request", { status: 422 }), false],
+    [new TypeError("programming error"), false],
+  ];
+  for (const [error, expected] of cases) {
+    assert.equal(shouldFallbackSimpleLlm(error), expected);
+  }
+});
+
+test("returns a successful primary response without touching the fallback", async () => {
+  const attempts: SimpleLlmTarget[] = [];
+  const result = await executeSimpleLlmFallback(
+    CEREBRAS,
+    GROQ,
+    async (target) => {
+      attempts.push(target);
+      return "primary response";
+    },
+    () => true
+  );
+  assert.equal(result, "primary response");
+  assert.deepEqual(attempts, [CEREBRAS]);
+});
+
+test("uses only the fallback when the primary vendor is unavailable", async () => {
+  const attempts: SimpleLlmTarget[] = [];
+  const result = await executeSimpleLlmFallback(
+    CEREBRAS,
+    GROQ,
+    async (target) => {
+      attempts.push(target);
+      return "fallback response";
+    },
+    (vendor) => vendor === "groq"
+  );
+  assert.equal(result, "fallback response");
+  assert.deepEqual(attempts, [GROQ]);
+});
+
+test("fails before making a request when neither vendor is available", async () => {
+  let requests = 0;
+  await assert.rejects(
+    executeSimpleLlmFallback(
+      CEREBRAS,
+      GROQ,
+      async () => {
+        requests += 1;
+        return "unreachable";
+      },
+      () => false
+    ),
+    (error: unknown) =>
+      error instanceof LlmRequestError &&
+      error.vendor === "cerebras" &&
+      error.status === undefined
+  );
+  assert.equal(requests, 0);
+});
+
+test("rethrows the primary failure when the fallback vendor is unavailable", async () => {
+  const primaryError = new LlmRequestError("primary unavailable", {
+    vendor: "cerebras",
+    status: 503,
+  });
+  const attempts: SimpleLlmTarget[] = [];
+  await assert.rejects(
+    executeSimpleLlmFallback(
+      CEREBRAS,
+      GROQ,
+      async (target) => {
+        attempts.push(target);
+        throw primaryError;
+      },
+      (vendor) => vendor === "cerebras"
+    ),
+    (error: unknown) => error === primaryError
+  );
+  assert.deepEqual(attempts, [CEREBRAS]);
+});
+
+test("propagates a failed fallback without attempting a third request", async () => {
+  const attempts: SimpleLlmTarget[] = [];
+  await assert.rejects(
+    executeSimpleLlmFallback(
+      CEREBRAS,
+      GROQ,
+      async (target) => {
+        attempts.push(target);
+        throw new LlmRequestError(`${target.vendor} failed`, {
+          vendor: target.vendor,
+          status: target.vendor === "cerebras" ? 503 : 401,
+        });
+      },
+      () => true
+    ),
+    (error: unknown) =>
+      error instanceof LlmRequestError &&
+      error.vendor === "groq" &&
+      error.status === 401
+  );
+  assert.deepEqual(attempts, [CEREBRAS, GROQ]);
+});
+
+test("switching works in the reverse Groq-to-Cerebras direction", async () => {
+  const attempts: SimpleLlmTarget[] = [];
+  const result = await executeSimpleLlmFallback(
+    GROQ,
+    CEREBRAS,
+    async (target) => {
+      attempts.push(target);
+      if (target.vendor === "groq") {
+        throw new LlmRequestError("groq unavailable", {
+          vendor: "groq",
+          status: 503,
+        });
+      }
+      return "cerebras response";
+    },
+    () => true
+  );
+  assert.equal(result, "cerebras response");
+  assert.deepEqual(attempts, [GROQ, CEREBRAS]);
+});
 
 test("adds the Groq-compatible JSON instruction only in JSON mode", () => {
   const args = {

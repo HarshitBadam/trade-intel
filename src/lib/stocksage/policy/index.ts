@@ -6,10 +6,10 @@ import {
   VIOLENCE_THREAT_RESPONSE,
 } from "./crisis";
 import {
-  CASUAL_ACKNOWLEDGEMENT,
-  FAREWELL,
   FRUSTRATION,
   HELP,
+  isCasualAcknowledgement,
+  isFarewell,
   SOCIAL,
 } from "./social-patterns";
 import type {
@@ -244,8 +244,8 @@ export function evaluateDomainPolicy(
     (/^(?:hello|hey|hi)\b/i.test(text) &&
       /\b(?:greet|welcome)\b/i.test(text) &&
       !CODE.test(text)) ||
-    FAREWELL.test(text) ||
-    CASUAL_ACKNOWLEDGEMENT.test(text) ||
+    isFarewell(text) ||
+    isCasualAcknowledgement(text) ||
     FRUSTRATION.test(text)
   ) {
     return { action: "allow", reasonCode: "social" };

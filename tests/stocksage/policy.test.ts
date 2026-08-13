@@ -6,6 +6,10 @@ import {
   evaluateDomainPolicy,
   pickHighStakesReply,
 } from "../../src/lib/stocksage/policy";
+import {
+  isCasualAcknowledgement,
+  isFarewell,
+} from "../../src/lib/stocksage/policy/social-patterns";
 import { isColloquialGreeting } from "../../src/lib/stocksage/simple/responses";
 import type { FinanceEntity } from "../../src/lib/stocksage/types";
 
@@ -24,6 +28,11 @@ const tesla: FinanceEntity = {
   ticker: "TSLA",
   market: "us",
 };
+
+test("social typo recovery stays bounded away from finance language", () => {
+  assert.equal(isFarewell("buy"), false);
+  assert.equal(isCasualAcknowledgement("What is Apple trading at?"), false);
+});
 
 const cases: {
   name: string;

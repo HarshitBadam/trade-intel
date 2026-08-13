@@ -1,15 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { llmErrorSummary } from "@/lib/llm";
 import {
-  CASUAL_ACKNOWLEDGEMENT,
-  FAREWELL,
+  isCasualAcknowledgement,
+  isFarewell,
 } from "../policy/social-patterns";
+import { isWithinOneEdit } from "../text-normalization";
 import type { ChatReply, ConversationState } from "../types";
 
 const COLLOQUIAL_GREETING =
   /^(?:yo+|hey+|hi+|hello+|sup+|what'?s\s+up|whats\s+up|wass+up|wazz+up|howdy|g'?day)\b(?:[\s,!.?]+\S+){0,4}[\s!.?]*$/i;
 
 const INTERNATIONAL_GREETINGS = [
+  "hello",
+  "howdy",
   "namaste",
   "nihao",
   "bonjour",
@@ -29,31 +32,6 @@ const INTERNATIONAL_GREETINGS = [
   "merhaba",
 ] as const;
 
-function editDistanceAtMostOne(left: string, right: string): boolean {
-  if (Math.abs(left.length - right.length) > 1) return false;
-  if (left === right) return true;
-
-  let leftIndex = 0;
-  let rightIndex = 0;
-  let edits = 0;
-  while (leftIndex < left.length && rightIndex < right.length) {
-    if (left[leftIndex] === right[rightIndex]) {
-      leftIndex += 1;
-      rightIndex += 1;
-      continue;
-    }
-    edits += 1;
-    if (edits > 1) return false;
-    if (left.length > right.length) leftIndex += 1;
-    else if (right.length > left.length) rightIndex += 1;
-    else {
-      leftIndex += 1;
-      rightIndex += 1;
-    }
-  }
-  return edits + Number(leftIndex < left.length || rightIndex < right.length) <= 1;
-}
-
 export function isColloquialGreeting(message: string): boolean {
   if (COLLOQUIAL_GREETING.test(message)) return true;
 
@@ -71,17 +49,19 @@ export function isColloquialGreeting(message: string): boolean {
     INTERNATIONAL_GREETINGS.some(
       (greeting) =>
         candidate === greeting ||
-        (candidate.length >= 5 && editDistanceAtMostOne(candidate, greeting))
+        (candidate.length >= 4 &&
+          greeting.length >= 5 &&
+          isWithinOneEdit(candidate, greeting))
     )
   );
 }
 
 export function simpleSocialReply(message: string): string {
-  if (FAREWELL.test(message)) {
+  if (isFarewell(message)) {
     return "Take care. Come back anytime you want to look at a company or market.";
   }
-  if (CASUAL_ACKNOWLEDGEMENT.test(message)) {
-    return "You’re welcome. Let me know what company or market you want to look at next.";
+  if (isCasualAcknowledgement(message)) {
+    return "No worries. Let me know if you want to look at anything else.";
   }
   return "Hey, good to see you. What company or market should we look at?";
 }

@@ -6,6 +6,7 @@ import {
 } from "@/lib/config";
 import {
   hasVendor,
+  LlmJsonParseError,
   LlmRequestError,
   llmChatJSON,
   llmChatText,
@@ -15,12 +16,14 @@ import {
   type LlmVendor,
 } from "@/lib/llm";
 
-type SimpleLlmChatArgs = Omit<LlmChatArgs, "vendor" | "model">;
+export type SimpleLlmChatArgs = Omit<LlmChatArgs, "vendor" | "model">;
 
 export type SimpleLlmDependencies = {
   vendorAvailable?: (vendor: LlmVendor) => boolean;
   transport?: LlmTransportDependencies;
 };
+
+export type SimpleJsonCall = (args: SimpleLlmChatArgs) => Promise<unknown>;
 
 export type SimpleLlmTarget = {
   vendor: LlmVendor;
@@ -37,10 +40,18 @@ const FALLBACK_LLM: SimpleLlmTarget =
     ? { vendor: "cerebras", model: CEREBRAS_MODEL }
     : { vendor: "groq", model: GROQ_CHAT_MODEL };
 
+export function isRecoverableLlmTransportFailure(error: unknown): boolean {
+  return error instanceof LlmRequestError || error instanceof LlmJsonParseError;
+}
+
 export function shouldFallbackSimpleLlm(error: unknown): boolean {
+  if (error instanceof LlmJsonParseError) return true;
   if (!(error instanceof LlmRequestError)) return false;
   return (
-    error.status === undefined || error.status === 429 || error.status >= 500
+    error.status === undefined ||
+    error.status === 408 ||
+    error.status === 429 ||
+    error.status >= 500
   );
 }
 

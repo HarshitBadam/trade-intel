@@ -12,20 +12,23 @@ export const IsoDateSchema = z
     );
   }, "Invalid calendar date");
 
-export const PricePairsSchema = z
-  .array(z.tuple([z.string().trim().min(1).max(100), IsoDateSchema]))
-  .max(24);
+export const RankingMarketSchema = z.enum(["US", "ASX", "UNSPECIFIED"]);
+
+export const SubjectDatePairSchema = z.tuple([
+  z.string().trim().min(1).max(100),
+  IsoDateSchema,
+]);
+
+export const NewsQuerySchema = z.string().trim().min(1).max(500);
+
+export const RankingTupleSchema = z.tuple([RankingMarketSchema, IsoDateSchema]);
+
+export const PricePairsSchema = z.array(SubjectDatePairSchema).max(24);
 
 const SimpleEvidencePlanSchema = z.object({
   prices: PricePairsSchema.optional().default([]),
-  news: z.array(z.string().trim().min(1).max(500)).max(3).optional().default([]),
-  rankings: z
-    .array(
-      z.tuple([z.enum(["US", "ASX", "UNSPECIFIED"]), IsoDateSchema])
-    )
-    .max(2)
-    .optional()
-    .default([]),
+  news: z.array(NewsQuerySchema).max(3).optional().default([]),
+  rankings: z.array(RankingTupleSchema).max(2).optional().default([]),
 });
 
 export function normalizeSimpleEvidencePlan(raw: unknown): SimpleEvidencePlan {
@@ -45,4 +48,16 @@ export function hasSimpleEvidenceRequest(
     plan.news.length > 0 ||
     plan.rankings.length > 0
   );
+}
+
+export function summarizeZodIssues(error: z.ZodError): {
+  issuePaths: string[];
+  issueCount: number;
+} {
+  const issuePaths = [
+    ...new Set(
+      error.issues.map((issue) => (issue.path.length > 0 ? issue.path.join(".") : "(root)"))
+    ),
+  ].slice(0, 10);
+  return { issuePaths, issueCount: error.issues.length };
 }

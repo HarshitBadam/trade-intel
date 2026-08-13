@@ -7,6 +7,7 @@ import { logStockSage } from "@/lib/telemetry";
 import {
   computeCloseToCloseMovers,
   limitRankingPacket,
+  RANKING_RESULT_LIMIT,
   requestedSessionAtOrBefore,
   resolveUsRankingSession,
   summarizeMarketMovers,
@@ -38,6 +39,7 @@ export type {
 } from "./market-ranking-types";
 export {
   computeCloseToCloseMovers,
+  RANKING_RESULT_LIMIT,
   resolveUsRankingSession,
   summarizeMarketMovers,
 };

@@ -8,6 +8,8 @@ import {
 } from "@/lib/config";
 import { parseFencedJson } from "./llm-json";
 
+export { LlmJsonParseError } from "./llm-json";
+
 export type LlmVendor = "groq" | "cerebras";
 export type LlmReasoningEffort = "none" | "low" | "medium" | "high";
 
@@ -98,8 +100,19 @@ type ChatCompletion = {
   choices?: { message?: { content?: string } }[];
 };
 
-async function completionContent(response: Response): Promise<string | undefined> {
-  const data = (await response.json()) as ChatCompletion;
+async function completionContent(
+  response: Response,
+  vendor: LlmVendor
+): Promise<string | undefined> {
+  let data: ChatCompletion;
+  try {
+    data = (await response.json()) as ChatCompletion;
+  } catch (cause) {
+    throw new LlmRequestError(`${vendor} returned malformed response JSON`, {
+      vendor,
+      cause,
+    });
+  }
   const content = data.choices?.[0]?.message?.content;
   return typeof content === "string" && content.trim() !== ""
     ? content
@@ -287,7 +300,7 @@ async function llmChatRaw(
     );
   }
 
-  const content = await completionContent(response);
+  const content = await completionContent(response, args.vendor);
   if (content) return content;
 
   // Some OpenAI-compatible providers occasionally return a successful response
@@ -306,7 +319,7 @@ async function llmChatRaw(
       }
     );
   }
-  const retriedContent = await completionContent(retry);
+  const retriedContent = await completionContent(retry, args.vendor);
   if (retriedContent) return retriedContent;
   throw new LlmRequestError(`${args.vendor} returned an empty completion`, {
     vendor: args.vendor,

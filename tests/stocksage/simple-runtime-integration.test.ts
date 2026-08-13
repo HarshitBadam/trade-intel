@@ -79,23 +79,30 @@ function availableUsRanking(): MarketRankingPacket {
 }
 
 test("social replies distinguish greetings, thanks, and farewells", async () => {
+  const greeting =
+    "Hey, good to see you. What company or market should we look at?";
+  const acknowledgement =
+    "No worries. Let me know if you want to look at anything else.";
+  const farewell =
+    "Take care. Come back anytime you want to look at a company or market.";
   for (const [message, expected] of [
-    [
-      "Nihao",
-      "Hey, good to see you. What company or market should we look at?",
-    ],
-    [
-      "Thanks Mate",
-      "You’re welcome. Let me know what company or market you want to look at next.",
-    ],
-    [
-      "bye yaar",
-      "Take care. Come back anytime you want to look at a company or market.",
-    ],
-    [
-      "Sayonara",
-      "Take care. Come back anytime you want to look at a company or market.",
-    ],
+    ["Nihao", greeting],
+    ["Helo", greeting],
+    ["hlelo", greeting],
+    ["Thanks Mate", acknowledgement],
+    ["Thanks a lot!!", acknowledgement],
+    ["Thank you so much", acknowledgement],
+    ["Thanks for the help", acknowledgement],
+    ["thnaks", acknowledgement],
+    ["thnak you", acknowledgement],
+    ["dass good", acknowledgement],
+    ["All good then", farewell],
+    ["thats enough I gues", farewell],
+    ["bye yaar", farewell],
+    ["byee", farewell],
+    ["goodby", farewell],
+    ["see yaa", farewell],
+    ["Sayonara", farewell],
   ] as const) {
     const reply = await runSimpleChatAdapter(
       { message, history: [] },

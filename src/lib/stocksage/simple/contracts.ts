@@ -24,6 +24,7 @@ export type RefinedRankingRequest = {
   endDate: string;
   sector: string | null;
   limit: number;
+  requestedLimit?: number;
 };
 
 export type RankingCapabilityOutcome = {
