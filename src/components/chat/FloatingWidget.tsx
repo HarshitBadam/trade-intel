@@ -2,18 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getSummary } from "@/app/actions";
 import type {
   ChatRequest,
-  ChatTurn,
   ConversationState,
 } from "@/lib/stocksage/types";
-import type { ChatMessageModel } from "./ChatMessage";
+import {
+  appendChatMessageVersion,
+  chatHistory,
+  createChatMessage,
+  selectChatMessageVersion,
+  type ChatMessageModel,
+  type ChatMessageVersion,
+} from "./chat-message-model";
 import { FloatingWidgetView } from "./FloatingWidgetView";
 
 const initialMessages: ChatMessageModel[] = [
-  {
-    id: "welcome",
-    sender: "ai",
+  createChatMessage("welcome", "ai", {
     text: "Hey, I’m StockSage. Ask me about a company, compare a few investments, or talk through what’s moving a market.",
-  },
+  }),
 ];
 
 interface FloatingWidgetProps {
@@ -28,15 +32,6 @@ function localId(): string {
     : `message-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function chatHistory(messages: ChatMessageModel[]): ChatTurn[] {
-  return messages
-    .filter((message) => message.id !== "welcome" && !message.error)
-    .map((message) => ({
-      role: message.sender,
-      text: message.text,
-    }));
-}
-
 export function FloatingWidget({
   isExpanded: propIsExpanded,
   onClose,
@@ -47,9 +42,10 @@ export function FloatingWidget({
     useState<ChatMessageModel[]>(initialMessages);
   const [inputValue, setInputValue] = useState("");
   const [isThinking, setIsThinking] = useState(false);
+  const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
+  const [followLatest, setFollowLatest] = useState(true);
   const [showLegal, setShowLegal] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -117,73 +113,76 @@ export function FloatingWidget({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [handleClose, isExpanded]);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isThinking]);
-
   const submitRequest = async (
     request: ChatRequest,
-    appendUserMessage: boolean
+    targetMessageId?: string
   ) => {
     if (requestInFlightRef.current) return;
     requestInFlightRef.current = true;
-    if (appendUserMessage) {
+    const targetIndex = targetMessageId
+      ? messages.findIndex((message) => message.id === targetMessageId)
+      : -1;
+    const hasLaterMessages =
+      targetIndex >= 0 && targetIndex < messages.length - 1;
+    setFollowLatest(!targetMessageId);
+    setPendingMessageId(targetMessageId ?? null);
+    if (!targetMessageId) {
       setMessages((previous) => [
         ...previous,
-        { id: localId(), sender: "user", text: request.message },
+        createChatMessage(localId(), "user", { text: request.message }),
       ]);
     }
     setIsThinking(true);
     try {
       const reply = await getSummary(request);
       if (!isMountedRef.current) return;
-      if (reply.state) conversationStateRef.current = reply.state;
-      const messageId = reply.responseId ?? localId();
-      if (reply.kind === "error") {
-        if (reply.retryable) retryRequestsRef.current.set(messageId, request);
-        setMessages((previous) => [
-          ...previous,
-          {
-            id: messageId,
-            sender: "ai",
-            text: reply.text,
-            error: true,
-            retryable: reply.retryable,
-          },
-        ]);
-        return;
+      if (reply.state && !hasLaterMessages) {
+        conversationStateRef.current = reply.state;
       }
-      if (reply.retryable) {
+      const messageId = targetMessageId ?? reply.responseId ?? localId();
+      const version: ChatMessageVersion = {
+        text: reply.text,
+        ...(reply.kind === "error" ? { error: true } : {}),
+        ...(reply.citationUrls ? { citationUrls: reply.citationUrls } : {}),
+        ...(reply.presentationMode
+          ? { presentationMode: reply.presentationMode }
+          : {}),
+      };
+      if (reply.retryable || targetMessageId) {
         retryRequestsRef.current.set(messageId, request);
       }
-      setMessages((previous) => [
-        ...previous,
-        {
-          id: messageId,
-          sender: "ai",
-          text: reply.text,
-          citationUrls: reply.citationUrls,
-          retryable: reply.retryable,
-          presentationMode: reply.presentationMode,
-        },
-      ]);
+      setMessages((previous) =>
+        targetMessageId
+          ? appendChatMessageVersion(
+              previous,
+              targetMessageId,
+              version,
+              reply.retryable
+            )
+          : [
+              ...previous,
+              createChatMessage(messageId, "ai", version, reply.retryable),
+            ]
+      );
     } catch {
       if (!isMountedRef.current) return;
-      const messageId = localId();
+      const messageId = targetMessageId ?? localId();
       retryRequestsRef.current.set(messageId, request);
-      setMessages((previous) => [
-        ...previous,
-        {
-          id: messageId,
-          sender: "ai",
-          text: "I lost the connection while answering. Your conversation is still here.",
-          error: true,
-          retryable: true,
-        },
-      ]);
+      const version: ChatMessageVersion = {
+        text: "I lost the connection while answering. Your conversation is still here.",
+        error: true,
+      };
+      setMessages((previous) =>
+        targetMessageId
+          ? appendChatMessageVersion(previous, targetMessageId, version, true)
+          : [...previous, createChatMessage(messageId, "ai", version, true)]
+      );
     } finally {
       requestInFlightRef.current = false;
-      if (isMountedRef.current) setIsThinking(false);
+      if (isMountedRef.current) {
+        setIsThinking(false);
+        setPendingMessageId(null);
+      }
     }
   };
 
@@ -197,17 +196,22 @@ export function FloatingWidget({
       state: conversationStateRef.current,
     };
     setInputValue("");
-    void submitRequest(request, true);
+    void submitRequest(request);
   };
 
   const retryMessage = (messageId: string) => {
     const request = retryRequestsRef.current.get(messageId);
     if (!request || requestInFlightRef.current) return;
-    retryRequestsRef.current.delete(messageId);
+    void submitRequest(request, messageId);
+  };
+
+  const selectMessageVersion = (
+    messageId: string,
+    versionIndex: number
+  ) => {
     setMessages((previous) =>
-      previous.filter((message) => message.id !== messageId)
+      selectChatMessageVersion(previous, messageId, versionIndex)
     );
-    void submitRequest(request, false);
   };
 
   return (
@@ -220,8 +224,10 @@ export function FloatingWidget({
       dialogRef={dialogRef}
       messages={messages}
       retryMessage={retryMessage}
+      selectMessageVersion={selectMessageVersion}
       isThinking={isThinking}
-      chatEndRef={chatEndRef}
+      pendingMessageId={pendingMessageId}
+      followLatest={followLatest}
       inputRef={inputRef}
       inputValue={inputValue}
       setInputValue={setInputValue}

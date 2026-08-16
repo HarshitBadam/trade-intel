@@ -1,3 +1,9 @@
 .chatContent {
   direction: ltr;
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow-anchor: none;
+  padding-bottom: 0.5rem;
 }

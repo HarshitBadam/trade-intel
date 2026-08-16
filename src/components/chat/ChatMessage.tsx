@@ -1,17 +1,10 @@
-import { RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatPresentationMode } from "@/lib/stocksage/types";
-
-export type ChatMessageModel = {
-  id: string;
-  sender: "ai" | "user";
-  text: string;
-  citationUrls?: string[];
-  error?: boolean;
-  retryable?: boolean;
-  presentationMode?: ChatPresentationMode;
-};
+import {
+  activeChatMessageVersion,
+  type ChatMessageModel,
+} from "./chat-message-model";
 
 function CitationChip({
   href,
@@ -131,17 +124,23 @@ function MarkdownAnswer({
 export function ChatMessage({
   message,
   onRetry,
+  onSelectVersion,
+  retryDisabled,
 }: {
   message: ChatMessageModel;
   onRetry: (messageId: string) => void;
+  onSelectVersion: (messageId: string, versionIndex: number) => void;
+  retryDisabled: boolean;
 }) {
-  const containerMode = message.presentationMode;
+  const version = activeChatMessageVersion(message);
+  const containerMode = version.presentationMode;
+  const hasVersions = message.versions.length > 1;
   return (
     <div
       className={`flex max-w-full ${
         message.sender === "user" ? "justify-end" : "justify-start"
       }`}
-      role={message.error ? "alert" : undefined}
+      role={version.error ? "alert" : undefined}
       data-presentation-mode={
         message.sender === "ai" ? containerMode ?? undefined : undefined
       }
@@ -150,7 +149,7 @@ export function ChatMessage({
         className={`w-fit ${
           message.sender === "user"
             ? "max-w-xl rounded-lg bg-muted p-3 text-foreground"
-            : message.error
+            : version.error
               ? "max-w-3xl px-3 py-1 text-muted-foreground"
               : "max-w-3xl rounded-lg p-3 text-foreground"
         }`}
@@ -158,26 +157,73 @@ export function ChatMessage({
         {message.sender === "ai" ? (
           <div className="space-y-2 text-sm leading-relaxed [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_h2]:mt-3 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_p]:my-1.5 [&_em]:italic [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5">
             <MarkdownAnswer
-              text={message.text}
-              citationUrls={message.citationUrls}
+              text={version.text}
+              citationUrls={version.citationUrls}
             />
-            {message.retryable && (
-              <button
-                type="button"
-                onClick={() => onRetry(message.id)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  message.error
-                    ? "mb-2 bg-muted text-foreground/70 hover:bg-muted/80 hover:text-foreground"
-                    : "border border-border text-foreground/75 hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                {message.error ? "Try again" : "Regenerate"}
-              </button>
+            {(message.canRegenerate || hasVersions) && (
+              <div className="flex items-center gap-2">
+                {message.canRegenerate && (
+                  <button
+                    type="button"
+                    disabled={retryDisabled}
+                    onClick={() => onRetry(message.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-wait disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      version.error
+                        ? "mb-2 bg-muted text-foreground/70 hover:bg-muted/80 hover:text-foreground"
+                        : "text-foreground/75 hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    {version.error ? "Try again" : "Regenerate"}
+                  </button>
+                )}
+                {hasVersions && (
+                  <div
+                    className="inline-flex items-center text-xs text-foreground/70"
+                    aria-label="Response versions"
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onSelectVersion(
+                          message.id,
+                          message.activeVersionIndex - 1
+                        )
+                      }
+                      disabled={message.activeVersionIndex === 0}
+                      className="rounded-full py-1 pl-1 pr-[3.5px] transition-colors hover:text-foreground disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label="Previous response"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="min-w-10 text-center" aria-live="polite">
+                      {message.activeVersionIndex + 1} /{" "}
+                      {message.versions.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onSelectVersion(
+                          message.id,
+                          message.activeVersionIndex + 1
+                        )
+                      }
+                      disabled={
+                        message.activeVersionIndex ===
+                        message.versions.length - 1
+                      }
+                      className="rounded-full py-1 pr-1 pl-[3.5px] transition-colors hover:text-foreground disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label="Next response"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         ) : (
-          message.text
+          version.text
         )}
       </div>
     </div>

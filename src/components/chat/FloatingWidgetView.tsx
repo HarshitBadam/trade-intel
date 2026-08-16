@@ -12,11 +12,8 @@ import {
 } from "framer-motion";
 import { ArrowUp, X } from "lucide-react";
 import { LegalDialog } from "@/components/legal/LegalModal";
-import {
-  ChatMessage,
-  type ChatMessageModel,
-} from "./ChatMessage";
-import styles from "./FloatingWidget.module.css";
+import { ChatTranscript } from "./ChatTranscript";
+import type { ChatMessageModel } from "./chat-message-model";
 
 type FloatingWidgetViewProps = {
   isExpanded: boolean;
@@ -27,8 +24,10 @@ type FloatingWidgetViewProps = {
   dialogRef: RefObject<HTMLDivElement | null>;
   messages: ChatMessageModel[];
   retryMessage: (messageId: string) => void;
+  selectMessageVersion: (messageId: string, versionIndex: number) => void;
   isThinking: boolean;
-  chatEndRef: RefObject<HTMLDivElement | null>;
+  pendingMessageId: string | null;
+  followLatest: boolean;
   inputRef: RefObject<HTMLInputElement | null>;
   inputValue: string;
   setInputValue: Dispatch<SetStateAction<string>>;
@@ -94,8 +93,10 @@ export function FloatingWidgetView({
   dialogRef,
   messages,
   retryMessage,
+  selectMessageVersion,
   isThinking,
-  chatEndRef,
+  pendingMessageId,
+  followLatest,
   inputRef,
   inputValue,
   setInputValue,
@@ -205,32 +206,17 @@ export function FloatingWidgetView({
                       <X className="h-5 w-5" />
                     </button>
                   </div>
-                  <div className="flex-1 overflow-y-scroll">
-                    <div className={styles.chatContent}>
-                      {messages.map((message) => (
-                        <ChatMessage
-                          key={message.id}
-                          message={message}
-                          onRetry={retryMessage}
-                        />
-                      ))}
-                      {isThinking && (
-                        <div
-                          className="flex max-w-full justify-start"
-                          role="status"
-                          aria-live="polite"
-                        >
-                          <div className="max-w-xs animate-pulse rounded-lg p-3 text-muted-foreground">
-                            Working on that.
-                          </div>
-                        </div>
-                      )}
-                      <div ref={chatEndRef} />
-                    </div>
-                  </div>
+                  <ChatTranscript
+                    messages={messages}
+                    onRetry={retryMessage}
+                    onSelectVersion={selectMessageVersion}
+                    isThinking={isThinking}
+                    pendingMessageId={pendingMessageId}
+                    followLatest={followLatest}
+                  />
                   <div className="mt-auto flex gap-4">
                     <form
-                      className="flex w-full items-center rounded-lg bg-muted p-2 outline outline-1 outline-border"
+                      className="flex w-full items-center rounded-lg bg-muted p-2"
                       onSubmit={(event) => {
                         event.preventDefault();
                         sendMessage();
