@@ -37,4 +37,10 @@ No API keys required. An empty `.env.local` runs the whole app on mock data; cop
 
 ---
 
+## License
+
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+---
+
 > **On the origin.** This started as a [university hackathon project](https://devpost.com/software/tradeintel) built with a team in March 2025, where we shipped a rough homepage and detail page over a weekend. The version here was rebuilt solo through mid-2026: the store-first pipeline, provider integrations, auth, the chat assistant, and the current UI. The commit history has the full trail.
