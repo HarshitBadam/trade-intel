@@ -120,6 +120,7 @@ export function PopularityGraph({
           bars={activeBars}
           news={news}
           rangeDays={rangeDays}
+          intraday={isIntraday}
           subDaily={subDaily}
         />
       ) : (

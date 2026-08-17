@@ -91,11 +91,13 @@ export function PopularityChart({
   bars,
   news,
   rangeDays = 365,
+  intraday = false,
   subDaily = false,
 }: {
   bars: BarPoint[]
   news: News[]
   rangeDays?: number
+  intraday?: boolean
   subDaily?: boolean
 }) {
   const gradientId = React.useId().replace(/:/g, "")
@@ -178,7 +180,7 @@ export function PopularityChart({
               minTickGap={32}
               tickFormatter={(value) => {
                 const date = new Date(value)
-                if (subDaily) {
+                if (intraday) {
                   return date.toLocaleTimeString("en-US", {
                     hour: "numeric",
                     minute: "2-digit",
