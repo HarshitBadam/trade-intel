@@ -1,15 +1,6 @@
 # Screenshots
 
-A quick visual tour. Each image lives in `docs/screenshots/`; drop the files in with the names below and they render here.
-
-<!--
-Capture guide:
-- Run the app with live data and use the same ticker throughout.
-- Use a consistent viewport around 1440 × 900.
-- Wait for every chart, article, and related stock to finish loading.
-- Avoid skeletons, open menus, notifications, and browser chrome where possible.
-- Save PNGs into docs/screenshots/ with the filenames referenced below.
--->
+A quick visual tour of TradeIntel.
 
 ### Home
 ![Home dashboard](screenshots/home.png)
@@ -33,7 +24,7 @@ The current conclusion, confidence, summary, and key market drivers.
 
 ### Popularity view
 ![Sentiment and popularity chart](screenshots/popularity.png)
-The price card flipped into its 90-day sentiment and article-activity view.
+The price card flipped into its sentiment and article-activity view.
 
 ### StockSage chat
 ![StockSage chat](screenshots/chat.png)
