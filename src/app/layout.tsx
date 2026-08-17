@@ -32,12 +32,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} ${playfair.variable} min-h-screen bg-background antialiased`}>
+      <head>
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('theme');var m=window.matchMedia('(prefers-color-scheme: dark)').matches;if(t==='dark'||(t!=='light'&&m)){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}}catch(e){}})();`,
           }}
         />
+      </head>
+      <body className={`${inter.className} ${playfair.variable} min-h-screen bg-background antialiased`}>
         <div className="relative flex min-h-screen flex-col">
           <HeaderGate>
             <header className="sticky top-0 z-50 w-full border-b border-border/60 bg-background/70 backdrop-blur-xl backdrop-saturate-150">

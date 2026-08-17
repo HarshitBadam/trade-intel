@@ -84,12 +84,7 @@ export function ThemeToggle() {
     const next = !root.classList.contains("dark");
     transitionToTheme(next, () => {
       try {
-        const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-        if (next === systemDark) {
-          localStorage.removeItem("theme");
-        } else {
-          localStorage.setItem("theme", next ? "dark" : "light");
-        }
+        localStorage.setItem("theme", next ? "dark" : "light");
       } catch {}
       setIsDark(next);
     });
