@@ -4,11 +4,62 @@ TradeIntel is a stock research dashboard that brings price history, trading volu
 
 > **Live:** [trade-intel-app.vercel.app](https://trade-intel-app.vercel.app) (sign in with Google)
 >
-> **Product snapshots (screenshots):** [Take a quick tour](docs/screenshots.md)
->
 > **Note:** A research project, not financial advice.
 
 TradeIntel uses a store-first market-intelligence architecture: slow or failure-prone enrichment runs as durable background work, while product requests read only versioned, already-published results. Scheduled and on-demand refreshes converge on the same atomic publication boundary, keeping every conclusion consistent with its supporting articles and insulating page performance from provider and model latency. [How it works →](docs/architecture.md)
+
+<details open>
+<summary><strong>Product walkthrough</strong></summary>
+
+### Home
+
+Featured stock chart, top movers, and the latest headline on one screen.
+
+![Home dashboard](docs/screenshots/home.png)
+
+### Search
+
+Search roughly 12,500 tickers locally, with results appearing as you type and no network round trip.
+
+![Ticker search](docs/screenshots/search.png)
+
+### Stock detail
+
+Explore price history, trading volume, market context, and related companies for any ticker.
+
+![Stock detail page](docs/screenshots/details.png)
+
+### Sentiment and news
+
+Trace the articles driving the current read, with per-story sentiment and analysis freshness.
+
+![Sentiment and influential news](docs/screenshots/sentiment.png)
+
+### Analytical verdict
+
+Review the latest conclusion, confidence, summary, and key market drivers.
+
+![Ticker analytical verdict](docs/screenshots/verdict.png)
+
+### Popularity view
+
+Flip the price card into a 90-day sentiment and article-activity view.
+
+![Sentiment and popularity chart](docs/screenshots/popularity.png)
+
+### StockSage
+
+Ask stock research questions and receive evidence-grounded answers with supporting citations.
+
+![StockSage chat](docs/screenshots/chat.png)
+
+### Sign in
+
+Sign in with Google over the animated guilloche background.
+
+![Login screen](docs/screenshots/login.png)
+
+</details>
 
 ## Getting started
 
@@ -45,6 +96,7 @@ No API keys required. An empty `.env.local` runs the whole app on mock data; cop
 | [Deployment](docs/deployment.md)                                   | Hosting, cron jobs, queues, and provider setup     |
 | [Market intelligence runbook](docs/market-intelligence-runbook.md) | Showcase cron, workers, and ops recovery           |
 | [Repo structure](docs/repo-structure.md)                           | The source tree, annotated                         |
+| [Langflow evolution](langflow/README.md)                           | Historical flows and production migration context |
 
 
 ---

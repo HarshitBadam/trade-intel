@@ -8,7 +8,7 @@ The free tiers are the constraint. Polygon news is rate-limited and QStash has
 a daily message allowance. Calling providers or models on page loads would
 couple user latency and availability to those limits.
 
-Durable per-ticker jobs own scarce provider work. The hourly showcase scheduler
+Durable per-ticker jobs own scarce provider work. The 30-minute showcase scheduler
 and authenticated long-tail visits publish the same deduplicated worker. Pages
 read Astra plus cached price providers. When an upstream fails, the last
 published bundle remains intact and the job retries outside the request.
