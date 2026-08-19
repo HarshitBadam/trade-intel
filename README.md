@@ -84,10 +84,8 @@ No API keys required. An empty `.env.local` runs the whole app on mock data; cop
 
 ## Documentation
 
-
 | Document                                                           | What's inside                                      |
 | ------------------------------------------------------------------ | -------------------------------------------------- |
-| [Screenshots](docs/screenshots.md)                                 | The app, screen by screen                          |
 | [Stack](docs/stack.md)                                             | What it's built with, and why                      |
 | [Architecture](docs/architecture.md)                               | Request flow, providers, caching, failure handling |
 | [Data pipeline](docs/data-pipeline.md)                             | How news gets fetched, analyzed, and stored        |
@@ -97,7 +95,6 @@ No API keys required. An empty `.env.local` runs the whole app on mock data; cop
 | [Market intelligence runbook](docs/market-intelligence-runbook.md) | Showcase cron, workers, and ops recovery           |
 | [Repo structure](docs/repo-structure.md)                           | The source tree, annotated                         |
 | [Langflow evolution](langflow/README.md)                           | Historical flows and production migration context |
-
 
 ---
 
