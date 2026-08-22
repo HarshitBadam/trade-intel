@@ -1,12 +1,12 @@
-# TradeIntel
+# Trade Intel
 
-TradeIntel is a stock research dashboard that brings price history, trading volume, market news, sentiment, and popularity into a single view. Search any ticker to explore interactive price and popularity charts, trace the articles driving sentiment, compare related companies, and inspect the latest analytical conclusion. StockSage is the built-in research assistant, combining live market data, stored news evidence, web research, ranking tools, and historical range analysis to answer stock research questions with cited evidence.
+Trade Intel is a stock research dashboard that brings price history, trading volume, market news, sentiment, and popularity into a single view. Search any ticker to explore interactive price and popularity charts, trace the articles driving sentiment, compare related companies, and inspect the latest analytical conclusion. StockSage is the built-in research assistant, combining live market data, stored news evidence, web research, ranking tools, and historical range analysis to answer stock research questions with cited evidence.
 
 > **Live:** [trade-intel-app.vercel.app](https://trade-intel-app.vercel.app) (sign in with Google)
 >
 > **Note:** A research project, not financial advice.
 
-TradeIntel uses a store-first market-intelligence architecture: slow or failure-prone enrichment runs as durable background work, while product requests read only versioned, already-published results. Scheduled and on-demand refreshes converge on the same atomic publication boundary, keeping every conclusion consistent with its supporting articles and insulating page performance from provider and model latency. [How it works →](docs/architecture.md)
+Trade Intel uses a store-first market-intelligence architecture: slow or failure-prone enrichment runs as durable background work, while product requests read only versioned, already-published results. Scheduled and on-demand refreshes converge on the same atomic publication boundary, keeping every conclusion consistent with its supporting articles and insulating page performance from provider and model latency. [How it works →](docs/architecture.md)
 
 <details open>
 <summary><strong>Product walkthrough</strong></summary>
@@ -76,7 +76,7 @@ No API keys required. An empty `.env.local` runs the whole app on mock data; cop
 
 **StockSage:** StockSage is an evidence-grounded research assistant with tools for live market data, stored news, web research, US stock rankings, and historical range analysis. It retrieves the required evidence in parallel, applies financial-safety guardrails, and composes cited answers rather than relying on model memory.
 
-**Sentiment and popularity:** TradeIntel combines article-level sentiment with a ticker verdict covering overall direction, confidence, summary, and key drivers. Its 90-day popularity view blends sentiment balance with article activity, making changes in market attention visible alongside price and volume.
+**Sentiment and popularity:** Trade Intel combines article-level sentiment with a ticker verdict covering overall direction, confidence, summary, and key drivers. Its 90-day popularity view blends sentiment balance with article activity, making changes in market attention visible alongside price and volume.
 
 **Durable market intelligence:** Scheduled and on-demand refreshes enter the same durable worker pipeline. Content fingerprints avoid unnecessary analysis regeneration, while versioned, compare-and-set publication ensures every displayed conclusion matches the exact set of supporting articles.
 

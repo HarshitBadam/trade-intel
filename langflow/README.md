@@ -1,6 +1,6 @@
 # Langflow evolution
 
-TradeIntel initially used Langflow hosted on Hugging Face for news ingestion, chat, and stock analysis. Production evidence showed that it was not suitable as a critical runtime dependency, so analysis moved to direct Groq and orchestration moved to durable, idempotent QStash jobs with content-addressed reuse and last-known-good delivery.
+Trade Intel initially used Langflow hosted on Hugging Face for news ingestion, chat, and stock analysis. Production evidence showed that it was not suitable as a critical runtime dependency, so analysis moved to direct Groq and orchestration moved to durable, idempotent QStash jobs with content-addressed reuse and last-known-good delivery.
 
 The preserved flows document how the project explored ingestion, retrieval-augmented chat, and analysis through visual orchestration before consolidating those responsibilities into the production architecture.
 
